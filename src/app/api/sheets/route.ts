@@ -206,7 +206,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               liittEur: parseNum(row[mIdxLiittEur]) - standiLiittEur,
               fsecKpl: mFsecKpl, fsecEur: mFsecEur,
               kassa: kassaRaw * 10,
-              kassaRjmob: kassaRaw * 5,
+              kassaRjmob: kassaRaw * 1,
               tunnit: parseNum(row[mIdxTunnit]),
             }
           }
