@@ -143,10 +143,10 @@ export default function EtelanHaratPage() {
   const totLStyle = {...totStyle, textAlign:'left' as const}
 
   const [viesti, setViesti] = useState('')
-  const [viestiLoading, setViestiLoading] = useState(false)
+  const [viestiLoading, setViestiLoading] = useState<string|null>(null)
 
-  const generoiViesti = async () => {
-    setViestiLoading(true)
+  const generoiViesti = async (tyyppi: 'paiva' | 'viikko' | 'kuukausi') => {
+    setViestiLoading(tyyppi)
     const top3 = sellers.filter(s => s.tyyppi !== 'standi').slice(0, 3)
     const fsecTop = [...sellers].filter(s => s.tyyppi !== 'standi').sort((a,b) => b.fsecKpl - a.fsecKpl).slice(0,2)
     const tiimiFsec = Object.values(stores).reduce((s,r) => s+r.fsecKpl, 0)
@@ -186,7 +186,7 @@ Generoi viesti:`
     } catch(e) {
       setViesti('Virhe: ' + String(e))
     }
-    setViestiLoading(false)
+    setViestiLoading(null)
   }
 
   return (
