@@ -170,6 +170,8 @@ Top F-Secure tekijät: ${fsecTop.map(s => s.nimi.split(' ')[0] + ' ' + s.fsecKpl
 Tiimi yhteensä: ${tiimiLiitt} liittymää, ${tiimiFsec} F-Securea
 Kuukausi: ${kuukausi.replace('Myyntiseuranta ', '').replace(' 2026', '')}
 
+TÄRKEÄÄ: Älä käytä emojeja. Älä käytä tekoälymäistä kieltä tai fraaseja kuten "Hei tiimi!", "Loistavaa työtä!", "Mahtavaa!" tai muita yliampuvia ilmaisuja. Kirjoita kuten oikea myyntipäällikkö kirjoittaisi WhatsAppissa — suoraan, rehellisesti ja rennosti.
+
 Generoi viesti:`
 
     try {
@@ -324,10 +326,18 @@ Generoi viesti:`
         {sellers.length > 0 && (
           <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, padding:'16px', marginBottom:16}}>
             <div style={{fontSize:11, fontWeight:500, color:'#888', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:12}}>Viikkoviesti tiimille</div>
-            <button onClick={generoiViesti} disabled={viestiLoading}
-              style={{padding:'10px 20px', borderRadius:8, background:'#185FA5', color:'white', border:'none', fontSize:13, fontWeight:500, cursor:'pointer', marginBottom:12, opacity: viestiLoading ? 0.7 : 1}}>
-              {viestiLoading ? 'Generoidaan...' : '✨ Generoi WhatsApp-viesti'}
-            </button>
+            <div style={{display:'flex', gap:8, marginBottom:12, flexWrap:'wrap'}}>
+              {[
+                {tyyppi:'paiva' as const, label:'Päivittäinen — suorittajat'},
+                {tyyppi:'viikko' as const, label:'Viikottainen — missä mennään'},
+                {tyyppi:'kuukausi' as const, label:'Kuukausikatsaus'},
+              ].map(({tyyppi, label}) => (
+                <button key={tyyppi} onClick={() => generoiViesti(tyyppi)} disabled={viestiLoading !== null}
+                  style={{padding:'10px 18px', borderRadius:8, background: viestiLoading === tyyppi ? '#0d4a82' : '#185FA5', color:'white', border:'none', fontSize:13, fontWeight:500, cursor:'pointer', opacity: viestiLoading !== null && viestiLoading !== tyyppi ? 0.5 : 1}}>
+                  {viestiLoading === tyyppi ? 'Generoidaan...' : label}
+                </button>
+              ))}
+            </div>
             {viesti && (
               <div>
                 <div style={{background:'#f8f8f6', borderRadius:8, padding:'14px', fontSize:13, lineHeight:1.7, whiteSpace:'pre-wrap', marginBottom:10, border:'0.5px solid #eee'}}>
