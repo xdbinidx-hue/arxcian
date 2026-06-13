@@ -227,7 +227,7 @@ Generoi viesti:`
                     {sellers.map((s, i) => {
                       const provisio = s.liittEur + s.fsecEur + s.kassa
                       const myyntiTeho = s.tunnit > 0 ? (s.liittEur + s.kassa) / s.tunnit : 0
-                      const tehoColor = myyntiTeho >= 9 ? '#3B6D11' : myyntiTeho >= 7 ? '#854F0B' : '#A32D2D'
+                      const tehoColor = myyntiTeho >= 8 ? '#3B6D11' : myyntiTeho >= 7 ? '#854F0B' : '#A32D2D'
                       const isAlbin = s.nimi.toLowerCase().includes('albin')
                       return (
                         <tr key={s.nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
@@ -240,9 +240,9 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && s.liittEur/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && s.liittEur/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{isAlbin ? '—' : (s.tunnit > 0 ? s.liittEur/s.tunnit : 0).toFixed(2) + ' €/h'}</td>
+                          <td style={{...tdStyle, color: s.tunnit > 0 && s.liittEur/s.tunnit >= 8 ? '#3B6D11' : s.tunnit > 0 && s.liittEur/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{isAlbin ? '—' : (s.tunnit > 0 ? s.liittEur/s.tunnit : 0).toFixed(2) + ' €/h'}</td>
                           <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{isAlbin ? '—' : myyntiTeho.toFixed(2) + ' €/h'}</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{isAlbin ? '—' : (s.tunnit > 0 ? (s.liittEur+s.kassa+s.fsecEur)/s.tunnit : 0).toFixed(2) + ' €/h'}</td>
+                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 8 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{isAlbin ? '—' : (s.tunnit > 0 ? (s.liittEur+s.kassa+s.fsecEur)/s.tunnit : 0).toFixed(2) + ' €/h'}</td>
                         </tr>
                       )
                     })}
