@@ -1,13 +1,6 @@
 'use client'
 
 export default function Home() {
-  const nav = [
-    {label:'Tuottoseuranta', href:'/tuotto', desc:'Myyjät, ROI, netto'},
-    {label:'Trendit', href:'/trendit', desc:'Kuukausikehitys'},
-    {label:'Myyntiseuranta', href:'/etela', desc:'Etelän Härät'},
-    {label:'Run Rate', href:'/runrate', desc:'Tulossa'},
-  ]
-
   return (
     <div style={{minHeight:'100vh', fontFamily:'system-ui,sans-serif', background:'#0a0a0a'}}>
       <div style={{position:'relative', height:'100vh', overflow:'hidden'}}>
@@ -20,15 +13,18 @@ export default function Home() {
           <div style={{fontSize:15, color:'rgba(255,255,255,0.55)', maxWidth:420, lineHeight:1.7, marginBottom:48}}>
             Reaaliaikainen johtamisjärjestelmä — myynti, kannattavuus ja kassavirta yhdessä näkymässä.
           </div>
-          <div style={{display:'flex', gap:12, flexWrap:'wrap', justifyContent:'center'}}>
-            {nav.map(item => (
-              <a key={item.href} href={item.href}
-                style={{padding:'14px 24px', background:'rgba(255,255,255,0.08)', border:'0.5px solid rgba(255,255,255,0.15)', borderRadius:12, textDecoration:'none'}}>
-                <div style={{fontSize:13, fontWeight:500, color:'white', marginBottom:3}}>{item.label}</div>
-                <div style={{fontSize:11, color:'rgba(255,255,255,0.45)'}}>{item.desc}</div>
-              </a>
-            ))}
-          </div>
+          <a href="/tuotto" style={{
+            padding:'16px 48px',
+            background:'white',
+            borderRadius:14,
+            textDecoration:'none',
+            fontSize:15,
+            fontWeight:600,
+            color:'#0a0a0a',
+            letterSpacing:'0.5px',
+          }}>
+            💰 Check the bag
+          </a>
         </div>
       </div>
     </div>
