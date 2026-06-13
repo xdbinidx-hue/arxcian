@@ -106,7 +106,7 @@ export default function EtelanHaratPage() {
         if (d.sellers) {
           const sorted = [...d.sellers]
             .filter((s: SellerResult) => s.tyyppi !== 'standi')
-            .sort((a: SellerResult, b: SellerResult) => b.liittEur - a.liittEur)
+            .sort((a: SellerResult, b: SellerResult) => { if (a.tyyppi === 'owner') return 1; if (b.tyyppi === 'owner') return -1; return b.liittKpl - a.liittKpl })
           setSellers(sorted)
           setStores(d.stores ?? {})
           setKuukausi(d.kuukausi ?? '')
