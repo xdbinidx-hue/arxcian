@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 const USERS: Record<string, string> = {
   'albin': '1023',
   'arbnor': '1023',
+  'guest': 'guest',
 }
 
 export function middleware(request: NextRequest) {

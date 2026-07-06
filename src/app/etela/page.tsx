@@ -44,7 +44,6 @@ function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
         {label:'Trendit', href:'/trendit'},
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Run Rate', href:'/runrate'},
-        {label:'Laskuri', href:'/laskuri'},
       ].map(item => (
         <a key={item.href} href={item.href}
           style={{
@@ -106,7 +105,13 @@ export default function EtelanHaratPage() {
         if (d.sellers) {
           const sorted = [...d.sellers]
             .filter((s: SellerResult) => s.tyyppi !== 'standi')
-            .sort((a: SellerResult, b: SellerResult) => { if (a.nimi.toLowerCase().includes('albin')) return 1; if (b.nimi.toLowerCase().includes('albin')) return -1; return (b.tunnit > 0 ? (b.liittEur + b.kassa) / b.tunnit : 0) - (a.tunnit > 0 ? (a.liittEur + a.kassa) / a.tunnit : 0) })
+            .sort((a: SellerResult, b: SellerResult) => {
+              if (a.nimi.includes('Albin')) return 1
+              if (b.nimi.includes('Albin')) return -1
+              const tehoA = a.tunnit > 0 ? a.liittEur / a.tunnit : 0
+              const tehoB = b.tunnit > 0 ? b.liittEur / b.tunnit : 0
+              return tehoB - tehoA
+            })
           setSellers(sorted)
           setStores(d.stores ?? {})
           setKuukausi(d.kuukausi ?? '')
@@ -227,8 +232,7 @@ Generoi viesti:`
                     {sellers.map((s, i) => {
                       const provisio = s.liittEur + s.fsecEur + s.kassa
                       const myyntiTeho = s.tunnit > 0 ? (s.liittEur + s.kassa) / s.tunnit : 0
-                      const tehoColor = myyntiTeho >= 8 ? '#3B6D11' : myyntiTeho >= 7 ? '#854F0B' : '#A32D2D'
-                      const isAlbin = s.nimi.toLowerCase().includes('albin')
+                      const tehoColor = myyntiTeho >= 9 ? '#3B6D11' : myyntiTeho >= 7 ? '#854F0B' : '#A32D2D'
                       return (
                         <tr key={s.nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
@@ -236,13 +240,13 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur)} €</td>
-                          <td style={{...tdStyle, color: s.fsecKpl >= 15 ? '#3B6D11' : s.fsecKpl >= 10 ? '#111' : '#A32D2D', fontWeight:500}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, color:'#0F6E56', fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && s.liittEur/s.tunnit >= 8 ? '#3B6D11' : s.tunnit > 0 && s.liittEur/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{isAlbin ? '—' : (s.tunnit > 0 ? s.liittEur/s.tunnit : 0).toFixed(2) + ' €/h'}</td>
-                          <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{isAlbin ? '—' : myyntiTeho.toFixed(2) + ' €/h'}</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 8 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{isAlbin ? '—' : (s.tunnit > 0 ? (s.liittEur+s.kassa+s.fsecEur)/s.tunnit : 0).toFixed(2) + ' €/h'}</td>
+                          <td style={{...tdStyle, color: s.tunnit > 0 && s.liittEur/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && s.liittEur/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{(s.tunnit > 0 ? s.liittEur/s.tunnit : 0).toFixed(2)} €/h</td>
+                          <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{myyntiTeho.toFixed(2)} €/h</td>
+                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{(s.tunnit > 0 ? (s.liittEur+s.kassa+s.fsecEur)/s.tunnit : 0).toFixed(2)} €/h</td>
                         </tr>
                       )
                     })}
@@ -297,7 +301,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, color: s.fsecKpl >= 15 ? '#3B6D11' : s.fsecKpl >= 10 ? '#111' : '#A32D2D', fontWeight:500}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, color:'#0F6E56', fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{teho.toFixed(2)} €/h</td>
@@ -318,6 +322,7 @@ Generoi viesti:`
                         {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassa) / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
                       </td>
                     </tr>
+
                   </tbody>
                 </table>
               </div>
