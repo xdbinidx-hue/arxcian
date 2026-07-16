@@ -115,6 +115,7 @@ export default function TuottoPage() {
   const [loading, setLoading] = useState(false)
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
+  const [naytaTuntipalkat, setNaytaTuntipalkat] = useState(false)
   const naytaLaskelma = true
 
   useEffect(() => {
