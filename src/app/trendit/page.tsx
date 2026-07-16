@@ -7,8 +7,12 @@ interface MonthData {
   netto: number
   brutto: number
   liittKpl: number
+  liittEur: number
   fsecKpl: number
+  fsecPassiivi: number
+  kassa: number
   tyokulu: number
+  erotusPct: number
 }
 
 interface DriveFile {
@@ -67,13 +71,19 @@ export default function TrendPage() {
           const res = await fetch(`/api/sheets?fileId=${f.id}`)
           const data = await res.json()
           if (data.totals) {
+            const netto = Math.round(data.totals.netto)
+            const tyokulu = Math.round(data.totals.tyokulu)
             results.push({
               kuukausi: f.name.replace('Myyntiseuranta ', '').replace(' 2026', ''),
-              netto: Math.round(data.totals.netto),
+              netto,
               brutto: Math.round(data.totals.rjmobTulo),
               liittKpl: data.totals.liittKpl,
+              liittEur: Math.round(data.totals.liittEur),
               fsecKpl: data.totals.fsecKpl,
-              tyokulu: Math.round(data.totals.tyokulu),
+              fsecPassiivi: Math.round(data.totals.fsecKpl * 1.5),
+              kassa: Math.round(data.totals.kassa),
+              tyokulu,
+              erotusPct: tyokulu > 0 ? Math.round((netto - tyokulu) / tyokulu * 100) : 0,
             })
           }
         }
@@ -87,6 +97,7 @@ export default function TrendPage() {
   const totalNetto = months.reduce((s,m) => s+m.netto, 0)
   const yearEstimate = Math.round(avgNetto * 12)
   const bestMonth = months.length ? months.reduce((a,b) => a.netto > b.netto ? a : b) : null
+  const avgErotusPct = months.length ? Math.round(months.reduce((s,m) => s+m.erotusPct, 0) / months.length) : 0
 
   if (loading) return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
@@ -114,7 +125,12 @@ export default function TrendPage() {
           ))}
         </div>
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Netto vs Työkulu</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>Netto vs Työkulu</div>
+            <div style={{fontSize:12,fontWeight:500,color:avgErotusPct>=0?'#3B6D11':'#A32D2D'}}>
+              Netto {avgErotusPct>=0?'+':''}{avgErotusPct} % työkuluun nähden (ka.)
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={months}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -142,11 +158,15 @@ export default function TrendPage() {
           </ResponsiveContainer>
         </div>
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden'}}>
+          <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee'}}>
+            <span style={{fontWeight:500,fontSize:14}}>Kuukausipalkki</span>
+          </div>
+          <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
             <thead>
               <tr style={{borderBottom:'0.5px solid #eee'}}>
-                {['Kuukausi','Liitt','F-Sec','Brutto','Työkulu','Netto'].map(h=>(
-                  <th key={h} style={{textAlign: h==='Kuukausi'?'left':'right',padding:'8px 12px',color:'#888',fontWeight:500,fontSize:11}}>{h}</th>
+                {['Kuukausi','Liitt kpl','Provisio','F-Sec kpl','F-Sec passiivitulo','Kassakate','Työkulu','Netto'].map(h=>(
+                  <th key={h} style={{textAlign: h==='Kuukausi'?'left':'right',padding:'8px 12px',color:'#888',fontWeight:500,fontSize:11,whiteSpace:'nowrap'}}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -155,8 +175,10 @@ export default function TrendPage() {
                 <tr key={m.kuukausi} style={{borderBottom:'0.5px solid #f5f5f5'}}>
                   <td style={{padding:'7px 12px',fontWeight:500}}>{m.kuukausi}</td>
                   <td style={{padding:'7px 12px',textAlign:'right'}}>{m.liittKpl}</td>
+                  <td style={{padding:'7px 12px',textAlign:'right',color:'#185FA5'}}>{fmt(m.liittEur)}</td>
                   <td style={{padding:'7px 12px',textAlign:'right',color:'#0F6E56'}}>{m.fsecKpl}</td>
-                  <td style={{padding:'7px 12px',textAlign:'right'}}>{fmt(m.brutto)}</td>
+                  <td style={{padding:'7px 12px',textAlign:'right',color:'#0F6E56'}}>{fmt(m.fsecPassiivi)}</td>
+                  <td style={{padding:'7px 12px',textAlign:'right'}}>{fmt(m.kassa)}</td>
                   <td style={{padding:'7px 12px',textAlign:'right',color:'#888'}}>{fmt(m.tyokulu)}</td>
                   <td style={{padding:'7px 12px',textAlign:'right',fontWeight:500,color:m.netto>0?'#3B6D11':'#A32D2D'}}>{fmt(m.netto)}</td>
                 </tr>
@@ -164,13 +186,16 @@ export default function TrendPage() {
               <tr style={{background:'#f8f8f6',borderTop:'1px solid #eee'}}>
                 <td style={{padding:'7px 12px',fontWeight:600}}>Yhteensä</td>
                 <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600}}>{months.reduce((s,m)=>s+m.liittKpl,0)}</td>
+                <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600,color:'#185FA5'}}>{fmt(months.reduce((s,m)=>s+m.liittEur,0))}</td>
                 <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600,color:'#0F6E56'}}>{months.reduce((s,m)=>s+m.fsecKpl,0)}</td>
-                <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600}}>{fmt(months.reduce((s,m)=>s+m.brutto,0))}</td>
+                <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600,color:'#0F6E56'}}>{fmt(months.reduce((s,m)=>s+m.fsecPassiivi,0))}</td>
+                <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600}}>{fmt(months.reduce((s,m)=>s+m.kassa,0))}</td>
                 <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600,color:'#888'}}>{fmt(months.reduce((s,m)=>s+m.tyokulu,0))}</td>
                 <td style={{padding:'7px 12px',textAlign:'right',fontWeight:600,color:'#3B6D11'}}>{fmt(totalNetto)}</td>
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
