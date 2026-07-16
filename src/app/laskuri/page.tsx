@@ -205,7 +205,7 @@ export default function LaskuriPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[8,8.5,9,9.5,10,10.5,11,11.5,12,12.5,13,13.5,14,14.5].map(teho => {
+                    {Array.from({length:33},(_,i)=>4+i*0.5).map(teho => {
                       const lEur = teho * tunnit
                       const lN = lEur * LAPIMENO
                       const rj = lN * 5 + kassakate * 0.5
@@ -240,10 +240,10 @@ export default function LaskuriPage() {
                 <button key={v} onClick={() => setFsecPassiiviKpl(v)} style={{padding:'5px 14px', borderRadius:8, fontSize:12, border:'0.5px solid #ddd', background: fsecPassiiviKpl===v?'#0F6E56':'white', color: fsecPassiiviKpl===v?'white':'#555', cursor:'pointer'}}>{v} kpl</button>
               ))}
             </div>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:8, marginBottom:16}}>
+            <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:16}}>
               {[1,3,6,12].map(kk => (
-                <div key={kk} style={{background:'#E1F5EE', borderRadius:10, padding:'11px 14px'}}>
-                  <div style={{fontSize:11, color:'#0F6E56', marginBottom:2}}>{kk} kk</div>
+                <div key={kk} style={{background:'#E1F5EE', borderRadius:10, padding:'11px 14px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <div style={{fontSize:12, color:'#0F6E56'}}>{kk} kk</div>
                   <div style={{fontSize:18, fontWeight:700, color:'#0F6E56'}}>{fmt(fsecKuukausitulo * kk)} €</div>
                 </div>
               ))}
@@ -253,7 +253,7 @@ export default function LaskuriPage() {
                 <tr style={{borderBottom:'0.5px solid #eee'}}>
                   <th style={{textAlign:'left', padding:'6px 8px', color:'#888', fontWeight:500}}>Kuukausi</th>
                   <th style={{textAlign:'right', padding:'6px 8px', color:'#888', fontWeight:500}}>Kuukausitulo</th>
-                  <th style={{textAlign:'right', padding:'6px 8px', color:'#888', fontWeight:500}}>Kumulatiivinen</th>
+                  <th style={{textAlign:'right', padding:'6px 8px', color:'#888', fontWeight:500}}>Passiivitulo</th>
                 </tr>
               </thead>
               <tbody>

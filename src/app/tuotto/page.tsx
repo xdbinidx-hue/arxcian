@@ -44,6 +44,7 @@ function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
         {label:'Trendit', href:'/trendit'},
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Run Rate', href:'/runrate'},
+        {label:'Laskuri', href:'/laskuri'},
       ].map(item => (
         <a key={item.href} href={item.href}
           style={{
