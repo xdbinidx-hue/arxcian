@@ -102,11 +102,6 @@ function generateAlerts(data: DashData) {
   if (belowMin.length > 0) alerts.push({type:'red',text:`Alle 7 €/h: ${belowMin.map(r=>`${r.nimi} (${fmt(r.teho,1)} €/h)`).join(', ')}`})
   const krenar = active.find(r => r.tyyppi === 'krenar')
   if (krenar && krenar.netto < 0) alerts.push({type:'amber',text:`Krenar: ${krenar.liittKpl} liittymää mutta netto ${fmt(krenar.netto)} €`})
-  Object.entries(data.stores).forEach(([nimi,s]) => {
-    const teho = s.tunnit>0 ? (s.liittEur*5+s.kassaRjmob*5)/s.tunnit : 0
-    if (teho < 7) alerts.push({type:'amber',text:`${nimi}: teho ${fmt(teho,1)} €/h — alle tavoitteen`})
-    else if (teho >= 9) alerts.push({type:'green',text:`${nimi}: teho ${fmt(teho,1)} €/h — hyvä suoritus`})
-  })
   return alerts
 }
 
