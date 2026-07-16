@@ -178,7 +178,7 @@ export default function TuottoPage() {
           </div>
 
           <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
-            <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee'}}>
               <span style={{fontWeight:500,fontSize:14}}>Myyjät — {data.kuukausi}</span>
             </div>
             <div style={{overflowX:'auto'}}>
