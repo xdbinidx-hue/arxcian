@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { SellerResult } from '@/lib/rjmob'
+import { SellerResult, getTuntipalkka } from '@/lib/rjmob'
 
 interface DashData {
   kuukausi: string
@@ -238,6 +238,40 @@ export default function TuottoPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
+            <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontWeight:500,fontSize:14}}>Tuntipalkat</span>
+              <button onClick={()=>setNaytaTuntipalkat(v=>!v)}
+                style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'0.5px solid #ddd',background:'white',cursor:'pointer',color:'#555'}}>
+                {naytaTuntipalkat ? 'Piilota' : 'Näytä tuntipalkat'}
+              </button>
+            </div>
+            {naytaTuntipalkat && (
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead><tr>
+                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'left',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Myyjä</th>
+                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Tuntipalkka</th>
+                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Tunnit</th>
+                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Pohjapalka</th>
+                </tr></thead>
+                <tbody>
+                  {activeRanked.filter(r=>r.tyyppi!=='owner').map((r,i)=>{
+                    const tp = getTuntipalkka(r.nimi)
+                    const pohja = r.palkkaTunnit * tp
+                    return (
+                      <tr key={r.nimi} style={{background:i%2===0?'white':'#fafafa'}}>
+                        <td style={{padding:'6px 10px',fontSize:12,fontWeight:500,borderBottom:'0.5px solid #f5f5f5'}}>{r.nimi}</td>
+                        <td style={{padding:'6px 10px',fontSize:12,textAlign:'right',borderBottom:'0.5px solid #f5f5f5'}}>{tp} €/h</td>
+                        <td style={{padding:'6px 10px',fontSize:12,textAlign:'right',borderBottom:'0.5px solid #f5f5f5',color:'#888'}}>{fmt(r.palkkaTunnit)} h</td>
+                        <td style={{padding:'6px 10px',fontSize:12,textAlign:'right',borderBottom:'0.5px solid #f5f5f5',fontWeight:500}}>{fmt(pohja)} €</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:9,marginBottom:12}}>
