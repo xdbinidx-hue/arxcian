@@ -3,7 +3,7 @@ export const LAPIMENO = 0.65
 export const NORMAL_MULT = 5.0
 export const KRENAR_SELLER_MULT = 4.0
 export const KRENAR_RJMOB_MULT = 1.0
-export const SIVU_KERROIN = 1.25
+export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
 
