@@ -102,9 +102,11 @@ function generateAlerts(data: DashData) {
   if (belowMin.length > 0) alerts.push({type:'red',text:`Alle 7 €/h: ${belowMin.map(r=>`${r.nimi} (${fmt(r.teho,1)} €/h)`).join(', ')}`})
   const krenar = active.find(r => r.tyyppi === 'krenar')
   if (krenar && krenar.netto < 0) alerts.push({type:'amber',text:`Krenar: ${krenar.liittKpl} liittymää mutta netto ${fmt(krenar.netto)} €`})
-  const top = active.filter(r=>r.tyyppi==='normal').sort((a,b)=>b.netto-a.netto)[0]
-  if (top) alerts.push({type:'green',text:`Top: ${top.nimi} — netto ${fmt(top.netto)} €, ROI ${fmt(top.roi??0)} %, teho ${fmt(top.teho,1)} €/h`})
-  if (data.standiInfo.length > 0) alerts.push({type:'amber',text:`Ständi poistettu: ${data.standiInfo.map(s=>`${s.nimi} ${s.liittKpl} kpl`).join(', ')}`})
+  Object.entries(data.stores).forEach(([nimi,s]) => {
+    const teho = s.tunnit>0 ? (s.liittEur*5+s.kassaRjmob*5)/s.tunnit : 0
+    if (teho < 7) alerts.push({type:'amber',text:`${nimi}: teho ${fmt(teho,1)} €/h — alle tavoitteen`})
+    else if (teho >= 9) alerts.push({type:'green',text:`${nimi}: teho ${fmt(teho,1)} €/h — hyvä suoritus`})
+  })
   return alerts
 }
 
@@ -161,7 +163,7 @@ export default function TuottoPage() {
               {l:'Norin suoratulo',v:`${fmt(data.sellers.find(s=>s.tyyppi==='owner'&&s.nimi.includes('Arbnor'))?.netto??0)} €`,c:'#185FA5'},
               {l:'Albinin suoratulo',v:`${fmt(data.sellers.find(s=>s.tyyppi==='owner'&&s.nimi.includes('Albin'))?.netto??0)} €`,c:'#185FA5'},
               {l:'Liittymät',v:`${fmt(data.totals.liittKpl)} kpl`,s:`${fmt(data.totals.liittEur)} €`},
-              {l:'F-Secure',v:`${fmt(data.totals.fsecKpl)} kpl`,c:'#0F6E56',s:`FV 12kk: ${fmt(data.totals.fsecFV)} €`},
+              {l:'F-Secure',v:`${fmt(data.totals.fsecKpl)} kpl`,c:'#0F6E56',s:`Kk-passiivitulo: ${fmt(data.totals.fsecKpl*1.5,2)} € · FV 12kk: ${fmt(data.totals.fsecFV)} €`},
               {l:'RJ-Mob bruttotulo',v:`${fmt(data.totals.rjmobTulo)} €`},
               {l:'Työkulu (tiimi)',v:`${fmt(data.totals.tyokulu)} €`,s:'sis. sivukulut ×1,25'},
             ].map((k,i)=>(
