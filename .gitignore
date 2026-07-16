@@ -4,3 +4,4 @@ node_modules/
 *.json.local
 .vercel
 .env*
+tsconfig.tsbuildinfo
