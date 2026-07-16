@@ -258,7 +258,7 @@ export default function TuottoPage() {
                   <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Pohjapalka</th>
                 </tr></thead>
                 <tbody>
-                  {activeRanked.filter(r=>r.tyyppi!=='owner').map((r,i)=>{
+                  {activeRanked.filter(r=>r.tyyppi!=='owner'&&r.tyyppi!=='krenar').map((r,i)=>{
                     const tp = getTuntipalkka(r.nimi)
                     const pohja = r.palkkaTunnit * tp
                     return (
