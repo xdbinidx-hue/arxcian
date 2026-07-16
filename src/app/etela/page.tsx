@@ -240,7 +240,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur)} €</td>
-                          <td style={{...tdStyle, color:'#0F6E56', fontWeight:500}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
@@ -255,12 +255,18 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(sellerTotals.liittEur)} €</td>
                       <td style={totStyle}>{sellerTotals.liittKpl}</td>
                       <td style={totStyle}>{fmt(sellerTotals.fsecEur)} €</td>
-                      <td style={{...totStyle, color:'#0F6E56'}}>{sellerTotals.fsecKpl}</td>
+                      <td style={totStyle}>{sellerTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
                       <td style={totStyle}>
                         {fmt(sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).reduce((s,r) => s + r.teho, 0) / (sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).length || 1)) + ' €/h'}
+                      </td>
+                      <td style={totStyle}>
+                        {fmt(sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassa) / r.tunnit, 0) / (sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).length || 1)) + ' €/h'}
+                      </td>
+                      <td style={totStyle}>
+                        {fmt(sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassa + r.fsecEur) / r.tunnit, 0) / (sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).length || 1)) + ' €/h'}
                       </td>
                     </tr>
                   </tbody>
@@ -301,7 +307,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, color:'#0F6E56', fontWeight:500}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{teho.toFixed(2)} €/h</td>
@@ -315,11 +321,17 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(storeTotals.liittEur)} €</td>
                       <td style={totStyle}>{storeTotals.liittKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.fsecEur)} €</td>
-                      <td style={{...totStyle, color:'#0F6E56'}}>{storeTotals.fsecKpl}</td>
+                      <td style={totStyle}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
                       <td style={totStyle}>
-                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassa) / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
+                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + r.liittEur / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
+                      </td>
+                      <td style={totStyle}>
+                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassaRjmob) / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
+                      </td>
+                      <td style={totStyle}>
+                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassaRjmob + (r.fsecEur ?? 0)) / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
                       </td>
                     </tr>
 
