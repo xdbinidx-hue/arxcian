@@ -11,7 +11,7 @@ interface DashData {
     netto: number; fsecFV: number
   }
   standiInfo: { nimi: string; liittKpl: number; liittEur: number }[]
-  stores: Record<string, { liittKpl: number; liittEur: number; fsecKpl: number; kassa: number; tunnit: number }>
+  stores: Record<string, { liittKpl: number; liittEur: number; fsecKpl: number; fsecEur: number; kassa: number; kassaRjmob: number; tunnit: number }>
 }
 
 interface DriveFile {
@@ -242,13 +242,13 @@ export default function TuottoPage() {
 
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:9,marginBottom:12}}>
             {Object.entries(data.stores).map(([nimi,s])=>{
-              const teho=s.tunnit>0?(s.liittEur+s.kassa)/s.tunnit:0
+              const teho=s.tunnit>0?(s.liittEur*5+s.kassaRjmob*5)/s.tunnit:0
               const c=teho>=9?'#3B6D11':teho>=7?'#854F0B':'#A32D2D'
               const dot=teho>=9?'#3B6D11':teho>=7?'#EF9F27':'#E24B4A'
               return (
                 <div key={nimi} style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'12px 14px'}}>
                   <div style={{fontWeight:500,fontSize:12,marginBottom:8}}>{nimi}</div>
-                  {[['Liittymät',`${s.liittKpl} kpl / ${fmt(s.liittEur)} €`],['F-Secure',`${s.fsecKpl} kpl`,'#0F6E56'],['Kassakate (RJ 50%)',`${fmt(s.kassa*0.5)} €`],['Tunnit',`${fmt(s.tunnit)} h`],['Teho',`${fmt(teho,1)} €/h`,c]].map(([l,v,vc])=>(
+                  {[['Liittymät',`${s.liittKpl} kpl / ${fmt(s.liittEur)} €`],['F-Secure',`${s.fsecKpl} kpl`,'#0F6E56'],['F-Sec kk-tulo',`${fmt(s.fsecKpl*1.5,2)} €`,'#0F6E56'],['Kassakate',`${fmt(s.kassaRjmob)} €`],['Tunnit',`${fmt(s.tunnit)} h`],['Teho (5x)',`${fmt(teho,1)} €/h`,c]].map(([l,v,vc])=>(
                     <div key={l as string} style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:3}}>
                       <span style={{color:'#888'}}>{l as string}</span>
                       <strong style={{color:(vc as string)??'#111'}}>{v as string}</strong>
