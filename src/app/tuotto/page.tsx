@@ -115,7 +115,7 @@ export default function TuottoPage() {
   const [loading, setLoading] = useState(false)
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
-  const [naytaLaskelma, setNaytaLaskelma] = useState(false)
+  const naytaLaskelma = true
 
   useEffect(() => {
     fetch('/api/files').then(r=>r.json()).then(d => {
@@ -180,10 +180,6 @@ export default function TuottoPage() {
           <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
             <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <span style={{fontWeight:500,fontSize:14}}>Myyjät — {data.kuukausi}</span>
-              <button onClick={()=>setNaytaLaskelma(v=>!v)}
-                style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'0.5px solid #ddd',background:'white',cursor:'pointer',color:'#555'}}>
-                {naytaLaskelma ? 'Piilota laskelma' : 'Näytä laskelma'}
-              </button>
             </div>
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse'}}>
