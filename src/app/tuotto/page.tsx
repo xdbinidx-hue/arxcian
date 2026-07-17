@@ -114,7 +114,6 @@ export default function TuottoPage() {
   const [loading, setLoading] = useState(false)
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
-  const naytaLaskelma = true
 
   useEffect(() => {
     fetch('/api/files').then(r=>r.json()).then(d => {
@@ -189,21 +188,16 @@ export default function TuottoPage() {
                   <th style={thR}>Liittymä kpl</th>
                   <th style={thR}>F-Secure kpl</th>
                   <th style={thR}>Netto Teho €/h</th>
-                  <th style={thR}>RJ-Mob tulo</th>
-                  <th style={thR}>Työkulu</th>
+                  <th style={{...thR,color:'#854F0B'}}>Pohjapalkka</th>
+                  <th style={{...thR,color:'#854F0B'}}>Provisio</th>
+                  <th style={{...thR,color:'#854F0B'}}>Palkka</th>
+                  <th style={{...thR,color:'#854F0B'}}>Sivukuluineen</th>
+                  <th style={{...thR,color:'#185FA5'}}>RJ-Mob Liittymä</th>
+                  <th style={{...thR,color:'#185FA5'}}>RJ-Mob Kassakate</th>
+                  <th style={{...thR,color:'#185FA5'}}>RJ-Mob Provisio</th>
                   <th style={thR}>Netto</th>
                   <th style={thR}>ROI</th>
                   <th style={th}>Status</th>
-                  {naytaLaskelma && <>
-                    <th style={{...thR,borderLeft:'1px solid #eee',color:'#854F0B'}}>Pohjapalkka</th>
-                    <th style={{...thR,color:'#854F0B'}}>Provisio myyjä</th>
-                    <th style={{...thR,color:'#854F0B'}}>Palkka yhteensä</th>
-                    <th style={{...thR,color:'#854F0B'}}>Sivukuluineen</th>
-                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob Liittymä</th>
-                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob Kassakate</th>
-                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob Provisio</th>
-                    <th style={{...thR,color:'#A32D2D'}}>Arvioitu nettotulos</th>
-                  </>}
                 </tr></thead>
                 <tbody>
                   {activeRanked.map((r,i)=>{
@@ -220,21 +214,16 @@ export default function TuottoPage() {
                         <td style={tdR}>{r.liittKpl}</td>
                         <td style={{...tdR,color:'#0F6E56',fontWeight:500}}>{r.fsecKpl}</td>
                         <td style={tdR}><TehoLabel teho={r.teho} tyyppi={r.tyyppi}/></td>
-                        <td style={tdR}>{fmt(r.rjmobTulo)} €</td>
-                        <td style={{...tdR,color:'#888'}}>{isOwner?'—':`${fmt(r.tyokulu)} €`}</td>
+                        <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(pohjapalkka)} €`}</td>
+                        <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(provisioMyyja)} €`}</td>
+                        <td style={{...tdR,color:'#854F0B',fontWeight:500}}>{isOwner?'—':`${fmt(r.palkkaBrutto)} €`}</td>
+                        <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(r.tyokulu)} €`}</td>
+                        <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobLiitt)} €`}</td>
+                        <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobKassa)} €`}</td>
+                        <td style={{...tdR,color:'#185FA5',fontWeight:500}}>{isOwner?'—':`${fmt(rjmobProvisio)} €`}</td>
                         <td style={{...tdR,fontWeight:500,color:r.netto<0?'#A32D2D':isOwner?'#185FA5':'#3B6D11'}}>{fmt(r.netto)} €</td>
                         <td style={{...tdR,fontSize:11,color:r.roi===null?'#185FA5':(r.roi??0)<0?'#A32D2D':'#666'}}>{r.roi===null?'Owner':`${fmt(r.roi??0)} %`}</td>
                         <td style={td}><StatusBadge r={r}/></td>
-                        {naytaLaskelma && <>
-                          <td style={{...tdR,borderLeft:'1px solid #f0f0f0',color:'#854F0B'}}>{isOwner?'—':`${fmt(pohjapalkka)} €`}</td>
-                          <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(provisioMyyja)} €`}</td>
-                          <td style={{...tdR,color:'#854F0B',fontWeight:500}}>{isOwner?'—':`${fmt(r.palkkaBrutto)} €`}</td>
-                          <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(r.tyokulu)} €`}</td>
-                          <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobLiitt)} €`}</td>
-                          <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobKassa)} €`}</td>
-                          <td style={{...tdR,color:'#185FA5',fontWeight:500}}>{isOwner?'—':`${fmt(rjmobProvisio)} €`}</td>
-                          <td style={{...tdR,fontWeight:500,color:r.netto<0?'#A32D2D':'#3B6D11'}}>{isOwner?'—':`${fmt(r.netto)} €`}</td>
-                        </>}
                       </tr>
                     )
                   })}
