@@ -27,6 +27,20 @@ function parsePrefix(name: string): number {
   return year * 100 + month
 }
 
+function linearTrend(ys: number[]) {
+  const n = ys.length
+  if (n === 0) return { slope: 0, intercept: 0 }
+  const xs = ys.map((_, i) => i)
+  const sumX = xs.reduce((a, b) => a + b, 0)
+  const sumY = ys.reduce((a, b) => a + b, 0)
+  const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0)
+  const sumX2 = xs.reduce((s, x) => s + x * x, 0)
+  const denom = n * sumX2 - sumX * sumX
+  const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0
+  const intercept = (sumY - slope * sumX) / n
+  return { slope, intercept }
+}
+
 function TopBar({ activePage }: { activePage: string }) {
   return (
     <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
@@ -93,11 +107,25 @@ export default function TrendPage() {
   }, [])
 
   const fmt = (n: number) => Math.round(n).toLocaleString('fi-FI') + ' €'
+  const fmtN = (n: number) => Math.round(n).toLocaleString('fi-FI')
   const avgNetto = months.length ? Math.round(months.reduce((s,m) => s+m.netto, 0) / months.length) : 0
   const totalNetto = months.reduce((s,m) => s+m.netto, 0)
-  const yearEstimate = Math.round(avgNetto * 12)
   const bestMonth = months.length ? months.reduce((a,b) => a.netto > b.netto ? a : b) : null
   const avgErotusPct = months.length ? Math.round(months.reduce((s,m) => s+m.erotusPct, 0) / months.length) : 0
+
+  const monthsExclBest = bestMonth ? months.filter(m => m.kuukausi !== bestMonth.kuukausi) : months
+  const avg = (arr: number[]) => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : 0
+  const nettoForecast = Math.round(avg(monthsExclBest.map(m=>m.netto)) * 12)
+  const fsecKplForecast = Math.round(avg(monthsExclBest.map(m=>m.fsecKpl)) * 12)
+  const fsecPassiiviForecast = Math.round(avg(monthsExclBest.map(m=>m.fsecPassiivi)))
+
+  const liittTrendCoef = linearTrend(months.map(m=>m.liittKpl))
+  const fsecTrendCoef = linearTrend(months.map(m=>m.fsecKpl))
+  const monthsWithTrend = months.map((m,i) => ({
+    ...m,
+    liittTrendi: Math.round(liittTrendCoef.intercept + liittTrendCoef.slope * i),
+    fsecTrendi: Math.round(fsecTrendCoef.intercept + fsecTrendCoef.slope * i),
+  }))
 
   if (loading) return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
@@ -114,15 +142,30 @@ export default function TrendPage() {
           {[
             {l:'Paras kuukausi', v: bestMonth?.kuukausi ?? '-', s: fmt(bestMonth?.netto ?? 0)},
             {l:'Keskiarvo/kk', v: fmt(avgNetto), s:'netto'},
-            {l:'Vuosiennuste', v: fmt(yearEstimate), c:'#185FA5', s:`perustuu ${months.length} kk`},
             {l:`Yhteensä ${months.length} kk`, v: fmt(totalNetto), s:'kumulatiivinen'},
           ].map((k,i) => (
             <div key={i} style={{background:'#f1f0ee',borderRadius:10,padding:'12px 14px'}}>
               <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k.l}</div>
-              <div style={{fontSize:18,fontWeight:500,color:k.c??'#111'}}>{k.v}</div>
+              <div style={{fontSize:18,fontWeight:500,color:'#111'}}>{k.v}</div>
               <div style={{fontSize:11,color:'#aaa',marginTop:2}}>{k.s}</div>
             </div>
           ))}
+        </div>
+        <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Vuosiennuste <span style={{textTransform:'none',fontWeight:400}}>— keskiarvo/kk, paras kuukausi pois laskuista</span></div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:8}}>
+            {[
+              {l:'Nettomyynti', v: fmt(nettoForecast), c:'#185FA5', s:'12 kk'},
+              {l:'F-Secure asiakkuudet', v: `${fmtN(fsecKplForecast)} kpl`, c:'#0F6E56', s:'12 kk'},
+              {l:'Kk-passiivitulo', v: fmt(fsecPassiiviForecast), c:'#0F6E56', s:'kuukaudessa'},
+            ].map((k,i) => (
+              <div key={i} style={{background:'#f8f8f6',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k.l}</div>
+                <div style={{fontSize:18,fontWeight:500,color:k.c}}>{k.v}</div>
+                <div style={{fontSize:11,color:'#aaa',marginTop:2}}>{k.s}</div>
+              </div>
+            ))}
+          </div>
         </div>
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -143,19 +186,35 @@ export default function TrendPage() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Liittymät & F-Secure trendi</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={months}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
-              <YAxis tick={{fontSize:11}} />
-              <Tooltip />
-              <Legend wrapperStyle={{fontSize:11}} />
-              <Line type="monotone" dataKey="liittKpl" name="Liittymät" stroke="#185FA5" strokeWidth={2} dot={{r:4}} />
-              <Line type="monotone" dataKey="fsecKpl" name="F-Secure" stroke="#0F6E56" strokeWidth={2} dot={{r:4}} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(360px,1fr))',gap:12,marginBottom:12}}>
+          <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px'}}>
+            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Liittymät trendi</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={monthsWithTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
+                <YAxis tick={{fontSize:11}} />
+                <Tooltip />
+                <Legend wrapperStyle={{fontSize:11}} />
+                <Line type="monotone" dataKey="liittKpl" name="Liittymät" stroke="#185FA5" strokeWidth={2} dot={{r:4}} />
+                <Line type="linear" dataKey="liittTrendi" name="Trendi (lineaarinen)" stroke="#185FA5" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px'}}>
+            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>F-Secure trendi</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={monthsWithTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
+                <YAxis tick={{fontSize:11}} />
+                <Tooltip />
+                <Legend wrapperStyle={{fontSize:11}} />
+                <Line type="monotone" dataKey="fsecKpl" name="F-Secure" stroke="#0F6E56" strokeWidth={2} dot={{r:4}} />
+                <Line type="linear" dataKey="fsecTrendi" name="Trendi (lineaarinen)" stroke="#0F6E56" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden'}}>
           <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee'}}>
