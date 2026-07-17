@@ -114,7 +114,6 @@ export default function TuottoPage() {
   const [loading, setLoading] = useState(false)
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
-  const [naytaTuntipalkat, setNaytaTuntipalkat] = useState(false)
   const naytaLaskelma = true
 
   useEffect(() => {
@@ -173,7 +172,7 @@ export default function TuottoPage() {
           </div>
 
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:8}}>AI-huomiot</div>
+            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:8}}>Huomioita</div>
             {alerts.map((a,i)=><Alert key={i} type={a.type}>{a.text}</Alert>)}
           </div>
 
@@ -186,34 +185,38 @@ export default function TuottoPage() {
                 <thead><tr>
                   <th style={th}>#</th>
                   <th style={th}>Myyjä</th>
-                  <th style={thR}>Liitt kpl</th>
-                  <th style={thR}>F-Sec</th>
-                  <th style={thR}>Teho €/h</th>
+                  <th style={thR}>Tuntipalkka</th>
+                  <th style={thR}>Liittymä kpl</th>
+                  <th style={thR}>F-Secure kpl</th>
+                  <th style={thR}>Netto Teho €/h</th>
                   <th style={thR}>RJ-Mob tulo</th>
                   <th style={thR}>Työkulu</th>
                   <th style={thR}>Netto</th>
                   <th style={thR}>ROI</th>
                   <th style={th}>Status</th>
                   {naytaLaskelma && <>
-                    <th style={{...thR,borderLeft:'1px solid #eee',color:'#185FA5'}}>Liittymä € (5x)</th>
-                    <th style={{...thR,color:'#185FA5'}}>Kassa (5x)</th>
-                    <th style={{...thR,color:'#185FA5'}}>Total prov (5x)</th>
-                    <th style={{...thR,color:'#0F6E56'}}>F-Sec 2kk pass.</th>
-                    <th style={{...thR,color:'#854F0B'}}>Tuntipalkka</th>
-                    <th style={{...thR,color:'#854F0B'}}>Palkka</th>
-                    <th style={{...thR,color:'#854F0B'}}>Sivukulut</th>
-                    <th style={{...thR,color:'#A32D2D'}}>RJ-Mob netto</th>
+                    <th style={{...thR,borderLeft:'1px solid #eee',color:'#854F0B'}}>Pohjapalkka</th>
+                    <th style={{...thR,color:'#854F0B'}}>Provisio myyjä</th>
+                    <th style={{...thR,color:'#854F0B'}}>Palkka yhteensä</th>
+                    <th style={{...thR,color:'#854F0B'}}>Sivukuluineen</th>
+                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob Liittymä</th>
+                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob Kassakate</th>
+                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob Provisio</th>
+                    <th style={{...thR,color:'#A32D2D'}}>Arvioitu nettotulos</th>
                   </>}
                 </tr></thead>
                 <tbody>
                   {activeRanked.map((r,i)=>{
                     const isOwner = r.tyyppi === 'owner'
-                    const fsecPassiivinen2kk = r.fsecKpl * 1.5 * 2
-                    const tuntipalkka = r.palkkaTunnit > 0 ? r.palkkaBrutto / r.palkkaTunnit : 0
+                    const tuntipalkka = getTuntipalkka(r.nimi)
+                    const pohjapalkka = r.palkkaTunnit * tuntipalkka
+                    const provisioMyyja = r.myyjaProv + r.kassa + r.fsecEur
+                    const rjmobProvisio = r.rjmobLiitt + r.rjmobKassa + r.rjmobFsec
                     return (
                       <tr key={r.nimi} style={{background:isOwner?'#f0f7ff':r.netto<0?'#fff8f8':'white'}}>
                         <td style={{...td,color:'#ccc'}}>{isOwner?'—':i}</td>
                         <td style={{...td,fontWeight:500}}>{r.nimi}</td>
+                        <td style={tdR}>{isOwner?'—':`${fmt(tuntipalkka,2)} €/h`}</td>
                         <td style={tdR}>{r.liittKpl}</td>
                         <td style={{...tdR,color:'#0F6E56',fontWeight:500}}>{r.fsecKpl}</td>
                         <td style={tdR}><TehoLabel teho={r.teho} tyyppi={r.tyyppi}/></td>
@@ -223,13 +226,13 @@ export default function TuottoPage() {
                         <td style={{...tdR,fontSize:11,color:r.roi===null?'#185FA5':(r.roi??0)<0?'#A32D2D':'#666'}}>{r.roi===null?'Owner':`${fmt(r.roi??0)} %`}</td>
                         <td style={td}><StatusBadge r={r}/></td>
                         {naytaLaskelma && <>
-                          <td style={{...tdR,borderLeft:'1px solid #f0f0f0',color:'#185FA5',fontWeight:500}}>{isOwner?'—':`${fmt(r.rjmobLiitt)} €`}</td>
-                          <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobKassa)} €`}</td>
-                          <td style={{...tdR,color:'#185FA5',fontWeight:500}}>{isOwner?'—':`${fmt(r.rjmobLiitt+r.rjmobKassa)} €`}</td>
-                          <td style={{...tdR,color:'#0F6E56'}}>{fmt(fsecPassiivinen2kk)} €</td>
-                          <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(tuntipalkka,2)} €/h`}</td>
+                          <td style={{...tdR,borderLeft:'1px solid #f0f0f0',color:'#854F0B'}}>{isOwner?'—':`${fmt(pohjapalkka)} €`}</td>
+                          <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(provisioMyyja)} €`}</td>
                           <td style={{...tdR,color:'#854F0B',fontWeight:500}}>{isOwner?'—':`${fmt(r.palkkaBrutto)} €`}</td>
                           <td style={{...tdR,color:'#854F0B'}}>{isOwner?'—':`${fmt(r.tyokulu)} €`}</td>
+                          <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobLiitt)} €`}</td>
+                          <td style={{...tdR,color:'#185FA5'}}>{isOwner?'—':`${fmt(r.rjmobKassa)} €`}</td>
+                          <td style={{...tdR,color:'#185FA5',fontWeight:500}}>{isOwner?'—':`${fmt(rjmobProvisio)} €`}</td>
                           <td style={{...tdR,fontWeight:500,color:r.netto<0?'#A32D2D':'#3B6D11'}}>{isOwner?'—':`${fmt(r.netto)} €`}</td>
                         </>}
                       </tr>
@@ -238,40 +241,6 @@ export default function TuottoPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
-            <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontWeight:500,fontSize:14}}>Tuntipalkat</span>
-              <button onClick={()=>setNaytaTuntipalkat(v=>!v)}
-                style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'0.5px solid #ddd',background:'white',cursor:'pointer',color:'#555'}}>
-                {naytaTuntipalkat ? 'Piilota' : 'Näytä tuntipalkat'}
-              </button>
-            </div>
-            {naytaTuntipalkat && (
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
-                <thead><tr>
-                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'left',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Myyjä</th>
-                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Tuntipalkka</th>
-                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Tunnit</th>
-                  <th style={{fontSize:10,fontWeight:500,color:'#888',textAlign:'right',padding:'5px 10px',borderBottom:'0.5px solid #eee'}}>Pohjapalka</th>
-                </tr></thead>
-                <tbody>
-                  {activeRanked.filter(r=>r.tyyppi!=='owner'&&r.tyyppi!=='krenar').map((r,i)=>{
-                    const tp = getTuntipalkka(r.nimi)
-                    const pohja = r.palkkaTunnit * tp
-                    return (
-                      <tr key={r.nimi} style={{background:i%2===0?'white':'#fafafa'}}>
-                        <td style={{padding:'6px 10px',fontSize:12,fontWeight:500,borderBottom:'0.5px solid #f5f5f5'}}>{r.nimi}</td>
-                        <td style={{padding:'6px 10px',fontSize:12,textAlign:'right',borderBottom:'0.5px solid #f5f5f5'}}>{tp} €/h</td>
-                        <td style={{padding:'6px 10px',fontSize:12,textAlign:'right',borderBottom:'0.5px solid #f5f5f5',color:'#888'}}>{fmt(r.palkkaTunnit)} h</td>
-                        <td style={{padding:'6px 10px',fontSize:12,textAlign:'right',borderBottom:'0.5px solid #f5f5f5',fontWeight:500}}>{fmt(pohja)} €</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
           </div>
 
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:9,marginBottom:12}}>
