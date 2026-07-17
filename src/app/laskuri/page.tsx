@@ -35,6 +35,7 @@ function TopBar() {
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Tavoitteet ja Run Rate', href:'/runrate'},
         {label:'Laskuri', href:'/laskuri'},
+        {label:'Työvuorot', href:'/tyovuoro'},
       ].map(item => (
         <a key={item.href} href={item.href} style={{
           fontSize:13, fontWeight: item.href === '/laskuri' ? 500 : 400,

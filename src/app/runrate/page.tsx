@@ -110,6 +110,7 @@ function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Tavoitteet ja Run Rate', href:'/runrate'},
         {label:'Laskuri', href:'/laskuri'},
+        {label:'Työvuorot', href:'/tyovuoro'},
       ].map(item => (
         <a key={item.href} href={item.href}
           style={{
