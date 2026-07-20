@@ -183,6 +183,27 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
   }
 }
 
+// Excelin solu voi sisältää kaavan tuloksen, rich textin, hyperlinkin tms. oliona —
+// puretaan tekstiarvo puolustavasti sen sijaan että luotetaan cell.text-getteriin,
+// joka voi heittää poikkeuksen tietyillä (esim. rikkinäisillä kaava-/linkkisoluilla).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function cellToString(cell: any): string {
+  try {
+    const v = cell.value
+    if (v === null || v === undefined) return ''
+    if (typeof v === 'object') {
+      if ('result' in v) return v.result != null ? String(v.result) : ''
+      if ('richText' in v) return v.richText.map((r: { text: string }) => r.text).join('')
+      if ('text' in v) return String(v.text)
+      if (v instanceof Date) return v.toISOString()
+      return ''
+    }
+    return String(v)
+  } catch {
+    return ''
+  }
+}
+
 async function loadRowsFromXlsx(drive: ReturnType<typeof google.drive>, fileId: string): Promise<string[][]> {
   const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
   const buffer = Buffer.from(res.data as ArrayBuffer)
@@ -194,7 +215,7 @@ async function loadRowsFromXlsx(drive: ReturnType<typeof google.drive>, fileId: 
   worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
     const arr: string[] = []
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      arr[colNumber - 1] = cell.text != null ? String(cell.text) : String(cell.value ?? '')
+      arr[colNumber - 1] = cellToString(cell)
     })
     rows[rowNumber - 1] = arr
   })
