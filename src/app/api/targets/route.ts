@@ -29,9 +29,15 @@ function findCol(headers: string[], ...patterns: string[]): number {
 // Rakennetaan käänteishaku, jotta eri välilehtien nimijärjestys (kumpi
 // tahansa) normalisoituu aina samaan näytettävään muotoon.
 const CANONICAL_NAME: Record<string, string> = {}
+const FIRST_NAME_TO_CANONICAL: Record<string, string> = {}
 for (let i = 0; i + 1 < RJ_MOB_SELLERS.length; i += 2) {
-  CANONICAL_NAME[RJ_MOB_SELLERS[i].toLowerCase()] = RJ_MOB_SELLERS[i]
-  CANONICAL_NAME[RJ_MOB_SELLERS[i + 1].toLowerCase()] = RJ_MOB_SELLERS[i]
+  const canonical = RJ_MOB_SELLERS[i]
+  CANONICAL_NAME[canonical.toLowerCase()] = canonical
+  CANONICAL_NAME[RJ_MOB_SELLERS[i + 1].toLowerCase()] = canonical
+  const firstName = canonical.split(/\s+/)[0].toLowerCase()
+  // Vain yksiselitteiset etunimet kelpaavat varakeinoksi (esim. Kassakate-välilehdellä
+  // saattaa esiintyä pelkkä etunimi ilman sukunimeä).
+  FIRST_NAME_TO_CANONICAL[firstName] = firstName in FIRST_NAME_TO_CANONICAL ? '' : canonical
 }
 
 function normalizeName(raw: string): string {
@@ -39,6 +45,10 @@ function normalizeName(raw: string): string {
   const known = CANONICAL_NAME[trimmed.toLowerCase()]
   if (known) return known
   const parts = trimmed.split(/\s+/)
+  if (parts.length === 1) {
+    const byFirstName = FIRST_NAME_TO_CANONICAL[trimmed.toLowerCase()]
+    if (byFirstName) return byFirstName
+  }
   if (parts.length >= 2) {
     const reversed = parts.slice(1).join(' ') + ' ' + parts[0]
     const knownReversed = CANONICAL_NAME[reversed.toLowerCase()]
@@ -83,16 +93,6 @@ export async function GET(req: NextRequest) {
     const kassakateSheet = findSheet(sheetNames, 'kassakate')
     const dataSheet = findSheet(sheetNames, 'data')
     const myyjatSheet = findSheet(sheetNames, 'myyjät yhteensä', 'myyjat yhteensa')
-
-    if (req.nextUrl.searchParams.get('debug') === '1') {
-      const debugRows: Record<string, string[][]> = {}
-      for (const [label, sheetName] of [['tavoitteet', tavoitteetSheet], ['myyjat', myyjatSheet], ['kassakate', kassakateSheet], ['data', dataSheet]] as const) {
-        if (!sheetName) continue
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:AF15` })
-        debugRows[label] = (r.data.values ?? []).map((row: unknown[]) => row.map((c: unknown) => String(c ?? '')))
-      }
-      return NextResponse.json({ sheetNames, rows: debugRows })
-    }
 
     if (!tavoitteetSheet) {
       return NextResponse.json({ error: `Tavoitteet-välilehteä ei löytynyt (löytyi: ${sheetNames.join(', ')})` }, { status: 400 })
@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
 
       let headerIdx = -1
       for (let i = 0; i < rows.length; i++) {
-        if (rows[i].some(c => c.toLowerCase().trim() === 'myyjä' || c.toLowerCase().trim() === 'myyjat')) { headerIdx = i; break }
+        if (rows[i].some(c => ['myyjä', 'myyjat', 'nimi'].includes(c.toLowerCase().trim()))) { headerIdx = i; break }
       }
 
       if (headerIdx >= 0) {
@@ -187,8 +187,9 @@ export async function GET(req: NextRequest) {
         const idxPalautus = findCol(headers, 'palautus', 'palautukset')
         const idxAlennus = findCol(headers, 'alennus', 'alennukset')
         const idxKuitit = findCol(headers, 'kuitti', 'kuitit')
-        const idxKate = findCol(headers, 'kassakate', 'kate')
+        const idxKate = findCol(headers, 'kate', 'kassakate')
 
+        // Sama myyjä voi esiintyä usealla rivillä (eri kustannuspaikat) — summataan.
         for (let i = headerIdx + 1; i < rows.length; i++) {
           const row = rows[i]
           const rawNimi = row[idxNimi >= 0 ? idxNimi : 0]?.trim() ?? ''
@@ -201,7 +202,15 @@ export async function GET(req: NextRequest) {
           const kassaKuitit = idxKuitit >= 0 ? parseNum(row[idxKuitit]) : 0
           const kassaKate = idxKate >= 0 ? parseNum(row[idxKate]) : (kassaMyynti - kassaPalautus - kassaAlennus)
 
-          kassaMap[nimi.toLowerCase()] = { kassaMyynti, kassaPalautus, kassaAlennus, kassaKuitit, kassaKate }
+          const key = nimi.toLowerCase()
+          const prev = kassaMap[key] ?? { kassaMyynti: 0, kassaPalautus: 0, kassaAlennus: 0, kassaKuitit: 0, kassaKate: 0 }
+          kassaMap[key] = {
+            kassaMyynti: prev.kassaMyynti + kassaMyynti,
+            kassaPalautus: prev.kassaPalautus + kassaPalautus,
+            kassaAlennus: prev.kassaAlennus + kassaAlennus,
+            kassaKuitit: prev.kassaKuitit + kassaKuitit,
+            kassaKate: prev.kassaKate + kassaKate,
+          }
         }
       }
     }
@@ -213,7 +222,7 @@ export async function GET(req: NextRequest) {
       const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
       const headers = rows[0]?.map(h => h.toLowerCase().trim()) ?? []
       const idxNimi = findCol(headers, 'nimi', 'myyjä')
-      const idxPaivat = findCol(headers, 'päivä', 'päivät', 'työpäivä', 'työpäivät', 'tyopaiva')
+      const idxPaivat = findCol(headers, 'toteutuneet työpäivät', 'työpäivät', 'päivät', 'tyopaiva', 'päivä')
 
       if (idxPaivat >= 0) {
         for (let i = 1; i < rows.length; i++) {
