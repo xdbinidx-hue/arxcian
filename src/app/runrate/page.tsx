@@ -108,7 +108,7 @@ function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
         {label:'Tuottoseuranta', href:'/tuotto'},
         {label:'Trendit', href:'/trendit'},
         {label:'Myyntiseuranta', href:'/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/runrate'},
+        {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
         {label:'Laskuri', href:'/laskuri'},
         {label:'Työvuorot', href:'/tyovuoro'},
       ].map(item => (
