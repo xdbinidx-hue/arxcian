@@ -261,7 +261,8 @@ export async function GET(req: NextRequest) {
         paivat,
         liittEur: actual.liittEur,
       }
-    }).sort((a, b) => b.liittRunrate - a.liittRunrate)
+    }).filter(t => t.nimi !== 'Albin Rashica')
+      .sort((a, b) => b.liittRunrate - a.liittRunrate)
 
     return NextResponse.json({ kuukausi: fileName, targets, sheetNames })
   } catch (e: unknown) {
