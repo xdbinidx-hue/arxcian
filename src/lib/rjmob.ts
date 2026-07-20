@@ -27,6 +27,12 @@ export const TUNTIPALKAT: Record<string, number> = {
   'Salihi Basri': 15,
   'Vladimir Kogan': 10,
   'Kogan Vladimir': 10,
+  'Antti Kiljala': 11,
+  'Kiljala Antti': 11,
+  'Ramin Kadiri': 10,
+  'Kadiri Ramin': 10,
+  'Daniel Miettinen': 10,
+  'Miettinen Daniel': 10,
   default: 13,
 }
 
@@ -52,6 +58,9 @@ export const RJ_MOB_SELLERS = [
   'Leo Rossi', 'Rossi Leo',
   'Vladimir Kogan', 'Kogan Vladimir',
   'Steven Sainio', 'Sainio Steven',
+  'Antti Kiljala', 'Kiljala Antti',
+  'Ramin Kadiri', 'Kadiri Ramin',
+  'Daniel Miettinen', 'Miettinen Daniel',
 ]
 
 export function isRJMobSeller(nimi: string): boolean {

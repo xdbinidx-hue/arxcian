@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
-import { isRJMobSeller, shouldSkip, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER } from '@/lib/rjmob'
+import { isRJMobSeller, shouldSkip, RJ_MOB_SELLERS } from '@/lib/rjmob'
 
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!)
@@ -24,15 +24,25 @@ function findCol(headers: string[], ...patterns: string[]): number {
   return -1
 }
 
-// Nimet voivat esiintyä joko 'Etunimi Sukunimi' tai 'Sukunimi Etunimi' -muodossa
-// riippuen välilehdestä. Normalisoidaan tunnettuun RJ-Mob-myyjälistaan verraten.
+// RJ_MOB_SELLERS-listassa jokainen myyjä esiintyy parina: [i] on kanoninen
+// 'Etunimi Sukunimi' -muoto, [i+1] sama nimi käänteisessä järjestyksessä.
+// Rakennetaan käänteishaku, jotta eri välilehtien nimijärjestys (kumpi
+// tahansa) normalisoituu aina samaan näytettävään muotoon.
+const CANONICAL_NAME: Record<string, string> = {}
+for (let i = 0; i + 1 < RJ_MOB_SELLERS.length; i += 2) {
+  CANONICAL_NAME[RJ_MOB_SELLERS[i].toLowerCase()] = RJ_MOB_SELLERS[i]
+  CANONICAL_NAME[RJ_MOB_SELLERS[i + 1].toLowerCase()] = RJ_MOB_SELLERS[i]
+}
+
 function normalizeName(raw: string): string {
   const trimmed = raw.trim()
-  if (isRJMobSeller(trimmed)) return trimmed
+  const known = CANONICAL_NAME[trimmed.toLowerCase()]
+  if (known) return known
   const parts = trimmed.split(/\s+/)
   if (parts.length >= 2) {
     const reversed = parts.slice(1).join(' ') + ' ' + parts[0]
-    if (isRJMobSeller(reversed)) return reversed
+    const knownReversed = CANONICAL_NAME[reversed.toLowerCase()]
+    if (knownReversed) return knownReversed
   }
   return trimmed
 }
@@ -73,6 +83,16 @@ export async function GET(req: NextRequest) {
     const kassakateSheet = findSheet(sheetNames, 'kassakate')
     const dataSheet = findSheet(sheetNames, 'data')
     const myyjatSheet = findSheet(sheetNames, 'myyjät yhteensä', 'myyjat yhteensa')
+
+    if (req.nextUrl.searchParams.get('debug') === '1') {
+      const debugRows: Record<string, string[][]> = {}
+      for (const [label, sheetName] of [['tavoitteet', tavoitteetSheet], ['myyjat', myyjatSheet], ['kassakate', kassakateSheet], ['data', dataSheet]] as const) {
+        if (!sheetName) continue
+        const r = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:P15` })
+        debugRows[label] = (r.data.values ?? []).map((row: unknown[]) => row.map((c: unknown) => String(c ?? '')))
+      }
+      return NextResponse.json({ sheetNames, rows: debugRows })
+    }
 
     if (!tavoitteetSheet) {
       return NextResponse.json({ error: `Tavoitteet-välilehteä ei löytynyt (löytyi: ${sheetNames.join(', ')})` }, { status: 400 })
