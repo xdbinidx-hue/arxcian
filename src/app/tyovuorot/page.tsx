@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { DayInfo, StoreName, STORES, STORE_COLORS, generateAugust2026 } from '@/lib/shiftSchedule'
+import { DayInfo, StoreName, STORES, STORE_COLORS, ROSTER_COLUMNS, getAbsenceLabel, generateAugust2026 } from '@/lib/shiftSchedule'
 
 const MONTH = '2026-08'
-const WEEKDAY_LABELS = ['Ma', 'Ti', 'Ke', 'To', 'Pe', 'La', 'Su']
+const WEEKDAY_SHORT = ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la']
 
 function TopBar({ activePage }: { activePage: string }) {
   return (
@@ -33,30 +33,30 @@ function TopBar({ activePage }: { activePage: string }) {
   )
 }
 
-function DayCell({ day }: { day: DayInfo }) {
-  const dayNum = Number(day.date.slice(-2))
-  const shiftsByStore: Record<StoreName, typeof day.shifts> = { Malmi: [], Easton: [], Kivistö: [] }
-  for (const s of day.shifts) shiftsByStore[s.store].push(s)
+function fmtTime(t: string): string {
+  return t.endsWith(':00') ? t.slice(0, -3) : t.replace(':', '.')
+}
+
+function dateLabel(dateStr: string, weekday: number): string {
+  const day = Number(dateStr.slice(-2))
+  return `${WEEKDAY_SHORT[weekday]}.${day}.8.`
+}
+
+function ShiftCell({ seller, day }: { seller: string; day: DayInfo }) {
+  const td = { padding:'4px 5px', fontSize:10, textAlign:'center' as const, borderBottom:'0.5px solid #f0f0f0' }
+
+  if (day.closed) return <td style={{...td, background:'#fef2f2', color:'#e5b4b4'}}>—</td>
+
+  const absence = getAbsenceLabel(seller, day.date)
+  if (absence) return <td style={{...td, background:'#f3f4f6', color:'#999', fontStyle:'italic'}}>{absence}</td>
+
+  const shift = day.shifts.find(s => s.seller === seller)
+  if (!shift) return <td style={{...td, color:'#ddd'}}>·</td>
 
   return (
-    <div style={{background: day.closed ? '#f5f5f5' : 'white', border:'0.5px solid #eee', borderRadius:8, padding:'6px 7px', minHeight:120, display:'flex', flexDirection:'column', gap:4}}>
-      <div style={{fontSize:12, fontWeight:600, color: day.closed ? '#bbb' : '#333'}}>{dayNum}</div>
-      {day.note && <div style={{fontSize:9, color:'#185FA5', lineHeight:1.3}}>{day.note}</div>}
-      {day.closed ? (
-        <div style={{fontSize:10, color:'#bbb', fontStyle:'italic'}}>Suljettu</div>
-      ) : (
-        STORES.map(store => shiftsByStore[store].length > 0 && (
-          <div key={store} style={{background: STORE_COLORS[store], borderRadius:5, padding:'3px 5px'}}>
-            <div style={{fontSize:9, fontWeight:600, color:'#444', marginBottom:1}}>{store}</div>
-            {shiftsByStore[store].map((s,i) => (
-              <div key={i} style={{fontSize:9, color:'#333', whiteSpace:'nowrap'}}>
-                {s.seller.split(' ')[0]} {s.start}–{s.end}
-              </div>
-            ))}
-          </div>
-        ))
-      )}
-    </div>
+    <td style={{...td, background: STORE_COLORS[shift.store], color:'#333', fontWeight:500, whiteSpace:'nowrap'}}>
+      {fmtTime(shift.start)}–{fmtTime(shift.end)}
+    </td>
   )
 }
 
@@ -95,29 +95,36 @@ export default function TyovuorotPage() {
     setSaving(false)
   }
 
-  // Elokuu 2026 alkaa lauantaina (viikko alkaa maanantaista)
-  const leadingBlanks = days.length > 0 ? (new Date(days[0].date).getDay() + 6) % 7 : 0
+  const th = { padding:'6px 5px', fontSize:10, fontWeight:600, color:'#555', textAlign:'center' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6' }
 
   return (
     <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
       <TopBar activePage="/tyovuorot" />
-      <div style={{maxWidth:1300, margin:'0 auto', padding:'16px'}}>
+      <div style={{maxWidth:1500, margin:'0 auto', padding:'16px'}}>
 
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-          <div style={{fontWeight:500, fontSize:16}}>Työvuorot — Elokuu 2026</div>
+          <div style={{fontWeight:500, fontSize:16}}>Työvuorot PK-seutu — Elokuu 2026</div>
           <button onClick={generate} disabled={saving}
             style={{padding:'9px 18px', borderRadius:8, background:'#185FA5', color:'white', border:'none', fontSize:13, fontWeight:500, cursor:'pointer', opacity: saving?0.6:1}}>
             {saving ? 'Tallennetaan...' : days.length > 0 ? 'Generoi uudelleen' : 'Generoi elokuu 2026'}
           </button>
         </div>
 
-        <div style={{display:'flex', gap:16, marginBottom:16, fontSize:12}}>
+        <div style={{display:'flex', gap:16, marginBottom:16, fontSize:12, flexWrap:'wrap'}}>
           {STORES.map(s => (
             <div key={s} style={{display:'flex', alignItems:'center', gap:6}}>
               <span style={{width:12, height:12, borderRadius:3, background: STORE_COLORS[s], display:'inline-block'}}></span>
               {s}
             </div>
           ))}
+          <div style={{display:'flex', alignItems:'center', gap:6}}>
+            <span style={{width:12, height:12, borderRadius:3, background:'#f3f4f6', display:'inline-block', border:'0.5px solid #ddd'}}></span>
+            vapaa / loma
+          </div>
+          <div style={{display:'flex', alignItems:'center', gap:6}}>
+            <span style={{width:12, height:12, borderRadius:3, background:'#fef2f2', display:'inline-block', border:'0.5px solid #ddd'}}></span>
+            Suljettu
+          </div>
         </div>
 
         {error && <div style={{background:'#FCEBEB', border:'0.5px solid #F09595', borderRadius:10, padding:12, marginBottom:12, fontSize:13, color:'#A32D2D'}}><strong>Virhe:</strong> {error}</div>}
@@ -128,15 +135,32 @@ export default function TyovuorotPage() {
         )}
 
         {!loading && days.length > 0 && (
-          <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, padding:14}}>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6, marginBottom:6}}>
-              {WEEKDAY_LABELS.map(w => (
-                <div key={w} style={{fontSize:11, fontWeight:500, color:'#888', textAlign:'center'}}>{w}</div>
-              ))}
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6}}>
-              {Array.from({length: leadingBlanks}).map((_,i) => <div key={'b'+i} />)}
-              {days.map(day => <DayCell key={day.date} day={day} />)}
+          <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, overflow:'hidden'}}>
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%', borderCollapse:'collapse'}}>
+                <thead>
+                  <tr>
+                    <th style={{...th, textAlign:'left', position:'sticky', left:0, background:'#f8f8f6'}}>Pvm</th>
+                    {ROSTER_COLUMNS.map(seller => (
+                      <th key={seller} style={th}>{seller.split(' ')[0]}</th>
+                    ))}
+                    <th style={{...th, textAlign:'left', minWidth:180}}>Tapahtumat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {days.map(day => (
+                    <tr key={day.date} style={{background: day.closed ? '#fef2f2' : 'white'}}>
+                      <td style={{padding:'5px 8px', fontSize:11, fontWeight:600, color: day.closed?'#c99':'#333', whiteSpace:'nowrap', position:'sticky', left:0, background: day.closed ? '#fef2f2' : 'white'}}>
+                        {dateLabel(day.date, day.weekday)}
+                      </td>
+                      {ROSTER_COLUMNS.map(seller => (
+                        <ShiftCell key={seller} seller={seller} day={day} />
+                      ))}
+                      <td style={{padding:'5px 8px', fontSize:10, color:'#185FA5'}}>{day.note ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

@@ -27,6 +27,14 @@ export const ANTTI_MAX_SHIFTS_PER_WEEK = 3
 export const MAX_SHIFTS_PER_WEEK = 5
 export const FORCED_ONLY_SELLER = 'Albin Rashica'
 
+// Kalenterinäkymän sarakejärjestys: päälliköt, kokopäiväiset, osa-aikaiset, pakkotapaus.
+export const ROSTER_COLUMNS = [
+  ...Object.values(STORE_MANAGERS),
+  ...FULL_TIME_SELLERS,
+  ...PART_TIME_SELLERS,
+  FORCED_ONLY_SELLER,
+]
+
 export interface Shift {
   store: StoreName
   seller: string
@@ -74,26 +82,37 @@ function hoursBetween(start: string, end: string): number {
 }
 
 // Poissaolot (annettu tehtävässä)
-function isAbsent(seller: string, dateStr: string): boolean {
+export const ABSENCES: { seller: string, from: string, to: string, label: string }[] = [
+  { seller: 'Krenar Bajqinovci', from: '2026-08-01', to: '2026-08-10', label: 'vapaa' },
+  { seller: 'Hamza Hanif', from: '2026-08-01', to: '2026-08-02', label: 'vapaa' },
+  { seller: 'Hamza Hanif', from: '2026-08-07', to: '2026-08-08', label: 'loma' },
+  { seller: 'Kasperi Kemppainen', from: '2026-08-06', to: '2026-08-08', label: 'vapaa/loma' },
+]
+
+export function getAbsenceLabel(seller: string, dateStr: string): string | undefined {
   const d = new Date(dateStr)
-  const inRange = (from: string, to: string) => d >= new Date(from) && d <= new Date(to)
-  if (seller === 'Krenar Bajqinovci' && inRange('2026-08-01', '2026-08-10')) return true
-  if (seller === 'Hamza Hanif' && (inRange('2026-08-01', '2026-08-02') || inRange('2026-08-07', '2026-08-08'))) return true
-  if (seller === 'Kasperi Kemppainen' && inRange('2026-08-06', '2026-08-08')) return true
-  return false
+  return ABSENCES.find(a => a.seller === seller && d >= new Date(a.from) && d <= new Date(a.to))?.label
 }
 
-// Onnenpäivät: annetun tehtävän päivämäärät ovat oikein, viikonpäivämerkinnät korjattu
-// vastaamaan todellista elokuuta 2026. 30.8 oli alun perin merkitty "la" mutta on
-// oikeasti su (suljettu) — yhdistetty 29.8 (oikea la) Kivistö+Easton OP:n kanssa.
+function isAbsent(seller: string, dateStr: string): boolean {
+  return getAbsenceLabel(seller, dateStr) !== undefined
+}
+
+// Onnenpäivät: vahvistettu käyttäjän oman Sheets-vuorolistan ("TYÖVUOROT
+// PK-SEUTU / ELOKUU 2026", Tapahtumat-sarake) perusteella — tämä on ehdoton
+// totuus, ei alkuperäisen tehtävänannon vapaateksti.
 const LUCKY_DAYS: Record<string, { store: StoreName, seller: string }[]> = {
+  '2026-08-08': [{ store: 'Kivistö', seller: STORE_MANAGERS.Kivistö }],
   '2026-08-13': [{ store: 'Malmi', seller: STORE_MANAGERS.Malmi }],
   '2026-08-14': [{ store: 'Kivistö', seller: STORE_MANAGERS.Kivistö }, { store: 'Easton', seller: STORE_MANAGERS.Easton }],
-  '2026-08-29': [{ store: 'Kivistö', seller: STORE_MANAGERS.Kivistö }, { store: 'Easton', seller: STORE_MANAGERS.Easton }, { store: 'Malmi', seller: STORE_MANAGERS.Malmi }],
+  '2026-08-28': [{ store: 'Kivistö', seller: STORE_MANAGERS.Kivistö }, { store: 'Easton', seller: STORE_MANAGERS.Easton }],
+  '2026-08-29': [{ store: 'Malmi', seller: STORE_MANAGERS.Malmi }],
 }
 
 const KESAJUHLA_DATE = '2026-08-15'
-const STANTI_DATES = ['2026-08-05', '2026-08-06', '2026-08-19', '2026-08-20', '2026-08-27']
+// Stänti Easton/Kivistössä: 5,6,19,20.8. 27.8 on vain Syke (Lahti) — ei vaikuta PK-myymälöihin.
+const STANTI_DATES = ['2026-08-05', '2026-08-06', '2026-08-19', '2026-08-20']
+const SYKE_ONLY_STANTI_DATES = ['2026-08-27']
 const CAMPAIGNS: { from: string, to: string, note: string }[] = [
   { from: '2026-08-10', to: '2026-08-16', note: 'DNA-kampanja' },
   { from: '2026-08-24', to: '2026-08-30', note: 'DNA Lahjikset -kampanja' },
@@ -102,6 +121,7 @@ const CAMPAIGNS: { from: string, to: string, note: string }[] = [
 function getNote(dateStr: string): string | undefined {
   const notes: string[] = []
   if (STANTI_DATES.includes(dateStr)) notes.push('Stänti (Easton/Kivistö)')
+  if (SYKE_ONLY_STANTI_DATES.includes(dateStr)) notes.push('Stänti (Syke, ei PK-vaikutusta)')
   const d = new Date(dateStr)
   for (const c of CAMPAIGNS) {
     if (d >= new Date(c.from) && d <= new Date(c.to)) notes.push(c.note)
