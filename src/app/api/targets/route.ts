@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
       const debugRows: Record<string, string[][]> = {}
       for (const [label, sheetName] of [['tavoitteet', tavoitteetSheet], ['myyjat', myyjatSheet], ['kassakate', kassakateSheet], ['data', dataSheet]] as const) {
         if (!sheetName) continue
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:P15` })
+        const r = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:AF15` })
         debugRows[label] = (r.data.values ?? []).map((row: unknown[]) => row.map((c: unknown) => String(c ?? '')))
       }
       return NextResponse.json({ sheetNames, rows: debugRows })
