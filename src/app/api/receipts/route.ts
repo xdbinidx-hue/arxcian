@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     const dump: Record<string, string[][]> = {}
     for (const sheetName of sheetNames) {
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:BZ300` })
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:BZ400` })
       dump[sheetName] = (r.data.values ?? []).map((row: unknown[]) => row.map((c: unknown) => String(c ?? '')))
     }
 
