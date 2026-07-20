@@ -91,7 +91,7 @@ function TopBar({ files, selectedFile, onFileChange }: { files: DriveFile[]; sel
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
         {label:'Laskuri', href:'/laskuri'},
-        {label:'Työvuorot', href:'/tyovuoro'},
+        {label:'Työvuorot', href:'/tyovuorot'},
       ].map(item => (
         <a key={item.href} href={item.href} style={{
           fontSize:13, fontWeight: item.href === '/tavoitteet' ? 500 : 400,

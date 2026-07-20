@@ -53,7 +53,7 @@ function TopBar({ activePage }: { activePage: string }) {
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
         {label:'Laskuri', href:'/laskuri'},
-        {label:'Työvuorot', href:'/tyovuoro'},
+        {label:'Työvuorot', href:'/tyovuorot'},
       ].map(item => (
         <a key={item.href} href={item.href}
           style={{
