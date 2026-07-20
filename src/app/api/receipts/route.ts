@@ -54,6 +54,7 @@ interface ReceiptSeller {
 
 interface ReceiptStore {
   liittymat: number
+  fsecEur: number
   kassakate: number
   huoltokate: number
   rescueKate: number
@@ -105,6 +106,7 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
     const idx = rows.findIndex(r => (r[0] || '').trim() === storeLabel)
     if (idx < 0) continue
     const liittRow = rows[idx + 5]   // " TOTAL" (DNA AUVO+VISIO+TELIA+ELISA)
+    const fsecRow = rows[idx + 6]    // " F-SECURE" (myymälän F-Secure-provisio)
     const grandRow = rows[idx + 11]  // "TOTAL" (koko myymälän kokonaisprovisio per myyjä)
     if (!liittRow || !grandRow) continue
 
@@ -113,6 +115,7 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
 
     stores[storeName] = {
       liittymat: totalColIdx > 0 ? parseNum(liittRow[totalColIdx]) : 0,
+      fsecEur: totalColIdx > 0 && fsecRow ? parseNum(fsecRow[totalColIdx]) : 0,
       kassakate: kassa ? parseNum(kassa[SIDE_PANEL_COL + 1]) : 0,
       huoltokate: kassa ? parseNum(kassa[SIDE_PANEL_COL + 2]) : 0,
       rescueKate: kassa ? parseNum(kassa[SIDE_PANEL_COL + 3]) : 0,

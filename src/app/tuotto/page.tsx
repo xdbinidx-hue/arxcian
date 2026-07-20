@@ -18,6 +18,19 @@ interface DriveFile {
   id: string; name: string; mimeType: string
 }
 
+interface ReceiptsData {
+  kuukausi: string
+  sellers: {
+    nimi: string; tuntipalkka: number; provisio: number; palkka: number
+    verottomat: number; sivukulut: number; rjmobTulo: number; netto: number
+  }[]
+  stores: Record<string, { liittymat: number; fsecEur: number; kassakate: number; huoltokate: number; rescueKate: number }>
+  totals: {
+    liittymat: number; kassakate: number; huoltokate: number; rescueKate: number
+    provisio: number; netto: number; fsecAsiakkuudet: number; fsecPassiivitulo: number
+  }
+}
+
 function fmt(n: number, decimals = 0) {
   return n.toLocaleString('fi-FI', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
@@ -28,6 +41,11 @@ function parsePrefix(name: string): number {
   const year = yearMatch ? Number(yearMatch[1]) : 0
   const month = numMatch ? Number(numMatch[1]) : 0
   return year * 100 + month
+}
+
+function monthNumOf(name: string): number {
+  const m = name.match(/(\d{1,3})\./)
+  return m ? Number(m[1]) : 0
 }
 
 function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
@@ -115,6 +133,12 @@ export default function TuottoPage() {
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const [mode, setMode] = useState<'arvio'|'todellinen'>('arvio')
+  const [receiptFiles, setReceiptFiles] = useState<DriveFile[]>([])
+  const [receiptData, setReceiptData] = useState<ReceiptsData | null>(null)
+  const [receiptLoading, setReceiptLoading] = useState(false)
+  const [receiptError, setReceiptError] = useState('')
+
   useEffect(() => {
     fetch('/api/files').then(r=>r.json()).then(d => {
       const sheets = ((d.files??[]).filter((f:DriveFile)=>f.mimeType==='application/vnd.google-apps.spreadsheet'))
@@ -122,6 +146,10 @@ export default function TuottoPage() {
       setFiles(sheets)
       if (sheets.length>0) setSelectedFile(sheets[0].id)
     }).finally(()=>setFilesLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/receipts').then(r=>r.json()).then(d => setReceiptFiles(d.files ?? []))
   }, [])
 
   const loadData = useCallback(() => {
@@ -133,6 +161,18 @@ export default function TuottoPage() {
   }, [selectedFile])
 
   useEffect(() => { if (selectedFile) loadData() }, [selectedFile, loadData])
+
+  useEffect(() => {
+    if (mode !== 'todellinen') return
+    const currentFile = files.find(f => f.id === selectedFile)
+    if (!currentFile || receiptFiles.length === 0) return
+    const match = receiptFiles.find(f => monthNumOf(f.name) === monthNumOf(currentFile.name))
+    if (!match) { setReceiptError(`Kuittitiedostoa ei löytynyt kuukaudelle ${currentFile.name}`); setReceiptData(null); return }
+    setReceiptLoading(true); setReceiptError('')
+    fetch(`/api/receipts?fileId=${match.id}`).then(r=>r.json()).then(d=>{
+      if (d.error) setReceiptError(d.error); else setReceiptData(d)
+    }).catch(e=>setReceiptError(String(e))).finally(()=>setReceiptLoading(false))
+  }, [mode, selectedFile, files, receiptFiles])
 
   const activeRanked = data?.sellers
     .filter(r=>r.tyyppi!=='ref'&&r.tyyppi!=='standi')
@@ -148,6 +188,22 @@ export default function TuottoPage() {
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
       <TopBar activePage="/tuotto" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
       <div style={{maxWidth:1400,margin:'0 auto',padding:'16px'}}>
+
+        <div style={{display:'flex',gap:8,marginBottom:16}}>
+          {(['arvio','todellinen'] as const).map(m => (
+            <button key={m} onClick={()=>setMode(m)}
+              style={{
+                padding:'8px 18px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:13,
+                fontWeight: mode===m?500:400,
+                background: mode===m?'#185FA5':'white',
+                color: mode===m?'white':'#555',
+              }}>
+              {m==='arvio'?'Arvio':'Todellinen'}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'arvio' && <>
         {error && <div style={{background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:10,padding:12,marginBottom:12,fontSize:13,color:'#A32D2D'}}><strong>Virhe:</strong> {error}</div>}
         {loading && <div style={{textAlign:'center',padding:40,color:'#888',fontSize:14}}>Lasketaan...</div>}
         {data && !loading && (<>
@@ -264,6 +320,91 @@ export default function TuottoPage() {
           </div>
 
         </>)}
+        </>}
+
+        {mode === 'todellinen' && <>
+          {receiptError && <div style={{background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:10,padding:12,marginBottom:12,fontSize:13,color:'#A32D2D'}}><strong>Virhe:</strong> {receiptError}</div>}
+          {receiptLoading && <div style={{textAlign:'center',padding:40,color:'#888',fontSize:14}}>Ladataan maksukuittidataa...</div>}
+          {receiptData && !receiptLoading && (<>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginBottom:12}}>
+              {[
+                {l:'Nettotulos (tiimi)',v:`${fmt(receiptData.totals.netto)} €`},
+                {l:'Provisio (tiimi)',v:`${fmt(receiptData.totals.provisio)} €`,c:'#185FA5'},
+                {l:'Liittymät',v:`${fmt(receiptData.totals.liittymat)} €`},
+                {l:'Kassakate',v:`${fmt(receiptData.totals.kassakate)} €`},
+                {l:'Huoltokate',v:`${fmt(receiptData.totals.huoltokate)} €`},
+                {l:'Rescue kate',v:`${fmt(receiptData.totals.rescueKate)} €`},
+                {l:'F-Secure asiakkuudet (tiimi)',v:`${fmt(receiptData.totals.fsecAsiakkuudet)} kpl`,c:'#0F6E56',s:`Passiivitulo: ${fmt(receiptData.totals.fsecPassiivitulo)} €`},
+              ].map((k,i)=>(
+                <div key={i} style={{background:'#f1f0ee',borderRadius:10,padding:'11px 13px'}}>
+                  <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k.l}</div>
+                  <div style={{fontSize:20,fontWeight:500,color:k.c??'#111'}}>{k.v}</div>
+                  {k.s && <div style={{fontSize:11,color:'#aaa',marginTop:2}}>{k.s}</div>}
+                </div>
+              ))}
+            </div>
+
+            <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
+              <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee'}}>
+                <span style={{fontWeight:500,fontSize:14}}>Myyjät (todellinen) — {receiptData.kuukausi}</span>
+              </div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>
+                    <th style={th}>Myyjä</th>
+                    <th style={thR}>Tuntipalkka</th>
+                    <th style={thR}>Provisio</th>
+                    <th style={thR}>Palkka</th>
+                    <th style={thR}>Verottomat</th>
+                    <th style={thR}>Sivukulut</th>
+                    <th style={{...thR,color:'#185FA5'}}>RJ-Mob tulo</th>
+                    <th style={thR}>Netto</th>
+                  </tr></thead>
+                  <tbody>
+                    {[...receiptData.sellers].sort((a,b)=>b.netto-a.netto).map(r=>{
+                      const isOwner = r.tuntipalkka === 0 && r.palkka === 0
+                      return (
+                        <tr key={r.nimi} style={{background:r.netto<0?'#fff8f8':'white'}}>
+                          <td style={{...td,fontWeight:500}}>{r.nimi}</td>
+                          <td style={tdR}>{isOwner?'—':`${fmt(r.tuntipalkka,2)} €/h`}</td>
+                          <td style={tdR}>{fmt(r.provisio)} €</td>
+                          <td style={tdR}>{isOwner?'—':`${fmt(r.palkka)} €`}</td>
+                          <td style={tdR}>{isOwner?'—':`${fmt(r.verottomat)} €`}</td>
+                          <td style={tdR}>{isOwner?'—':`${fmt(r.sivukulut)} €`}</td>
+                          <td style={{...tdR,color:'#185FA5',fontWeight:500}}>{fmt(r.rjmobTulo)} €</td>
+                          <td style={{...tdR,fontWeight:500,color:r.netto<0?'#A32D2D':'#3B6D11'}}>{isOwner?'—':`${fmt(r.netto)} €`}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:9,marginBottom:12}}>
+              {Object.entries(receiptData.stores).map(([nimi,s])=>(
+                <div key={nimi} style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'12px 14px'}}>
+                  <div style={{fontWeight:500,fontSize:12,marginBottom:8}}>{nimi}</div>
+                  {[
+                    ['Liittymät',`${fmt(s.liittymat)} €`],
+                    ['Kassakate',`${fmt(s.kassakate)} €`],
+                    ['Huoltokate',`${fmt(s.huoltokate)} €`],
+                    ['Rescue kate',`${fmt(s.rescueKate)} €`],
+                    ['F-Secure €',`${fmt(s.fsecEur)} €`,'#0F6E56'],
+                  ].map(([l,v,vc])=>(
+                    <div key={l as string} style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:3}}>
+                      <span style={{color:'#888'}}>{l as string}</span>
+                      <strong style={{color:(vc as string)??'#111'}}>{v as string}</strong>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:'#aaa'}}>F-Secure asiakkuudet ja passiivitulo eivät ole eriteltynä myymälöittäin maksukuittilähteessä — näytetty koko tiimin summana yllä.</div>
+
+          </>)}
+        </>}
       </div>
     </div>
   )
