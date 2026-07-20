@@ -17,8 +17,9 @@ export async function GET(req: NextRequest) {
     const drive = google.drive({ version: 'v3', auth })
     const sheets = google.sheets({ version: 'v4', auth })
 
+    const folderParam = req.nextUrl.searchParams.get('folder') ?? RECEIPTS_FOLDER_ID
     const listRes = await drive.files.list({
-      q: `'${RECEIPTS_FOLDER_ID}' in parents and trashed = false`,
+      q: `'${folderParam}' in parents and trashed = false`,
       fields: 'files(id, name, mimeType, modifiedTime)',
       orderBy: 'modifiedTime desc',
     })
