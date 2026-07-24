@@ -122,37 +122,43 @@ function normalizeYhteenvetoStoreLabel(raw: string): string | null {
 }
 
 function parseYhteenveto(rows: string[][]): { perStore: Record<string, YhteenvetoRow>, yhteensa: YhteenvetoRow | null } {
-  // Otsikkorivi tunnistetaan sarakeotsikoista (LIITTYMÄT+KASSAKATE+PASSIIVI samalla rivillä),
-  // ei taulukon omasta otsikkotekstistä ("Yhteenveto"), koska se saattaa olla eri solussa/rivillä.
+  // Haku ja sarakkeiden tunnistus rajataan sivupaneelin sarakkeisiin (SIDE_PANEL_COL eteenpäin).
+  // Myymäläblokit (sarakkeet 0-18) ja sivupaneelit (Yhteenveto/Kassamyynti/Työntekijät) jakavat
+  // rivinumerot mutta eri sarakealueen — esim. jonkin myymäläblokin oma "F-SECURE"-rivi voi
+  // osua samalle riville kuin Yhteenveto-taulukon otsikkorivi. Ilman rajausta koko rivin
+  // skannaava indexOf/includes voi täsmätä blokin puolelle ja siirtää sarakelaskennan täysin
+  // väärään kohtaan (havaittu oikealla datalla: labelCol ajautui sarakkeeseen 0).
   const headerIdx = rows.findIndex(r => {
-    const upper = r.map(c => (c || '').trim().toUpperCase())
+    const upper = r.slice(SIDE_PANEL_COL).map(c => (c || '').trim().toUpperCase())
     return upper.includes('LIITTYMÄT') && upper.includes('KASSAKATE') && upper.includes('PASSIIVI')
   })
   if (headerIdx < 0) return { perStore: {}, yhteensa: null }
 
-  const headerRow = rows[headerIdx].map(c => (c || '').trim().toUpperCase())
+  const headerSeg = rows[headerIdx].slice(SIDE_PANEL_COL).map(c => (c || '').trim().toUpperCase())
   const col = {
-    liittymat: headerRow.indexOf('LIITTYMÄT'),
-    kassakate: headerRow.indexOf('KASSAKATE'),
-    fsecure: headerRow.indexOf('F-SECURE'),
-    bonus: headerRow.indexOf('BONUS'),
-    passiivi: headerRow.indexOf('PASSIIVI'),
-    tyontekijat: headerRow.findIndex(c => c.startsWith('TYÖNTEKIJÄ')),
-    yhteensa: headerRow.indexOf('YHTEENSÄ'),
+    liittymat: headerSeg.indexOf('LIITTYMÄT'),
+    kassakate: headerSeg.indexOf('KASSAKATE'),
+    fsecure: headerSeg.indexOf('F-SECURE'),
+    bonus: headerSeg.indexOf('BONUS'),
+    passiivi: headerSeg.indexOf('PASSIIVI'),
+    tyontekijat: headerSeg.findIndex(c => c.startsWith('TYÖNTEKIJÄ')),
+    yhteensa: headerSeg.indexOf('YHTEENSÄ'),
   }
-  // Rivin nimi (myymälä) on sarake välittömästi ensimmäisen datasarakkeen vasemmalla puolella.
-  const dataCol = [col.liittymat, col.kassakate, col.fsecure, col.bonus, col.passiivi].filter(c => c >= 0)
-  const labelCol = Math.max(0, Math.min(...dataCol) - 1)
+  // Rivin nimi (myymälä) on samassa sarakkeessa kuin muillakin sivupaneeleilla (SIDE_PANEL_COL).
+  const labelCol = SIDE_PANEL_COL
 
-  const readRow = (r: string[]): YhteenvetoRow => ({
-    liittymat: col.liittymat >= 0 ? parseNum(r[col.liittymat]) : 0,
-    kassakate: col.kassakate >= 0 ? parseNum(r[col.kassakate]) : 0,
-    fsecEur: col.fsecure >= 0 ? parseNum(r[col.fsecure]) : 0,
-    bonus: col.bonus >= 0 ? parseNum(r[col.bonus]) : 0,
-    passiivi: col.passiivi >= 0 ? parseNum(r[col.passiivi]) : 0,
-    tyontekijat: col.tyontekijat >= 0 ? parseNum(r[col.tyontekijat]) : 0,
-    yhteensa: col.yhteensa >= 0 ? parseNum(r[col.yhteensa]) : 0,
-  })
+  const readRow = (r: string[]): YhteenvetoRow => {
+    const seg = r.slice(SIDE_PANEL_COL)
+    return {
+      liittymat: col.liittymat >= 0 ? parseNum(seg[col.liittymat]) : 0,
+      kassakate: col.kassakate >= 0 ? parseNum(seg[col.kassakate]) : 0,
+      fsecEur: col.fsecure >= 0 ? parseNum(seg[col.fsecure]) : 0,
+      bonus: col.bonus >= 0 ? parseNum(seg[col.bonus]) : 0,
+      passiivi: col.passiivi >= 0 ? parseNum(seg[col.passiivi]) : 0,
+      tyontekijat: col.tyontekijat >= 0 ? parseNum(seg[col.tyontekijat]) : 0,
+      yhteensa: col.yhteensa >= 0 ? parseNum(seg[col.yhteensa]) : 0,
+    }
+  }
 
   const perStore: Record<string, YhteenvetoRow> = {}
   let yhteensa: YhteenvetoRow | null = null
@@ -175,7 +181,16 @@ function parseMaksuAlv0(rows: string[][]): number {
   for (let i = maksuIdx; i < Math.min(rows.length, maksuIdx + 15); i++) {
     const row = rows[i]
     const alvCol = row.findIndex(c => (c || '').trim().toUpperCase().replace(/\s+/g, '') === 'ALV0')
-    if (alvCol >= 0) return parseNum(row[alvCol + 1])
+    if (alvCol >= 0) {
+      // ALV0 on sarakeotsikko (esim. rivillä "Maksu"); itse arvo on samassa sarakkeessa
+      // seuraavalla rivillä ("EUR"-rivi) — ei otsikkorivin viereisessä solussa (siinä on
+      // seuraava otsikko, esim. "ALV25,5%").
+      for (let j = i + 1; j < Math.min(rows.length, i + 5); j++) {
+        const v = parseNum(rows[j][alvCol])
+        if (v !== 0) return v
+      }
+      return 0
+    }
   }
   return 0
 }
@@ -198,6 +213,9 @@ function parseKassamyynti(rows: string[][]): Record<string, KassamyyntiRow> {
     const row = rows[i]
     const label = (row[SIDE_PANEL_COL] || '').trim()
     if (!label) continue
+    // Yhteensä-rivi on koko yrityksen loppusumma, ei oma myymälä — pysäytetään tähän ettei
+    // se päädy 7. "myymäläksi" ja tuplaa /kassamyynti-sivun itse laskemaa Yhteensä-riviä.
+    if (label.toLowerCase() === 'yhteensä') break
     const storeName = label.toLowerCase() === 'muut' ? 'Muut myymälät' : label
     result[storeName] = {
       kassakate: col.kassakate >= 0 ? parseNum(row[col.kassakate]) : 0,
@@ -460,14 +478,7 @@ export async function GET(req: NextRequest) {
       const parsedYhteenveto = parseYhteenveto(rows)
       const parsedKassamyynti = parseKassamyynti(rows)
       const parsedAlv0 = parseMaksuAlv0(rows)
-      // Tilapäinen diagnostiikka: kaikki rivit jotka täsmäävät Yhteenveto-otsikkoehtoon
-      // (LIITTYMÄT+KASSAKATE+PASSIIVI samalla rivillä) — jos näitä on useampi kuin yksi,
-      // findIndex saattaa osua väärään.
-      const yvHeaderMatches = rows.map((r, i) => ({ i, r })).filter(({ r }) => {
-        const upper = r.map(c => (c || '').trim().toUpperCase())
-        return upper.includes('LIITTYMÄT') && upper.includes('KASSAKATE') && upper.includes('PASSIIVI')
-      }).map(({ i, r }) => ({ row: i, cells: r.slice(0, 15) }))
-      return NextResponse.json({ name: meta.data.name, malmiBlock, yhteenvetoLabelIdx, yhteenvetoBox, maksuIdx, maksuBox, kassamyyntiIdx, kassamyyntiBox, tyontekijatIdx, tyontekijatBox, parsedYhteenveto, parsedKassamyynti, parsedAlv0, yvHeaderMatches, totalRows: rows.length })
+      return NextResponse.json({ name: meta.data.name, malmiBlock, yhteenvetoLabelIdx, yhteenvetoBox, maksuIdx, maksuBox, kassamyyntiIdx, kassamyyntiBox, tyontekijatIdx, tyontekijatBox, parsedYhteenveto, parsedKassamyynti, parsedAlv0 })
     }
 
     const fileId = req.nextUrl.searchParams.get('fileId') ?? files[0]?.id
