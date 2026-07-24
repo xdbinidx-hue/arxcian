@@ -39,7 +39,12 @@ function normalizeSellerName(raw: string): string {
 }
 
 const STORE_SECTIONS = ['HOLMA', 'SYKE', 'MALMI', 'EASTON', 'KIVISTÖ', 'MUUT MYYMÄLÄT']
-const SIDE_PANEL_COL = 20 // sivupaneelit (Kassamyynti/Passiivitulo/Työntekijät) alkavat aina tästä sarakkeesta
+const SIDE_PANEL_COL = 20 // sivupaneelien (Kassamyynti/Passiivitulo/Työntekijät) tavallisin alkusarake
+// Käsin ylläpidetyissä kuukausikopioissa koko sivupaneelialue (Yhteenveto/Kassamyynti/Työntekijät/
+// Passiivitulo) saattaa olla siirtynyt yhden sarakkeen vasemmalle (havaittu esim. huhtikuussa: koko
+// alue sarakkeessa 19 eikä 20). Sarakehaku rajataan tästä alkaen, jotta myymäläblokin (sarakkeet
+// 0-18) identtinen sana (esim. "F-SECURE") ei täsmää vahingossa ja sotke sarakelaskentaa.
+const SIDE_PANEL_MIN_COL = 19
 
 // Loppusarakkeen/-rivin otsikko vaihtelee kuukausikopioiden välillä ("TOTAL" vs "YHTEENSÄ") —
 // jos molempia ei tunnisteta, loppusarake luetaan vahingossa ylimääräiseksi "myyjäksi" ja
@@ -47,6 +52,28 @@ const SIDE_PANEL_COL = 20 // sivupaneelit (Kassamyynti/Passiivitulo/Työntekijä
 function isTotalLabel(v: string): boolean {
   const u = (v || '').trim().toUpperCase()
   return u === 'TOTAL' || u === 'YHTEENSÄ'
+}
+
+// Etsii sarakkeen jonka (trimmattu, isoiksi kirjaimiksi muutettu) arvo täsmää predikaattiin,
+// alkaen minCol:sta — käytetään sivupaneelien sarakkeiden paikallistamiseen ilman kiinteää
+// sarakeoletusta (ks. SIDE_PANEL_MIN_COL).
+function findColFrom(row: string[], minCol: number, matches: (v: string) => boolean): number {
+  for (let c = minCol; c < row.length; c++) {
+    if (matches((row[c] || '').trim().toUpperCase())) return c
+  }
+  return -1
+}
+
+// Etsii rivin jolla jompikumpi sivupaneelin tavallisimmista alkusarakkeista (19 tai 20)
+// täsmää predikaattiin — sietää edellä mainitun 1 sarakkeen siirtymän ilman että joudutaan
+// skannaamaan koko riviä (mikä voisi osua myymäläblokin puolelle).
+function findPanelRow(rows: string[][], matches: (v: string) => boolean): { rowIdx: number, col: number } | null {
+  for (let i = 0; i < rows.length; i++) {
+    for (const c of [SIDE_PANEL_MIN_COL, SIDE_PANEL_COL]) {
+      if (matches((rows[i][c] || '').trim().toUpperCase())) return { rowIdx: i, col: c }
+    }
+  }
+  return null
 }
 
 interface ReceiptSeller {
@@ -122,50 +149,49 @@ function normalizeYhteenvetoStoreLabel(raw: string): string | null {
 }
 
 function parseYhteenveto(rows: string[][]): { perStore: Record<string, YhteenvetoRow>, yhteensa: YhteenvetoRow | null } {
-  // Haku ja sarakkeiden tunnistus rajataan sivupaneelin sarakkeisiin (SIDE_PANEL_COL eteenpäin).
-  // Myymäläblokit (sarakkeet 0-18) ja sivupaneelit (Yhteenveto/Kassamyynti/Työntekijät) jakavat
-  // rivinumerot mutta eri sarakealueen — esim. jonkin myymäläblokin oma "F-SECURE"-rivi voi
-  // osua samalle riville kuin Yhteenveto-taulukon otsikkorivi. Ilman rajausta koko rivin
-  // skannaava indexOf/includes voi täsmätä blokin puolelle ja siirtää sarakelaskennan täysin
-  // väärään kohtaan (havaittu oikealla datalla: labelCol ajautui sarakkeeseen 0).
+  // Haku ja sarakkeiden tunnistus rajataan SIDE_PANEL_MIN_COL:sta alkaen. Myymäläblokit
+  // (sarakkeet 0-18) ja sivupaneelit jakavat rivinumerot mutta eri sarakealueen — esim. jonkin
+  // myymäläblokin oma "F-SECURE"-rivi voi osua samalle riville kuin Yhteenveto-taulukon
+  // otsikkorivi. Ilman rajausta koko rivin skannaava haku voi täsmätä blokin puolelle ja
+  // siirtää sarakelaskennan täysin väärään kohtaan (havaittu oikealla datalla).
   const headerIdx = rows.findIndex(r => {
-    const upper = r.slice(SIDE_PANEL_COL).map(c => (c || '').trim().toUpperCase())
-    return upper.includes('LIITTYMÄT') && upper.includes('KASSAKATE') && upper.includes('PASSIIVI')
+    const seg = r.slice(SIDE_PANEL_MIN_COL).map(c => (c || '').trim().toUpperCase())
+    return seg.includes('LIITTYMÄT') && seg.includes('KASSAKATE') && seg.includes('PASSIIVI')
   })
   if (headerIdx < 0) return { perStore: {}, yhteensa: null }
 
-  const headerSeg = rows[headerIdx].slice(SIDE_PANEL_COL).map(c => (c || '').trim().toUpperCase())
+  const headerRow = rows[headerIdx]
   const col = {
-    liittymat: headerSeg.indexOf('LIITTYMÄT'),
-    kassakate: headerSeg.indexOf('KASSAKATE'),
-    fsecure: headerSeg.indexOf('F-SECURE'),
-    bonus: headerSeg.indexOf('BONUS'),
-    passiivi: headerSeg.indexOf('PASSIIVI'),
-    tyontekijat: headerSeg.findIndex(c => c.startsWith('TYÖNTEKIJÄ')),
-    yhteensa: headerSeg.indexOf('YHTEENSÄ'),
+    liittymat: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'LIITTYMÄT'),
+    kassakate: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'KASSAKATE'),
+    fsecure: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'F-SECURE'),
+    bonus: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'BONUS'),
+    passiivi: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'PASSIIVI'),
+    tyontekijat: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v.startsWith('TYÖNTEKIJÄ')),
+    yhteensa: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'YHTEENSÄ'),
   }
-  // Rivin nimi (myymälä) on samassa sarakkeessa kuin muillakin sivupaneeleilla (SIDE_PANEL_COL).
-  const labelCol = SIDE_PANEL_COL
+  // Rivin nimi (myymälä) on sarake välittömästi ensimmäisen datasarakkeen vasemmalla puolella —
+  // laskettu dynaamisesti, koska sivupaneelin alkusarake vaihtelee kuukausien välillä (ks.
+  // SIDE_PANEL_MIN_COL-kommentti).
+  const dataCols = [col.liittymat, col.kassakate, col.fsecure, col.bonus, col.passiivi].filter(c => c >= 0)
+  const labelCol = dataCols.length ? Math.max(0, Math.min(...dataCols) - 1) : SIDE_PANEL_MIN_COL
 
-  const readRow = (r: string[]): YhteenvetoRow => {
-    const seg = r.slice(SIDE_PANEL_COL)
-    return {
-      liittymat: col.liittymat >= 0 ? parseNum(seg[col.liittymat]) : 0,
-      kassakate: col.kassakate >= 0 ? parseNum(seg[col.kassakate]) : 0,
-      fsecEur: col.fsecure >= 0 ? parseNum(seg[col.fsecure]) : 0,
-      bonus: col.bonus >= 0 ? parseNum(seg[col.bonus]) : 0,
-      passiivi: col.passiivi >= 0 ? parseNum(seg[col.passiivi]) : 0,
-      tyontekijat: col.tyontekijat >= 0 ? parseNum(seg[col.tyontekijat]) : 0,
-      yhteensa: col.yhteensa >= 0 ? parseNum(seg[col.yhteensa]) : 0,
-    }
-  }
+  const readRow = (r: string[]): YhteenvetoRow => ({
+    liittymat: col.liittymat >= 0 ? parseNum(r[col.liittymat]) : 0,
+    kassakate: col.kassakate >= 0 ? parseNum(r[col.kassakate]) : 0,
+    fsecEur: col.fsecure >= 0 ? parseNum(r[col.fsecure]) : 0,
+    bonus: col.bonus >= 0 ? parseNum(r[col.bonus]) : 0,
+    passiivi: col.passiivi >= 0 ? parseNum(r[col.passiivi]) : 0,
+    tyontekijat: col.tyontekijat >= 0 ? parseNum(r[col.tyontekijat]) : 0,
+    yhteensa: col.yhteensa >= 0 ? parseNum(r[col.yhteensa]) : 0,
+  })
 
   const perStore: Record<string, YhteenvetoRow> = {}
   let yhteensa: YhteenvetoRow | null = null
   for (let i = headerIdx + 1; i < Math.min(rows.length, headerIdx + 15); i++) {
     const label = (rows[i][labelCol] || '').trim()
     if (!label) continue
-    if (label.toLowerCase() === 'yhteensä') { yhteensa = readRow(rows[i]); break }
+    if (isTotalLabel(label)) { yhteensa = readRow(rows[i]); break }
     const storeName = normalizeYhteenvetoStoreLabel(label)
     if (storeName) perStore[storeName] = readRow(rows[i])
   }
@@ -198,24 +224,30 @@ function parseMaksuAlv0(rows: string[][]): number {
 // ---- Kassamyynti-taulukko: myymäläkohtainen erittely (Kassakate, Huoltokate, Rescue kate,
 // Ostorahdit, RJ-Mob Oy). Oma näkymä sivustolla, erillinen Yhteenveto-taulukosta.
 function parseKassamyynti(rows: string[][]): Record<string, KassamyyntiRow> {
-  const headerIdx = rows.findIndex(r => (r[SIDE_PANEL_COL + 1] || '').trim().toLowerCase() === 'kassakate')
+  // Ks. SIDE_PANEL_MIN_COL-kommentti: koko sivupaneelialue voi olla siirtynyt yhden sarakkeen —
+  // otsikkorivi ja sarakkeet haetaan dynaamisesti kiinteän SIDE_PANEL_COL-oletuksen sijaan.
+  const headerIdx = rows.findIndex(r => {
+    const seg = r.slice(SIDE_PANEL_MIN_COL).map(c => (c || '').trim().toUpperCase())
+    return seg.includes('KASSAKATE') && seg.includes('HUOLTOKATE')
+  })
   if (headerIdx < 0) return {}
   const headerRow = rows[headerIdx]
   const col = {
-    kassakate: headerRow.findIndex(c => (c || '').trim().toLowerCase() === 'kassakate'),
-    huoltokate: headerRow.findIndex(c => (c || '').trim().toLowerCase() === 'huoltokate'),
-    rescueKate: headerRow.findIndex(c => (c || '').trim().toLowerCase().includes('rescue')),
-    ostorahdit: headerRow.findIndex(c => (c || '').trim().toLowerCase().includes('ostorah')),
-    rjmobOy: headerRow.findIndex(c => (c || '').trim().toLowerCase().replace(/[-\s]/g, '').includes('rjmob')),
+    kassakate: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'KASSAKATE'),
+    huoltokate: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v === 'HUOLTOKATE'),
+    rescueKate: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v.includes('RESCUE')),
+    ostorahdit: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v.includes('OSTORAH')),
+    rjmobOy: findColFrom(headerRow, SIDE_PANEL_MIN_COL, v => v.replace(/[-\s]/g, '').includes('RJMOB')),
   }
+  const labelCol = col.kassakate >= 0 ? Math.max(0, col.kassakate - 1) : SIDE_PANEL_MIN_COL
   const result: Record<string, KassamyyntiRow> = {}
   for (let i = headerIdx + 1; i < Math.min(rows.length, headerIdx + 8); i++) {
     const row = rows[i]
-    const label = (row[SIDE_PANEL_COL] || '').trim()
+    const label = (row[labelCol] || '').trim()
     if (!label) continue
-    // Yhteensä-rivi on koko yrityksen loppusumma, ei oma myymälä — pysäytetään tähän ettei
-    // se päädy 7. "myymäläksi" ja tuplaa /kassamyynti-sivun itse laskemaa Yhteensä-riviä.
-    if (label.toLowerCase() === 'yhteensä') break
+    // Yhteensä/Total-rivi on koko yrityksen loppusumma, ei oma myymälä — pysäytetään tähän
+    // ettei se päädy 7. "myymäläksi" ja tuplaa /kassamyynti-sivun itse laskemaa Yhteensä-riviä.
+    if (isTotalLabel(label)) break
     const storeName = label.toLowerCase() === 'muut' ? 'Muut myymälät' : label
     result[storeName] = {
       kassakate: col.kassakate >= 0 ? parseNum(row[col.kassakate]) : 0,
@@ -294,14 +326,17 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
   }
 
   // ---- Työntekijät-paneeli: Bruttopalkka / Verottomat / Sivukuluineen / Tulos per työntekijä ----
-  // Otsikko vaihtelee kuukausikopioiden välillä ("Työntekijät" vs "Työntekijä") —
-  // startsWith sallii molemmat ilman että osuu RJ-Mob Oy -laatikon TYÖNTEKIJÄT-sarakeotsikkoon
-  // (joka on eri sarakkeessa, ei SIDE_PANEL_COL:ssa).
-  const tyontekijatHeaderIdx = rows.findIndex(r => (r[SIDE_PANEL_COL] || '').trim().toUpperCase().startsWith('TYÖNTEKIJÄ'))
+  // Otsikko vaihtelee kuukausikopioiden välillä ("Työntekijät" vs "Työntekijä") — startsWith
+  // sallii molemmat ilman että osuu RJ-Mob Oy -laatikon TYÖNTEKIJÄT-sarakeotsikkoon (eri
+  // sarake). findPanelRow sietää koko sivupaneelialueen 1 sarakkeen siirtymän (ks.
+  // SIDE_PANEL_MIN_COL) — kiinteä SIDE_PANEL_COL aiheutti tyhjän datan niille kuukausille
+  // joissa paneelit alkavat sarakkeesta 19.
+  const tyontekijatPanel = findPanelRow(rows, v => v.startsWith('TYÖNTEKIJÄ'))
+  const tyontekijatHeaderIdx = tyontekijatPanel?.rowIdx ?? -1
   const empCols: { nimi: string, col: number }[] = []
-  if (tyontekijatHeaderIdx >= 0) {
+  if (tyontekijatPanel) {
     const empHeaderRow = rows[tyontekijatHeaderIdx]
-    for (let c = SIDE_PANEL_COL + 1; c < empHeaderRow.length; c++) {
+    for (let c = tyontekijatPanel.col + 1; c < empHeaderRow.length; c++) {
       const raw = (empHeaderRow[c] || '').trim()
       if (!raw || isTotalLabel(raw)) continue
       empCols.push({ nimi: normalizeSellerName(raw), col: c })
@@ -313,7 +348,8 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
   const tulosRow = tyontekijatHeaderIdx >= 0 ? rows[tyontekijatHeaderIdx + 13] : undefined
 
   // ---- Passiivitulo-paneeli: F-Secure-lisenssimäärä (koko tiimi) ----
-  const passiivituloHeaderIdx = rows.findIndex(r => (r[SIDE_PANEL_COL] || '').trim().toUpperCase() === 'PASSIIVITULO')
+  const passiivituloPanel = findPanelRow(rows, v => v === 'PASSIIVITULO')
+  const passiivituloHeaderIdx = passiivituloPanel?.rowIdx ?? -1
   const passiivituloRow = passiivituloHeaderIdx >= 0 ? rows[passiivituloHeaderIdx + 1] : undefined
 
   // F-Secure-passiivitulo (koko kuukausi): Yhteenveto-taulukon Yhteensä-rivin PASSIIVI-sarake
@@ -362,7 +398,7 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
     rescueKate: Object.values(stores).reduce((s, r) => s + r.rescueKate, 0),
     provisio: sellers.reduce((s, r) => s + r.provisio, 0),
     netto: sellers.reduce((s, r) => s + r.netto, 0),
-    fsecAsiakkuudet: passiivituloRow ? parseNum(passiivituloRow[SIDE_PANEL_COL + 4]) : 0,
+    fsecAsiakkuudet: passiivituloRow && passiivituloPanel ? parseNum(passiivituloRow[passiivituloPanel.col + 4]) : 0,
     fsecPassiivitulo,
     // Maksettava summa (tilille tuleva summa): Yhteenveto-taulukon YHTEENSÄ-rivi on ensisijainen
     // lähde (laskettu suoraan kaikista osista). ALV0 on Maksu-taulukon viitteellinen tarkistusluku
