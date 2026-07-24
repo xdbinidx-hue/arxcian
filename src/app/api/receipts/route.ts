@@ -342,10 +342,21 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
       empCols.push({ nimi: normalizeSellerName(raw), col: c })
     }
   }
-  const bruttoRow = tyontekijatHeaderIdx >= 0 ? rows[tyontekijatHeaderIdx + 9] : undefined
-  const verottomatRow = tyontekijatHeaderIdx >= 0 ? rows[tyontekijatHeaderIdx + 10] : undefined
-  const sivukuluRow = tyontekijatHeaderIdx >= 0 ? rows[tyontekijatHeaderIdx + 11] : undefined
-  const tulosRow = tyontekijatHeaderIdx >= 0 ? rows[tyontekijatHeaderIdx + 13] : undefined
+  // Bruttopalkka/Verottomat/Sivukuluineen/Tulos-rivit haetaan omalla rivitekstillään kiinteän
+  // rivisiirtymän sijaan — myymälärivien määrä (ja siten Työntekijät-otsikon jälkeisten rivien
+  // määrä ennen näitä) on havaittu vaihtelevan kuukausien välillä (esim. huhtikuu), jolloin
+  // kiinteä +9/+10/+11/+13 osui väärälle riville (mm. "Kerroin"-riville).
+  const findLabeledRow = (label: string): string[] | undefined => {
+    if (!tyontekijatPanel) return undefined
+    for (let i = tyontekijatHeaderIdx + 1; i < Math.min(rows.length, tyontekijatHeaderIdx + 20); i++) {
+      if ((rows[i][tyontekijatPanel.col] || '').trim().toLowerCase() === label) return rows[i]
+    }
+    return undefined
+  }
+  const bruttoRow = findLabeledRow('bruttopalkka')
+  const verottomatRow = findLabeledRow('verottomat')
+  const sivukuluRow = findLabeledRow('sivukuluineen')
+  const tulosRow = findLabeledRow('tulos')
 
   // ---- Passiivitulo-paneeli: F-Secure-lisenssimäärä (koko tiimi) ----
   const passiivituloPanel = findPanelRow(rows, v => v === 'PASSIIVITULO')
@@ -507,8 +518,9 @@ export async function GET(req: NextRequest) {
       const maksuBox = maksuIdx >= 0 ? rows.slice(maksuIdx, maksuIdx + 6).map((r, i) => ({ row: maksuIdx + i, cells: r.slice(19, 32) })) : []
       const kassamyyntiIdx = rows.findIndex(r => r.some(c => (c || '').trim().toLowerCase() === 'kassamyynti'))
       const kassamyyntiBox = kassamyyntiIdx >= 0 ? rows.slice(kassamyyntiIdx, kassamyyntiIdx + 10).map((r, i) => ({ row: kassamyyntiIdx + i, cells: r.slice(19, 32) })) : []
-      const tyontekijatIdx = rows.findIndex(r => (r[SIDE_PANEL_COL] || '').trim().toUpperCase().startsWith('TYÖNTEKIJÄ'))
-      const tyontekijatBox = rows.slice(tyontekijatIdx, tyontekijatIdx + 20).map((r, i) => ({ row: tyontekijatIdx + i, cells: r.slice(19, 36) }))
+      const tyontekijatPanelDbg = findPanelRow(rows, v => v.startsWith('TYÖNTEKIJÄ'))
+      const tyontekijatIdx = tyontekijatPanelDbg?.rowIdx ?? -1
+      const tyontekijatBox = tyontekijatIdx >= 0 ? rows.slice(tyontekijatIdx, tyontekijatIdx + 20).map((r, i) => ({ row: tyontekijatIdx + i, cells: r.slice(19, 36) })) : []
       // Ajetaan myös varsinaiset parserit läpi, jotta debugFull näyttää suoraan mitä
       // tuotantokoodi lukisi tästä samasta tiedostosta (helpottaa uuden layoutin diagnosointia).
       const parsedYhteenveto = parseYhteenveto(rows)
