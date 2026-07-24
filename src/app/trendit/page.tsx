@@ -29,7 +29,7 @@ interface SalesMonth {
 }
 
 interface DriveFile {
-  id: string; name: string; mimeType: string
+  id: string; name: string; mimeType: string; year?: number | null
 }
 
 const FINNISH_MONTHS = ['Tammikuu','Helmikuu','Maaliskuu','Huhtikuu','Toukokuu','Kesäkuu','Heinäkuu','Elokuu','Syyskuu','Lokakuu','Marraskuu','Joulukuu']
@@ -172,7 +172,9 @@ export default function TrendPage() {
       for (const { f, d } of receiptResults) {
         if (d.error || !d.totals) continue
         const monthNum = parseMonthNum(f.name)
-        const year = inferYear(monthNum, parseYear(f.name))
+        // Vuosi tulee ensisijaisesti Drive-vuosikansion nimestä (api/receipts merkitsee sen
+        // jokaiseen tiedostoon) — arvaus kuukausinumerosta on vain varalähde jos sitä ei löydy.
+        const year = f.year ?? inferYear(monthNum, parseYear(f.name))
         rMonths.push({
           year, monthNum,
           kuukausi: monthLabel(year, monthNum, false),
@@ -202,13 +204,17 @@ export default function TrendPage() {
   const salesByKey = new Map(salesMonths.map(m => [monthKey(m.year, m.monthNum), m]))
   const receiptsByKey = new Map(receiptsMonths.map(m => [monthKey(m.year, m.monthNum), m]))
 
-  const currentYear = new Date().getFullYear()
-  const totalNettoThisYear = receiptsMonths.filter(m => m.year === currentYear).reduce((s, m) => s + m.totals.netto, 0)
+  // "Tämä vuosi" tarkoittaa uusinta vuotta jolta on maksukuittidataa (ei kalenterin
+  // todellista vuotta) — kuiteista voi nyt olla useampi vuosi yhtä aikaa, ja sivun pääkäyrät
+  // näyttävät vain uusimman vuoden, "Viime vuosi" -vertailu hakee vanhemmat vuodet erikseen.
+  const currentYear = receiptsMonths.length ? Math.max(...receiptsMonths.map(m => m.year)) : new Date().getFullYear()
+  const currentYearMonths = receiptsMonths.filter(m => m.year === currentYear)
+  const totalNettoThisYear = currentYearMonths.reduce((s, m) => s + m.totals.netto, 0)
   const latestMonth = receiptsMonths.length ? receiptsMonths[receiptsMonths.length - 1] : null
   const fsecLicensesNow = latestMonth?.totals.fsecAsiakkuudet ?? 0
   // F-Secure passiivitulo tämä vuosi: summataan jokaisen maksukuitin oma passiivitulo (ei
   // ekstrapoloida viimeisintä kuukautta × 12, koska joka kuukaudelta on jo oma todellinen luku).
-  const fsecPassiiviThisYear = receiptsMonths.filter(m => m.year === currentYear).reduce((s, m) => s + m.totals.fsecPassiivitulo, 0)
+  const fsecPassiiviThisYear = currentYearMonths.reduce((s, m) => s + m.totals.fsecPassiivitulo, 0)
 
   // Myynti (money in) vs Kulut (money out) — Myynti = Liittymät + Kassakate + F-Secure
   // passiivinen tulo (Yhteenveto-taulukosta). Kulut = työntekijäkulut (Yhteenveto-taulukon
@@ -220,12 +226,12 @@ export default function TrendPage() {
   // havaittujen kuukausien määrällä ja kerrottuna 12:lla (run rate) — ei keskiarvoa
   // "paras kuukausi pois laskuista" -menetelmällä, joka vääristyy pahasti kun mukana on
   // vain muutama kuukausi ja niistä osa poikkeuksellisen negatiivisia.
-  const nettoForecast = receiptsMonths.length
-    ? Math.round((receiptsMonths.reduce((s, m) => s + (moneyIn(m) - moneyOut(m)), 0) / receiptsMonths.length) * 12)
+  const nettoForecast = currentYearMonths.length
+    ? Math.round((currentYearMonths.reduce((s, m) => s + (moneyIn(m) - moneyOut(m)), 0) / currentYearMonths.length) * 12)
     : 0
 
-  const myyntiKuluData = receiptsMonths.map((m, i) => {
-    const prev = i > 0 ? receiptsMonths[i - 1] : null
+  const myyntiKuluData = currentYearMonths.map((m, i) => {
+    const prev = i > 0 ? currentYearMonths[i - 1] : null
     const pctChange = (curr: number, prevVal: number | undefined) =>
       prevVal === undefined || prevVal === 0 ? undefined : Math.round((curr - prevVal) / Math.abs(prevVal) * 100)
     const myyntiPct = prev ? pctChange(moneyIn(m), moneyIn(prev)) : undefined
@@ -238,8 +244,8 @@ export default function TrendPage() {
       kuluLabel: kuluPct !== undefined ? `${kuluPct >= 0 ? '+' : ''}${kuluPct}%` : '',
     }
   })
-  const totalMyyntiAll = receiptsMonths.reduce((s, m) => s + moneyIn(m), 0)
-  const totalKulutAll = receiptsMonths.reduce((s, m) => s + moneyOut(m), 0)
+  const totalMyyntiAll = currentYearMonths.reduce((s, m) => s + moneyIn(m), 0)
+  const totalKulutAll = currentYearMonths.reduce((s, m) => s + moneyOut(m), 0)
   const totalNettoAll = totalMyyntiAll - totalKulutAll
   const nettoMarginPct = totalMyyntiAll > 0 ? Math.round(totalNettoAll / totalMyyntiAll * 100) : 0
 
@@ -247,7 +253,7 @@ export default function TrendPage() {
   // siirretty payout-viiveen verran taaksepäin) ja Viime vuosi (sama kuukausi, maksukuitista).
   function buildAreaTrend(area: 'liittymat' | 'kassakate' | 'fsecure'): AreaTrendPoint[] {
     const delay = PAYOUT_DELAY[area]
-    return receiptsMonths.map(m => {
+    return currentYearMonths.map(m => {
       const todellinen = area === 'liittymat'
         ? sumOrPick(m.stores, 'liittymat', storeFilter)
         : area === 'kassakate'
@@ -277,7 +283,7 @@ export default function TrendPage() {
   const fsecTrend = buildAreaTrend('fsecure')
 
   // Myymäläkohtainen kokonaisnetto (liittymät + kassakate + rescue kate + huoltokate, EI f-secure).
-  const storeNettoData = receiptsMonths.map(m => {
+  const storeNettoData = currentYearMonths.map(m => {
     const point: Record<string, string | number> = { kuukausi: m.kuukausi }
     for (const store of CANONICAL_STORES) {
       const key = findStoreKey(m.stores, store)
