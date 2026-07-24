@@ -7,11 +7,10 @@ export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
 
-// F-Secure provisiot
+// F-Secure provisiot (myyjä). RJ-Mob saa saman verran provisiota+bonusta kuin myyjä,
+// ja lisäksi passiivitulon (ks. laskeMyyja: rjmobFsec).
 export const FSEC_TOTAL_SELLER = 7
 export const FSEC_INTERNET_SELLER = 3.5
-export const FSEC_TOTAL_RJMOB = 10
-export const FSEC_INTERNET_RJMOB = 5
 
 // F-Secure bonusportaat
 export function fsecBonus(kpl: number): number {
@@ -19,6 +18,14 @@ export function fsecBonus(kpl: number): number {
   if (kpl >= 45) return 450
   if (kpl >= 25) return 250
   if (kpl >= 15) return 100
+  return 0
+}
+
+// DNA Uusmyynti -bonusportaat. Myyjä ja RJ-Mob saavat saman verran.
+export function dnaBonus(kpl: number): number {
+  if (kpl >= 75) return 550
+  if (kpl >= 55) return 350
+  if (kpl >= 30) return 200
   return 0
 }
 
@@ -96,6 +103,7 @@ export interface SellerRaw {
   kassa: number
   tunnit: number       // normaali työ (myyntiseuranta)
   palkkaTunnit: number // kokonaistunnit (tuottoseuranta)
+  dnaUusmyyntiKpl: number
 }
 
 export interface SellerResult {
@@ -111,11 +119,14 @@ export interface SellerResult {
   kassa: number
   tunnit: number       // normaali työ
   palkkaTunnit: number // kokonaistunnit
+  dnaUusmyyntiKpl: number
+  dnaBonus: number
   rjmobLiitt: number
   rjmobKassa: number
   rjmobFsec: number
   rjmobTulo: number
   myyjaProv: number
+  provisioYhteensa: number // myyjaProv + kassa + fsecEur + fsecBonus + dnaBonus
   palkkaBrutto: number
   tyokulu: number
   netto: number
@@ -127,7 +138,7 @@ export interface SellerResult {
 }
 
 export function laskeMyyja(raw: SellerRaw): SellerResult {
-  const { nimi, liittEur, liittKpl, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit } = raw
+  const { nimi, liittEur, liittKpl, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl } = raw
 
   const tyyppi = isOwner(nimi) ? 'owner'
     : isKrenar(nimi) ? 'krenar'
@@ -136,14 +147,17 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     : 'normal'
 
   const bonus = fsecBonus(fsecKpl)
-  const rjmobFsec = (fsecTotalKpl * FSEC_TOTAL_RJMOB) + (fsecInternetKpl * FSEC_INTERNET_RJMOB) + bonus
+  const dnaBonusEur = dnaBonus(dnaUusmyyntiKpl)
+  // RJ-Mob saa F-Securesta saman verran provisiota+bonusta kuin myyjä, ja lisäksi
+  // passiivitulon (kk-tulo × 12 kk) tämän kuukauden uusista asiakkuuksista.
+  const rjmobFsec = fsecEur + bonus + (fsecKpl * FSEC_RECURRING * 12)
 
   if (tyyppi === 'ref' || tyyppi === 'standi') {
     return {
       nimi, tyyppi, liittKpl, liittEur, fsecKpl, fsecTotalKpl, fsecInternetKpl,
-      fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit,
+      fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: 0,
       rjmobLiitt: 0, rjmobKassa: 0, rjmobFsec: 0, rjmobTulo: 0,
-      myyjaProv: 0, palkkaBrutto: 0, tyokulu: 0, netto: 0, roi: null,
+      myyjaProv: 0, provisioYhteensa: 0, palkkaBrutto: 0, tyokulu: 0, netto: 0, roi: null,
       teho: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12, leikkuri: false,
     }
   }
@@ -160,11 +174,14 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
   }
 
   const rjmobKassa = kassa * 5.0
-  const rjmobTulo = rjmobLiitt + rjmobKassa + rjmobFsec
+  const rjmobTulo = rjmobLiitt + rjmobKassa + rjmobFsec + dnaBonusEur
 
   // Teho lasketaan normaali tunnit (myyntiseuranta)
   const teho = tunnit > 0 ? (myyjaProv + kassa) / tunnit : 0
   const fsecFV = fsecKpl * FSEC_RECURRING * 12
+
+  // Myyjän provisiot yhteensä (pohjapalkan päälle tuleva osuus, myös työkulun provisiopohja).
+  const provisioYhteensa = myyjaProv + kassa + fsecEur + bonus + dnaBonusEur
 
   let palkkaBrutto = 0
   let tyokulu = 0
@@ -178,7 +195,7 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     netto = rjmobTulo
     roi = null
   } else if (tyyppi === 'krenar') {
-    palkkaBrutto = myyjaProv + kassa + fsecEur + bonus
+    palkkaBrutto = provisioYhteensa
     tyokulu = palkkaBrutto
     netto = rjmobTulo - tyokulu
     roi = tyokulu > 0 ? (netto / tyokulu) * 100 : 0
@@ -186,8 +203,7 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     const tp = getTuntipalkka(nimi)
     // Palkka lasketaan kokonaistunneista
     const pohja = palkkaTunnit * tp
-    const prov = myyjaProv + kassa + fsecEur + bonus
-    palkkaBrutto = pohja + prov
+    palkkaBrutto = pohja + provisioYhteensa
     tyokulu = palkkaBrutto * SIVU_KERROIN
     netto = rjmobTulo - tyokulu
     roi = tyokulu > 0 ? (netto / tyokulu) * 100 : 0
@@ -203,9 +219,9 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
 
   return {
     nimi, tyyppi, liittKpl, liittEur, fsecKpl, fsecTotalKpl, fsecInternetKpl,
-    fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit,
+    fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: dnaBonusEur,
     rjmobLiitt, rjmobKassa, rjmobFsec, rjmobTulo,
-    myyjaProv, palkkaBrutto, tyokulu, netto, roi,
+    myyjaProv, provisioYhteensa, palkkaBrutto, tyokulu, netto, roi,
     teho, tehoStatus, fsecFV, leikkuri,
   }
 }

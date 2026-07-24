@@ -25,6 +25,18 @@ export const PART_TIME_SELLERS = ['Antti Kiljala', 'Ramin Kadiri']
 export const ANTTI_MAX_SHIFTS_PER_WEEK = 3
 // Kukaan (päälliköt mukaan lukien) ei tee täyttä 6 vuoron viikkoa — vähintään yksi vapaapäivä/vko.
 export const MAX_SHIFTS_PER_WEEK = 5
+// Myymäläpäällikön oman myymälän normaalivuorokiintiö: tasan 3/viikko (min=max),
+// loput viikon vuoroista (enintään MAX_SHIFTS_PER_WEEK asti) tulevat kahdesta muusta PK-myymälästä.
+export const MANAGER_HOME_SHIFTS_PER_WEEK = 3
+// Päällikön muihin myymälöihin ("loput") tekemien vuorojen kattoa viikossa —
+// pitää päälliköt yleisessä kierrätyksessä kohtuullisessa osuudessa niin että
+// kokopäiväiset myyjät ehtivät omaan 4-5 vuoroa/viikko -tavoitteeseensa.
+export const MANAGER_CROSS_STORE_SHIFTS_PER_WEEK = 2
+
+const MANAGER_HOME_STORE: Record<string, StoreName> = {}
+for (const [store, manager] of Object.entries(STORE_MANAGERS) as [StoreName, string][]) {
+  MANAGER_HOME_STORE[manager] = store
+}
 export const FORCED_ONLY_SELLER = 'Albin Rashica'
 
 // Kalenterinäkymän sarakejärjestys: päälliköt, kokopäiväiset, osa-aikaiset, pakkotapaus.
@@ -56,8 +68,8 @@ interface ShiftTemplate { label: string; start: string; end: string }
 
 const WEEKDAY_SHIFTS: Record<StoreName, ShiftTemplate[]> = {
   Malmi: [
-    { label: 'aamu', start: '10:00', end: '17:00' },
-    { label: 'väli', start: '11:00', end: '17:30' },
+    { label: 'aamu', start: '10:00', end: '16:00' },
+    { label: 'väli', start: '11:00', end: '18:00' },
     { label: 'ilta', start: '13:00', end: '19:00' },
   ],
   Easton: [
@@ -132,7 +144,8 @@ function getNote(dateStr: string): string | undefined {
 }
 
 // Kiertävä, tasapainottava vuoronjakaja koko kuukaudelle. Seuraa myös
-// myymäläpäälliköiden viikkotunteja, jotta kukaan ei ylitä viikkokattoaan.
+// myymäläpäälliköiden viikkotunteja (koti+muut myymälät) ja Malmi-käyntejä,
+// jotta kukaan ei ylitä viikkokattoaan ja kaikki ehtivät Malmiin kuukaudessa.
 class Rotation {
   private pointer = 0
   private weekShifts: Record<string, number> = {}
@@ -140,6 +153,12 @@ class Rotation {
   // Onnenpäivä-vuoro loppuviikosta) — estää normaalit prioriteettivuorot
   // syömästä koko viikkokiintiötä ennen pakollista vuoroa.
   private weekReserved: Record<string, number> = {}
+  // Myymäläpäällikön oman myymälän normaalivuorot tällä viikolla (kiintiö MANAGER_HOME_SHIFTS_PER_WEEK).
+  private managerHome: Record<string, number> = {}
+  // Myymäläpäällikön muissa PK-myymälöissä tällä viikolla tekemät vuorot (kiintiö MANAGER_CROSS_STORE_SHIFTS_PER_WEEK).
+  private managerCross: Record<string, number> = {}
+  // Kuukauden aikana Malmissa jo vuoron tehneet — käytetään Malmi-prioriteettiin.
+  private malmiVisited = new Set<string>()
   private roster: string[]
 
   constructor(roster: string[]) {
@@ -149,6 +168,8 @@ class Rotation {
   resetWeek() {
     for (const k of Object.keys(this.weekShifts)) this.weekShifts[k] = 0
     for (const k of Object.keys(this.weekReserved)) this.weekReserved[k] = 0
+    for (const k of Object.keys(this.managerHome)) this.managerHome[k] = 0
+    for (const k of Object.keys(this.managerCross)) this.managerCross[k] = 0
   }
 
   reserve(seller: string, count: number) {
@@ -159,41 +180,86 @@ class Rotation {
     return seller === 'Antti Kiljala' ? ANTTI_MAX_SHIFTS_PER_WEEK : MAX_SHIFTS_PER_WEEK
   }
 
-  isAvailable(seller: string, dateStr: string): boolean {
+  isAvailable(seller: string, dateStr: string, store?: StoreName): boolean {
     if (isAbsent(seller, dateStr)) return false
     const used = (this.weekShifts[seller] ?? 0) + (this.weekReserved[seller] ?? 0)
-    return used < this.capFor(seller)
+    if (used >= this.capFor(seller)) return false
+    const homeStore = MANAGER_HOME_STORE[seller]
+    if (homeStore && store && store !== homeStore && (this.managerCross[seller] ?? 0) >= MANAGER_CROSS_STORE_SHIFTS_PER_WEEK) return false
+    return true
   }
 
-  assign(seller: string) {
+  homeCountFor(manager: string): number {
+    return this.managerHome[manager] ?? 0
+  }
+
+  incrementHome(manager: string) {
+    this.managerHome[manager] = (this.managerHome[manager] ?? 0) + 1
+  }
+
+  private assign(seller: string, store: StoreName) {
     this.weekShifts[seller] = (this.weekShifts[seller] ?? 0) + 1
+    if (store === 'Malmi') this.malmiVisited.add(seller)
+    const homeStore = MANAGER_HOME_STORE[seller]
+    if (homeStore && store !== homeStore) this.managerCross[seller] = (this.managerCross[seller] ?? 0) + 1
   }
 
   // Yrittää antaa vuoron tietylle henkilölle (esim. myymäläpäällikkö omaan
   // myymäläänsä) — palauttaa false jos poissa tai viikkokatto täynnä.
-  tryAssign(seller: string, dateStr: string, alreadyAssignedToday: Set<string>): boolean {
+  tryAssign(seller: string, dateStr: string, alreadyAssignedToday: Set<string>, store: StoreName): boolean {
     if (alreadyAssignedToday.has(seller)) return false
-    if (!this.isAvailable(seller, dateStr)) return false
-    this.assign(seller)
+    if (!this.isAvailable(seller, dateStr, store)) return false
+    this.assign(seller, store)
     return true
   }
 
   // Pakollinen vuoro (esim. Onnenpäivä) — toteutuu aina, mutta kuluttaa
   // ensin viikon alussa tehdyn varauksen ettei viikkokatto ylity.
-  forceAssign(seller: string) {
+  forceAssign(seller: string, store: StoreName) {
     if ((this.weekReserved[seller] ?? 0) > 0) this.weekReserved[seller]--
-    else this.assign(seller)
+    else this.weekShifts[seller] = (this.weekShifts[seller] ?? 0) + 1
+    if (store === 'Malmi') this.malmiVisited.add(seller)
   }
 
-  next(dateStr: string, alreadyAssignedToday: Set<string>): string {
+  // excludeSeller: myymälän oma päällikkö jätetään pois yleisestä kierrätyksestä
+  // hänen omassa myymälässään — hänen vuoronsa siellä tulevat vain kiintiön kautta.
+  next(dateStr: string, assignedToday: Set<string>, store: StoreName, excludeSeller?: string): string {
+    const eligible = (candidate: string) =>
+      candidate !== excludeSeller && !assignedToday.has(candidate) && this.isAvailable(candidate, dateStr, store)
+
+    // Malmi on prioriteetti: suositaan ensin jotakuta joka ei ole vielä tehnyt
+    // yhtään vuoroa Malmissa tässä kuussa, jotta kaikki ehtivät sinne kuukauden aikana.
+    if (store === 'Malmi') {
+      for (let tries = 0; tries < this.roster.length; tries++) {
+        const candidate = this.roster[(this.pointer + tries) % this.roster.length]
+        if (!this.malmiVisited.has(candidate) && eligible(candidate)) {
+          this.pointer = (this.pointer + tries + 1) % this.roster.length
+          this.assign(candidate, store)
+          return candidate
+        }
+      }
+    }
+
     for (let tries = 0; tries < this.roster.length; tries++) {
       const candidate = this.roster[this.pointer % this.roster.length]
       this.pointer++
-      if (alreadyAssignedToday.has(candidate)) continue
-      if (!this.isAvailable(candidate, dateStr)) continue
-      this.assign(candidate)
+      if (!eligible(candidate)) continue
+      this.assign(candidate, store)
       return candidate
     }
+
+    // Poikkeuksellisen moni poissa yhtä aikaa eikä kukaan mahdu viikkokattoon:
+    // parempi että joku tekee ylimääräisen vuoron kuin että FORCED_ONLY_SELLER
+    // joutuu kahteen vuoroon samana päivänä. Viikkokatto/ristikkäiskiintiöt
+    // jätetään huomiotta, poissaolo ja saman päivän tupla-varaus eivät.
+    for (let tries = 0; tries < this.roster.length; tries++) {
+      const candidate = this.roster[this.pointer % this.roster.length]
+      this.pointer++
+      if (candidate === excludeSeller || assignedToday.has(candidate) || isAbsent(candidate, dateStr)) continue
+      this.assign(candidate, store)
+      return candidate
+    }
+
     // Kukaan ei ole vapaana — pakkotapaus.
     return FORCED_ONLY_SELLER
   }
@@ -213,7 +279,7 @@ function shiftFrom(store: StoreName, seller: string, t: ShiftTemplate): Shift {
 
 export function generateAugust2026(): DayInfo[] {
   const days: DayInfo[] = []
-  const rotation = new Rotation([...FULL_TIME_SELLERS, ...PART_TIME_SELLERS])
+  const rotation = new Rotation([...FULL_TIME_SELLERS, ...PART_TIME_SELLERS, ...Object.values(STORE_MANAGERS)])
 
   // Kerätään etukäteen, mitkä myymäläpäälliköt tarvitsevat pakollisen
   // Onnenpäivä-vuoron kullakin viikolla, jotta kapasiteetti voidaan varata
@@ -245,17 +311,38 @@ export function generateAugust2026(): DayInfo[] {
     const shifts: Shift[] = []
     const assignedToday = new Set<string>()
 
-    // Myyntipäällikön prioriteettipaikka omassa myymälässään: yritetään aina
-    // ensin, mutta jos poissa tai viikkokatto (5 vuoroa/vko) täynnä, paikka
-    // täytetään kierrätyksestä — näin kukaan ei tee 6 vuoron viikkoa.
-    const fillManagerSlot = (store: StoreName, template: ShiftTemplate) => {
-      const manager = STORE_MANAGERS[store]
-      if (rotation.tryAssign(manager, dateStr, assignedToday)) {
-        shifts.push(shiftFrom(store, manager, template))
-        assignedToday.add(manager)
-      } else {
-        const seller = rotation.next(dateStr, assignedToday)
+    // Lauantai/Kesäjuhla: ei erillistä päällikköprioriteettia — nämä eivät ole
+    // "normaalivuoroja", joten päällikön 3/viikko-kotikiintiö ei koske niitä.
+    // Kaikki (myös päälliköt) kilpailevat samasta kierrätyksestä; Malmi-
+    // ensikertalaisprioriteetti ohjaa luonnostaan vaihtelua myymälöiden välillä.
+    const fillFromPool = (store: StoreName, template: ShiftTemplate, headcount: number) => {
+      for (let i = 0; i < headcount; i++) {
+        const seller = rotation.next(dateStr, assignedToday, store)
         shifts.push(shiftFrom(store, seller, template))
+        assignedToday.add(seller)
+      }
+    }
+
+    // Arkipäivän normaalivuorot: päällikölle oman myymälän kiintiö (tasan
+    // MANAGER_HOME_SHIFTS_PER_WEEK/viikko, täyttyy kronologisessa ma→pe-järjestyksessä
+    // eli painottuu luonnostaan alkuviikkoon = "erityisesti ma-ke"). Kiintiön
+    // täytyttyä (tai päällikkö poissa) loput oman myymälän vuorot ja aina muut
+    // paikat täytetään kierrätyksestä pois lukien tämän myymälän oma päällikkö —
+    // hänen lisävuoronsa tulevat kahdesta muusta PK-myymälästä ("loput").
+    const fillWeekdayNormal = (store: StoreName) => {
+      const templates = WEEKDAY_SHIFTS[store]
+      const manager = STORE_MANAGERS[store]
+      let startIdx = 0
+      if (rotation.homeCountFor(manager) < MANAGER_HOME_SHIFTS_PER_WEEK &&
+          rotation.tryAssign(manager, dateStr, assignedToday, store)) {
+        rotation.incrementHome(manager)
+        shifts.push(shiftFrom(store, manager, templates[0]))
+        assignedToday.add(manager)
+        startIdx = 1
+      }
+      for (let i = startIdx; i < templates.length; i++) {
+        const seller = rotation.next(dateStr, assignedToday, store, manager)
+        shifts.push(shiftFrom(store, seller, templates[i]))
         assignedToday.add(seller)
       }
     }
@@ -274,43 +361,25 @@ export function generateAugust2026(): DayInfo[] {
         // myymälät (ja tämän myymälän muut myyjät) tyhjinä. Pakollinen vuoro
         // kuluttaa viikon alussa tehdyn varauksen, ei riko viikkokattoa.
         const tmpl = weekday === 6 ? OP_SATURDAY_SHIFT : OP_WEEKDAY_SHIFT
-        rotation.forceAssign(luckyForStore.seller)
+        rotation.forceAssign(luckyForStore.seller, store)
         shifts.push(shiftFrom(store, luckyForStore.seller, tmpl))
         assignedToday.add(luckyForStore.seller)
         continue
       }
 
       if (dateStr === KESAJUHLA_DATE) {
-        const headcount = STORE_NORMAL_HEADCOUNT[store]
-        fillManagerSlot(store, KESAJUHLA_SHIFT)
-        for (let i = 1; i < headcount; i++) {
-          const seller = rotation.next(dateStr, assignedToday)
-          shifts.push(shiftFrom(store, seller, KESAJUHLA_SHIFT))
-          assignedToday.add(seller)
-        }
+        fillFromPool(store, KESAJUHLA_SHIFT, STORE_NORMAL_HEADCOUNT[store])
         continue
       }
 
       if (weekday === 6) {
         // Lauantai: yksi 10-16 vuoro per henkilö.
-        const headcount = STORE_NORMAL_HEADCOUNT[store]
-        fillManagerSlot(store, SATURDAY_SHIFT)
-        for (let i = 1; i < headcount; i++) {
-          const seller = rotation.next(dateStr, assignedToday)
-          shifts.push(shiftFrom(store, seller, SATURDAY_SHIFT))
-          assignedToday.add(seller)
-        }
+        fillFromPool(store, SATURDAY_SHIFT, STORE_NORMAL_HEADCOUNT[store])
         continue
       }
 
-      // Normaali arkipäivä: päällikön prioriteettipaikka aamuvuoroon, loput kierrätyksestä.
-      const templates = WEEKDAY_SHIFTS[store]
-      fillManagerSlot(store, templates[0])
-      for (let i = 1; i < templates.length; i++) {
-        const seller = rotation.next(dateStr, assignedToday)
-        shifts.push(shiftFrom(store, seller, templates[i]))
-        assignedToday.add(seller)
-      }
+      // Normaali arkipäivä (ma-pe).
+      fillWeekdayNormal(store)
     }
 
     days.push({ date: dateStr, weekday, closed: false, note, shifts })

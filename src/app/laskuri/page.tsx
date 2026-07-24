@@ -32,6 +32,7 @@ function TopBar() {
       {[
         {label:'Tuottoseuranta', href:'/tuotto'},
         {label:'Trendit', href:'/trendit'},
+        {label:'Kassamyynti', href:'/kassamyynti'},
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
         {label:'Laskuri', href:'/laskuri'},
