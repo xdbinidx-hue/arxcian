@@ -13,9 +13,9 @@ interface ReceiptsMonth {
   totals: {
     liittymat: number; kassakate: number; huoltokate: number; rescueKate: number
     provisio: number; netto: number; fsecAsiakkuudet: number; fsecPassiivitulo: number
+    tyontekijatKulu: number
   }
   stores: Record<string, ReceiptStore>
-  tyokulu: number
 }
 
 interface SalesStore {
@@ -173,13 +173,11 @@ export default function TrendPage() {
         if (d.error || !d.totals) continue
         const monthNum = parseMonthNum(f.name)
         const year = inferYear(monthNum, parseYear(f.name))
-        const tyokulu = Math.round((d.sellers ?? []).reduce((s: number, r: { sivukulut: number }) => s + r.sivukulut, 0))
         rMonths.push({
           year, monthNum,
           kuukausi: monthLabel(year, monthNum, false),
           totals: d.totals,
           stores: d.stores ?? {},
-          tyokulu,
         })
       }
       rMonths.sort((a, b) => (a.year - b.year) || (a.monthNum - b.monthNum))
@@ -208,34 +206,41 @@ export default function TrendPage() {
   const totalNettoThisYear = receiptsMonths.filter(m => m.year === currentYear).reduce((s, m) => s + m.totals.netto, 0)
   const latestMonth = receiptsMonths.length ? receiptsMonths[receiptsMonths.length - 1] : null
   const fsecLicensesNow = latestMonth?.totals.fsecAsiakkuudet ?? 0
-  const fsecPassiiviThisYear = (latestMonth?.totals.fsecPassiivitulo ?? 0) * 12
+  // F-Secure passiivitulo tämä vuosi: summataan jokaisen maksukuitin oma passiivitulo (ei
+  // ekstrapoloida viimeisintä kuukautta × 12, koska joka kuukaudelta on jo oma todellinen luku).
+  const fsecPassiiviThisYear = receiptsMonths.filter(m => m.year === currentYear).reduce((s, m) => s + m.totals.fsecPassiivitulo, 0)
 
-  const bestMonth = receiptsMonths.length ? receiptsMonths.reduce((a, b) => a.totals.netto > b.totals.netto ? a : b) : null
-  const monthsExclBest = bestMonth ? receiptsMonths.filter(m => m.kuukausi !== bestMonth.kuukausi) : receiptsMonths
-  const avg = (arr: number[]) => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : 0
-  const nettoForecast = Math.round(avg(monthsExclBest.map(m => m.totals.netto)) * 12)
-  const fsecKplForecast = Math.round(avg(monthsExclBest.map(m => m.totals.fsecAsiakkuudet)) * 12)
-  const fsecPassiiviForecast = Math.round(avg(monthsExclBest.map(m => m.totals.fsecPassiivitulo)))
+  // Myynti (money in) vs Kulut (money out) — Myynti = Liittymät + Kassakate + F-Secure
+  // passiivinen tulo (Yhteenveto-taulukosta). Kulut = työntekijäkulut (Yhteenveto-taulukon
+  // TYÖNTEKIJÄT-sarake, tai varalähteenä sellers-taulukon sivukulut yhteensä).
+  const moneyIn = (m: ReceiptsMonth) => m.totals.liittymat + m.totals.kassakate + m.totals.fsecPassiivitulo
+  const moneyOut = (m: ReceiptsMonth) => m.totals.tyontekijatKulu
 
-  // Myynti (money in) vs Kulut (money out) — kuukausikohtainen % muutos edelliseen
-  // kuukauteen kummallekin palkille. Myynti = totals.provisio (koko tiimin bruttoprovisio
-  // maksukuitista ennen kuluja), Kulut = tyokulu (sivukuluineen).
+  // Nettomyynti-ennuste: koko vuoden todellinen netto (money in - money out) jaettuna
+  // havaittujen kuukausien määrällä ja kerrottuna 12:lla (run rate) — ei keskiarvoa
+  // "paras kuukausi pois laskuista" -menetelmällä, joka vääristyy pahasti kun mukana on
+  // vain muutama kuukausi ja niistä osa poikkeuksellisen negatiivisia.
+  const nettoForecast = receiptsMonths.length
+    ? Math.round((receiptsMonths.reduce((s, m) => s + (moneyIn(m) - moneyOut(m)), 0) / receiptsMonths.length) * 12)
+    : 0
+
   const myyntiKuluData = receiptsMonths.map((m, i) => {
     const prev = i > 0 ? receiptsMonths[i - 1] : null
     const pctChange = (curr: number, prevVal: number | undefined) =>
       prevVal === undefined || prevVal === 0 ? undefined : Math.round((curr - prevVal) / Math.abs(prevVal) * 100)
-    const myyntiPct = prev ? pctChange(m.totals.provisio, prev.totals.provisio) : undefined
-    const kuluPct = prev ? pctChange(m.tyokulu, prev.tyokulu) : undefined
+    const myyntiPct = prev ? pctChange(moneyIn(m), moneyIn(prev)) : undefined
+    const kuluPct = prev ? pctChange(moneyOut(m), moneyOut(prev)) : undefined
     return {
       kuukausi: m.kuukausi,
-      myynti: Math.round(m.totals.provisio),
-      kulut: m.tyokulu,
+      myynti: Math.round(moneyIn(m)),
+      kulut: Math.round(moneyOut(m)),
       myyntiLabel: myyntiPct !== undefined ? `${myyntiPct >= 0 ? '+' : ''}${myyntiPct}%` : '',
       kuluLabel: kuluPct !== undefined ? `${kuluPct >= 0 ? '+' : ''}${kuluPct}%` : '',
     }
   })
-  const totalNettoAll = receiptsMonths.reduce((s, m) => s + m.totals.netto, 0)
-  const totalMyyntiAll = receiptsMonths.reduce((s, m) => s + m.totals.provisio, 0)
+  const totalMyyntiAll = receiptsMonths.reduce((s, m) => s + moneyIn(m), 0)
+  const totalKulutAll = receiptsMonths.reduce((s, m) => s + moneyOut(m), 0)
+  const totalNettoAll = totalMyyntiAll - totalKulutAll
   const nettoMarginPct = totalMyyntiAll > 0 ? Math.round(totalNettoAll / totalMyyntiAll * 100) : 0
 
   // Liittymät/Kassakate/F-Secure trendit: Todellinen (maksukuitti), Brutto (myyntiseuranta,
@@ -298,8 +303,8 @@ export default function TrendPage() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:8,marginBottom:16}}>
           {[
             {l:`Tämän vuoden total netto (${currentYear})`, v: fmt(totalNettoThisYear), s:'kaikki kuukaudet yhteensä'},
-            {l:'F-Secure lisenssit tällä hetkellä', v: `${fmtN(fsecLicensesNow)} kpl`, s: latestMonth ? `viimeisin: ${latestMonth.kuukausi}` : '-', c:'#0F6E56'},
-            {l:'F-Secure passiivitulo tämä vuosi', v: fmt(fsecPassiiviThisYear), s:'viimeisin maksukuitti × 12 kk', c:'#0F6E56'},
+            {l:'Total F-Secure lisenssit', v: `${fmtN(fsecLicensesNow)} kpl`, s: latestMonth ? `viimeisin: ${latestMonth.kuukausi}` : '-', c:'#0F6E56'},
+            {l:'F-Secure passiivitulo tämä vuosi', v: fmt(fsecPassiiviThisYear), s:'kuukausien todelliset passiivitulot yhteensä', c:'#0F6E56'},
           ].map((k,i) => (
             <div key={i} style={{background:'#f1f0ee',borderRadius:10,padding:'12px 14px'}}>
               <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k.l}</div>
@@ -310,12 +315,11 @@ export default function TrendPage() {
         </div>
 
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Vuosiennuste <span style={{textTransform:'none',fontWeight:400}}>— keskiarvo/kk, paras kuukausi pois laskuista, maksukuittidatasta</span></div>
+          <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Vuosiennuste <span style={{textTransform:'none',fontWeight:400}}>— todellinen kk-keskiarvo × 12 (run rate), maksukuittidatasta</span></div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:8}}>
             {[
               {l:'Nettomyynti', v: fmt(nettoForecast), c:'#185FA5', s:'12 kk'},
-              {l:'F-Secure asiakkuudet', v: `${fmtN(fsecKplForecast)} kpl`, c:'#0F6E56', s:'12 kk'},
-              {l:'Kk-passiivitulo', v: fmt(fsecPassiiviForecast), c:'#0F6E56', s:'kuukaudessa'},
+              {l:'Passiivitulo (viimeisin kk)', v: fmt(latestMonth?.totals.fsecPassiivitulo ?? 0), c:'#0F6E56', s: latestMonth ? latestMonth.kuukausi : '-'},
             ].map((k,i) => (
               <div key={i} style={{background:'#f8f8f6',borderRadius:10,padding:'12px 14px'}}>
                 <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k.l}</div>

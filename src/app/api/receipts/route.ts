@@ -121,6 +121,7 @@ interface ReceiptsResult {
     fsecPassiivitulo: number
     maksettavaSumma: number
     alv0: number
+    tyontekijatKulu: number
   }
 }
 
@@ -416,6 +417,11 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
     // (pieni pyöristysero mahdollinen) ja toimii varalähteenä.
     maksettavaSumma: yhteenvetoTotal ? yhteenvetoTotal.yhteensa : alv0,
     alv0,
+    // Työntekijäkulut (koko tiimi): Yhteenveto-taulukon TYÖNTEKIJÄT-sarake on koko yrityksen
+    // työntekijäkustannus (tallennettu negatiivisena, koska YHTEENSÄ = LIITTYMÄT+KASSAKATE+
+    // F-SECURE+BONUS+PASSIIVI+TYÖNTEKIJÄT) — ensisijainen lähde "money out" -kululle. Varalähteenä
+    // sellers-taulukon sivukulut yhteensä, jos Yhteenveto-taulukkoa ei löydy tältä kuukaudelta.
+    tyontekijatKulu: yhteenvetoTotal ? Math.abs(yhteenvetoTotal.tyontekijat) : sellers.reduce((s, r) => s + r.sivukulut, 0),
   }
 
   return {
