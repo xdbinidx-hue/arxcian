@@ -41,7 +41,10 @@ for (let i = 0; i + 1 < RJ_MOB_SELLERS.length; i += 2) {
 }
 
 function normalizeName(raw: string): string {
-  const trimmed = raw.trim()
+  // Lähdesheetin oma hakukaava jättää joskus soluun muotoon "Kadiri Ramin?Myyjän
+  // tietoja ei löytynyt." kun se ei tunnista nimeä omasta viitelistastaan —
+  // puretaan virheteksti pois ennen normalisointia.
+  const trimmed = (raw.includes('?') ? raw.split('?')[0] : raw).trim()
   const known = CANONICAL_NAME[trimmed.toLowerCase()]
   if (known) return known
   const parts = trimmed.split(/\s+/)
@@ -64,6 +67,8 @@ interface TargetRow {
   kassaKate: number; kassaTavoite: number; kassaRunrate: number
   kassaMyynti: number; kassaPalautus: number; kassaAlennus: number; kassaKuitit: number; kassaPerPaiva: number
   paivat: number; liittEur: number
+  dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
+  uusmyyntiYhteensa: number; uusmyyntiPerPaiva: number; uusmyyntiRunrate: number
 }
 
 function findSheet(sheetNames: string[], ...patterns: string[]): string {
@@ -125,7 +130,10 @@ export async function GET(req: NextRequest) {
     }
 
     // ---- Myyjät Yhteensä: toteutuneet liittymät ja F-Secure ----
-    const actualsMap: Record<string, { liittKpl: number; liittEur: number; fsecKpl: number }> = {}
+    const actualsMap: Record<string, {
+      liittKpl: number; liittEur: number; fsecKpl: number
+      dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
+    }> = {}
     if (myyjatSheet) {
       const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:Z200` })
       const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
@@ -148,6 +156,12 @@ export async function GET(req: NextRequest) {
         const idxFsecTotal = findCol(headers, 'f-secure total', 'fsecure total', 'f-secure total security')
         const idxFsecInternet = findCol(headers, 'f-secure internet', 'fsecure internet', 'f-secure internet security')
         const idxFsecKpl = findCol(headers, 'f-secure kpl', 'fsecure kpl', 'fsec kpl')
+        // Uusmyynti operaattoreittain (Tavoitteet ja Run Rate -> Uusmyynti-välilehti). Elisan
+        // uusmyynti näkyy datassa "ELISA Pakettiliittymät" -sarakkeena, ei omana uusmyynti-sarakkeena.
+        const idxDnaUusmyynti = findCol(headers, 'dna uusmyynti')
+        const idxElisaUusmyynti = findCol(headers, 'elisa pakettiliittymät', 'elisa paketti')
+        const idxTeliaUusmyynti = findCol(headers, 'telia uusmyynti')
+        const idxTeliaYritysUusmyynti = findCol(headers, 'telia yritysliittymä uusmyynti', 'telia yritys uusmyynti')
 
         for (let i = headerIdx + 1; i < rows.length; i++) {
           const row = rows[i]
@@ -164,6 +178,9 @@ export async function GET(req: NextRequest) {
             liittKpl: parseNum(row[idxLiittKpl]),
             liittEur: parseNum(row[idxLiittEur]),
             fsecKpl,
+            dnaUusmyynti: idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0,
+            elisaUusmyynti: idxElisaUusmyynti >= 0 ? parseNum(row[idxElisaUusmyynti]) : 0,
+            teliaUusmyynti: (idxTeliaUusmyynti >= 0 ? parseNum(row[idxTeliaUusmyynti]) : 0) + (idxTeliaYritysUusmyynti >= 0 ? parseNum(row[idxTeliaYritysUusmyynti]) : 0),
           }
         }
       }
@@ -182,7 +199,9 @@ export async function GET(req: NextRequest) {
 
       if (headerIdx >= 0) {
         const headers = rows[headerIdx].map(h => h.toLowerCase().trim())
-        const idxNimi = findCol(headers, 'myyjä', 'myyjat', 'nimi')
+        // "Myyjä"-sarake sisältää usein vain etunimen/lempinimen (esim. "Joni V", "Steven"),
+        // joka ei aina normalisoidu oikein — "Virallinen nimi" on luotettava täysi nimi.
+        const idxNimi = findCol(headers, 'virallinen nimi', 'myyjä', 'myyjat', 'nimi')
         const idxMyynti = findCol(headers, 'myynti')
         const idxPalautus = findCol(headers, 'palautus', 'palautukset')
         const idxAlennus = findCol(headers, 'alennus', 'alennukset')
@@ -237,9 +256,10 @@ export async function GET(req: NextRequest) {
 
     // ---- Yhdistetään: Tavoitteet-välilehti määrittää rivit ----
     const targets: TargetRow[] = Object.entries(targetsMap).map(([key, t]) => {
-      const actual = actualsMap[key] ?? { liittKpl: 0, liittEur: 0, fsecKpl: 0 }
+      const actual = actualsMap[key] ?? { liittKpl: 0, liittEur: 0, fsecKpl: 0, dnaUusmyynti: 0, elisaUusmyynti: 0, teliaUusmyynti: 0 }
       const kassa = kassaMap[key] ?? { kassaMyynti: 0, kassaPalautus: 0, kassaAlennus: 0, kassaKuitit: 0, kassaKate: 0 }
       const paivat = paivatMap[key] ?? 0
+      const uusmyyntiYhteensa = actual.dnaUusmyynti + actual.elisaUusmyynti + actual.teliaUusmyynti
 
       return {
         nimi: t.nimi,
@@ -260,6 +280,12 @@ export async function GET(req: NextRequest) {
         kassaPerPaiva: paivat > 0 ? kassa.kassaKate / paivat : 0,
         paivat,
         liittEur: actual.liittEur,
+        dnaUusmyynti: actual.dnaUusmyynti,
+        elisaUusmyynti: actual.elisaUusmyynti,
+        teliaUusmyynti: actual.teliaUusmyynti,
+        uusmyyntiYhteensa,
+        uusmyyntiPerPaiva: paivat > 0 ? uusmyyntiYhteensa / paivat : 0,
+        uusmyyntiRunrate: t.liittTavoite > 0 ? (uusmyyntiYhteensa / t.liittTavoite) * 100 : 0,
       }
     }).filter(t => t.nimi !== 'Albin Rashica')
       .sort((a, b) => b.liittRunrate - a.liittRunrate)

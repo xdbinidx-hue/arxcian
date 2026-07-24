@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
-import { laskeMyyja, shouldSkip, isStandi, isRJMobSeller, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER } from '@/lib/rjmob'
+import { laskeMyyja, shouldSkip, isStandi, isRJMobSeller, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
 
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!)
@@ -25,6 +25,23 @@ function findCol(headers: string[], ...patterns: string[]): number {
 }
 
 const RJ_STORES = ['malmi', 'easton', 'holma', 'syke', 'kivistö', 'kivisto']
+
+// Kanoninen "Etunimi Sukunimi" -muoto RJ_MOB_SELLERS-parien perusteella (parillinen indeksi = kanoninen).
+const CANONICAL_NAME: Record<string, string> = {}
+for (let i = 0; i + 1 < RJ_MOB_SELLERS.length; i += 2) {
+  CANONICAL_NAME[RJ_MOB_SELLERS[i].toLowerCase()] = RJ_MOB_SELLERS[i]
+  CANONICAL_NAME[RJ_MOB_SELLERS[i + 1].toLowerCase()] = RJ_MOB_SELLERS[i]
+}
+
+// Lähdesheetin oma hakukaava jättää joskus solun muotoon "Kadiri Ramin?Myyjän tietoja
+// ei löytynyt." kun se ei tunnista nimeä omasta viitelistastaan. Meillä on silti oma,
+// ajantasainen myyjälista (RJ_MOB_SELLERS) — puretaan virheteksti pois ja katsotaan
+// tunnistammeko oikean nimen sen sijaan että hylkäämme koko rivin ständinä.
+function cleanUnmatchedName(raw: string): string {
+  if (!raw.includes('?')) return raw
+  const cleaned = raw.split('?')[0].trim()
+  return CANONICAL_NAME[cleaned.toLowerCase()] ?? cleaned
+}
 
 export async function GET(req: NextRequest) {
   const fileId = req.nextUrl.searchParams.get('fileId')
@@ -83,6 +100,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
   const idxFsecInternet = findCol(headers, 'f-secure internet', 'fsecure internet', 'f-secure internet security')
   const idxFsecKpl = findCol(headers, 'f-secure kpl', 'fsecure kpl', 'fsec kpl')
   const idxTunnit = findCol(headers, 'tunnit')
+  const idxDnaUusmyynti = findCol(headers, 'dna uusmyynti', 'dna-uusmyynti', 'uusmyynti')
 
   const hoursMap: Record<string, { total: number, normaali: number, koulutus: number, sairas: number }> = {}
   if (dataSheet) {
@@ -131,18 +149,20 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     const fsecKpl = (fsecTotalKpl + fsecInternetKpl) > 0 ? fsecTotalKpl + fsecInternetKpl : (idxFsecKpl >= 0 ? parseNum(row[idxFsecKpl]) : 0)
     const fsecEur = (fsecTotalKpl * FSEC_TOTAL_SELLER) + (fsecInternetKpl * FSEC_INTERNET_SELLER)
 
-    const hours = hoursMap[nimi.toLowerCase()]
+    const cleanedNimi = cleanUnmatchedName(nimi)
+    const hours = hoursMap[cleanedNimi.toLowerCase()] ?? hoursMap[nimi.toLowerCase()]
     const normaaliTunnit = hours ? (hours.normaali || hours.total) : parseNum(row[idxTunnit])
     const palkkaTunnit = hours ? (hours.total || hours.normaali) : normaaliTunnit
     const tunnit = normaaliTunnit
 
     if (liittKpl === 0 && liittEur === 0) continue
 
-    const raw: SellerRaw = { nimi, liittKpl, liittEur, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit }
+    const dnaUusmyyntiKpl = idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0
+    const raw: SellerRaw = { nimi: cleanedNimi, liittKpl, liittEur, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl }
 
-    if (isStandi(nimi) || nimi.includes('?') || nimi.toLowerCase().includes('ei löyty')) {
+    if (isStandi(cleanedNimi)) {
       standiRows.push(raw)
-    } else if (isRJMobSeller(nimi)) {
+    } else if (isRJMobSeller(cleanedNimi)) {
       sellers.push({ ...raw, tunnit: normaaliTunnit, palkkaTunnit: palkkaTunnit > 0 ? palkkaTunnit : normaaliTunnit })
     }
   }
@@ -189,7 +209,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               const jkusta = jr[0]?.trim() ?? ''
               const jmyyjä = jr[1]?.trim() ?? ''
               if (jkusta && !jmyyjä) break
-              if (jmyyjä && (isStandi(jmyyjä) || jmyyjä.includes('?') || jmyyjä.toLowerCase().includes('ei löyty'))) {
+              if (jmyyjä && isStandi(cleanUnmatchedName(jmyyjä))) {
                 standiLiittKpl += parseNum(jr[mIdxLiittKpl])
                 standiLiittEur += parseNum(jr[mIdxLiittEur])
               }
@@ -296,6 +316,7 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
       fsecKpl, fsecTotalKpl: 0, fsecInternetKpl: 0, fsecEur, palkkaTunnit: parseNum(row[idxTunnit]),
       kassa: parseNum(row[idxKassa]),
       tunnit: parseNum(row[idxTunnit]),
+      dnaUusmyyntiKpl: 0,
     }
     if (raw.liittKpl === 0 && raw.liittEur === 0) continue
     if (isStandi(nimi)) standiRows.push(raw)

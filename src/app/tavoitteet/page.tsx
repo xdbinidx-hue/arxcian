@@ -9,6 +9,8 @@ interface TargetRow {
   kassaKate: number; kassaTavoite: number; kassaRunrate: number
   kassaMyynti: number; kassaPalautus: number; kassaAlennus: number; kassaKuitit: number; kassaPerPaiva: number
   paivat: number; liittEur: number
+  dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
+  uusmyyntiYhteensa: number; uusmyyntiPerPaiva: number; uusmyyntiRunrate: number
 }
 
 function fmt(n: number, dec = 0) {
@@ -88,6 +90,7 @@ function TopBar({ files, selectedFile, onFileChange }: { files: DriveFile[]; sel
       {[
         {label:'Tuottoseuranta', href:'/tuotto'},
         {label:'Trendit', href:'/trendit'},
+        {label:'Kassamyynti', href:'/kassamyynti'},
         {label:'Myyntiseuranta', href:'/etela'},
         {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
         {label:'Laskuri', href:'/laskuri'},
@@ -163,7 +166,11 @@ export default function TavoitteetPage() {
     kassaPalautus: acc.kassaPalautus + r.kassaPalautus,
     kassaAlennus: acc.kassaAlennus + r.kassaAlennus,
     kassaKuitit: acc.kassaKuitit + r.kassaKuitit,
-  }), { liittKpl:0, liittTavoite:0, fsecKpl:0, fsecTavoite:0, kassaKate:0, kassaTavoite:0, kassaMyynti:0, kassaPalautus:0, kassaAlennus:0, kassaKuitit:0 })
+    dnaUusmyynti: acc.dnaUusmyynti + r.dnaUusmyynti,
+    elisaUusmyynti: acc.elisaUusmyynti + r.elisaUusmyynti,
+    teliaUusmyynti: acc.teliaUusmyynti + r.teliaUusmyynti,
+    uusmyyntiYhteensa: acc.uusmyyntiYhteensa + r.uusmyyntiYhteensa,
+  }), { liittKpl:0, liittTavoite:0, fsecKpl:0, fsecTavoite:0, kassaKate:0, kassaTavoite:0, kassaMyynti:0, kassaPalautus:0, kassaAlennus:0, kassaKuitit:0, dnaUusmyynti:0, elisaUusmyynti:0, teliaUusmyynti:0, uusmyyntiYhteensa:0 })
 
   const totLiittRr = totals.liittTavoite > 0 ? totals.liittKpl / totals.liittTavoite * 100 : 0
   const totFsecRr = totals.fsecTavoite > 0 ? totals.fsecKpl / totals.fsecTavoite * 100 : 0
@@ -262,42 +269,30 @@ export default function TavoitteetPage() {
                   <thead>
                     <tr>
                       <th style={thL}>Myyjä</th>
-                      <th style={th}>Liitt kpl</th>
-                      <th style={th}>Liitt €</th>
-                      <th style={th}>Liitt tavoite</th>
-                      <th style={th}>Liitt / päivä</th>
-                      <th style={th}>Liitt RR%</th>
-                      <th style={th}>F-Sec kpl</th>
-                      <th style={th}>F-Sec tavoite</th>
-                      <th style={th}>F-Sec RR%</th>
-                      <th style={th}>Työpäivät</th>
+                      <th style={th}>DNA</th>
+                      <th style={th}>Elisa</th>
+                      <th style={th}>Telia</th>
+                      <th style={th}>Uusmyynti yhteensä</th>
+                      <th style={th}>Liittymä / päivä</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.map((r, i) => (
                       <tr key={r.nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
                         <td style={tdL}>{r.nimi}</td>
-                        <td style={td}>{r.liittKpl}</td>
-                        <td style={td}>{fmt(r.liittEur)} €</td>
-                        <td style={{...td, color:'#888'}}>{fmt(r.liittTavoite)}</td>
-                        <td style={{...td, color:'#185FA5', fontWeight:500}}>{fmt(r.liittPerPaiva, 2)}</td>
-                        <PctCell pct={r.liittRunrate} />
-                        <td style={{...td, color:'#0F6E56'}}>{r.fsecKpl}</td>
-                        <td style={{...td, color:'#888'}}>{fmt(r.fsecTavoite)}</td>
-                        <PctCell pct={r.fsecRunrate} />
-                        <td style={{...td, color:'#888'}}>{fmt(r.paivat)}</td>
+                        <td style={td}>{fmt(r.dnaUusmyynti)}</td>
+                        <td style={td}>{fmt(r.elisaUusmyynti)}</td>
+                        <td style={td}>{fmt(r.teliaUusmyynti)}</td>
+                        <td style={{...td, fontWeight:500}}>{fmt(r.uusmyyntiYhteensa)}</td>
+                        <td style={{...td, color:'#185FA5', fontWeight:500}}>{fmt(r.uusmyyntiPerPaiva, 2)}</td>
                       </tr>
                     ))}
                     <tr>
                       <td style={totL}>Yhteensä</td>
-                      <td style={tot}>{totals.liittKpl}</td>
-                      <td style={tot}>{fmt(data.reduce((s,r)=>s+r.liittEur,0))} €</td>
-                      <td style={{...tot, color:'#888'}}>{fmt(totals.liittTavoite)}</td>
-                      <td style={tot}></td>
-                      <PctCell pct={totLiittRr} />
-                      <td style={{...tot, color:'#0F6E56'}}>{totals.fsecKpl}</td>
-                      <td style={{...tot, color:'#888'}}>{fmt(totals.fsecTavoite)}</td>
-                      <PctCell pct={totFsecRr} />
+                      <td style={tot}>{fmt(totals.dnaUusmyynti)}</td>
+                      <td style={tot}>{fmt(totals.elisaUusmyynti)}</td>
+                      <td style={tot}>{fmt(totals.teliaUusmyynti)}</td>
+                      <td style={tot}>{fmt(totals.uusmyyntiYhteensa)}</td>
                       <td style={tot}></td>
                     </tr>
                   </tbody>
