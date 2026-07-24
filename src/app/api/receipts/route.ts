@@ -460,7 +460,14 @@ export async function GET(req: NextRequest) {
       const parsedYhteenveto = parseYhteenveto(rows)
       const parsedKassamyynti = parseKassamyynti(rows)
       const parsedAlv0 = parseMaksuAlv0(rows)
-      return NextResponse.json({ name: meta.data.name, malmiBlock, yhteenvetoLabelIdx, yhteenvetoBox, maksuIdx, maksuBox, kassamyyntiIdx, kassamyyntiBox, tyontekijatIdx, tyontekijatBox, parsedYhteenveto, parsedKassamyynti, parsedAlv0 })
+      // Tilapäinen diagnostiikka: kaikki rivit jotka täsmäävät Yhteenveto-otsikkoehtoon
+      // (LIITTYMÄT+KASSAKATE+PASSIIVI samalla rivillä) — jos näitä on useampi kuin yksi,
+      // findIndex saattaa osua väärään.
+      const yvHeaderMatches = rows.map((r, i) => ({ i, r })).filter(({ r }) => {
+        const upper = r.map(c => (c || '').trim().toUpperCase())
+        return upper.includes('LIITTYMÄT') && upper.includes('KASSAKATE') && upper.includes('PASSIIVI')
+      }).map(({ i, r }) => ({ row: i, cells: r.slice(0, 15) }))
+      return NextResponse.json({ name: meta.data.name, malmiBlock, yhteenvetoLabelIdx, yhteenvetoBox, maksuIdx, maksuBox, kassamyyntiIdx, kassamyyntiBox, tyontekijatIdx, tyontekijatBox, parsedYhteenveto, parsedKassamyynti, parsedAlv0, yvHeaderMatches, totalRows: rows.length })
     }
 
     const fileId = req.nextUrl.searchParams.get('fileId') ?? files[0]?.id
