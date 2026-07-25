@@ -107,6 +107,7 @@ interface ReceiptSeller {
 interface ReceiptStore {
   liittymat: number
   fsecEur: number
+  bonus: number
   kassakate: number
   huoltokate: number
   rescueKate: number
@@ -134,6 +135,8 @@ interface ReceiptsResult {
     netto: number
     fsecAsiakkuudet: number
     fsecPassiivitulo: number
+    fsecEur: number
+    bonus: number
     maksettavaSumma: number
     alv0: number
     tyontekijatKulu: number
@@ -331,6 +334,7 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
     stores[storeName] = {
       liittymat: yv ? yv.liittymat : (totalColIdx > 0 ? parseNum(liittRow[totalColIdx]) : 0),
       fsecEur: yv ? yv.fsecEur : (totalColIdx > 0 && fsecRow ? parseNum(fsecRow[totalColIdx]) : 0),
+      bonus: yv ? yv.bonus : (totalColIdx > 0 && bonusRow ? parseNum(bonusRow[totalColIdx]) : 0),
       kassakate: yv ? yv.kassakate : (km ? km.kassakate : 0),
       huoltokate: km ? km.huoltokate : 0,
       rescueKate: km ? km.rescueKate : 0,
@@ -438,6 +442,10 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
     netto: sellers.reduce((s, r) => s + r.netto, 0),
     fsecAsiakkuudet: passiivituloRow && passiivituloPanel ? parseNum(passiivituloRow[passiivituloPanel.col + 4]) : 0,
     fsecPassiivitulo,
+    // F-Secure kertaprovisio ja Bonukset (koko yritys): Yhteenveto-taulukon omat sarakkeet —
+    // ensisijainen lähde, varalähteenä myymälöiden (stores) summa jos Yhteenveto-taulukkoa ei löydy.
+    fsecEur: yhteenvetoTotal ? yhteenvetoTotal.fsecEur : Object.values(stores).reduce((s, r) => s + r.fsecEur, 0),
+    bonus: yhteenvetoTotal ? yhteenvetoTotal.bonus : Object.values(stores).reduce((s, r) => s + r.bonus, 0),
     // Maksettava summa (tilille tuleva summa): Yhteenveto-taulukon YHTEENSÄ-rivi on ensisijainen
     // lähde (laskettu suoraan kaikista osista). ALV0 on Maksu-taulukon viitteellinen tarkistusluku
     // (pieni pyöristysero mahdollinen) ja toimii varalähteenä.
