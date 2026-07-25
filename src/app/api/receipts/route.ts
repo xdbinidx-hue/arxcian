@@ -3,6 +3,13 @@ import { google } from 'googleapis'
 import ExcelJS from 'exceljs'
 import { RJ_MOB_SELLERS, getTuntipalkka } from '@/lib/rjmob'
 
+// Maksukuitin tiedostonimi kertoo MAKSUKUUKAUDEN, ei myyntikuukauden — esim. "Maksukuitti
+// 5. Toukokuu" sisältää toukokuussa maksetut korvaukset, ei toukokuun myyntiä:
+//   - Liittymäprovisiot: 3 kk viive (myynti helmikuu → aktivointi huhtikuu → maksu toukokuu)
+//   - Kassakate ja F-Secure: 1 kk viive (edellisen kuukauden myynnistä)
+// Tämä ei vaikuta itse parsintaan (kaikki luvut luetaan sellaisenaan siltä kuukausikuitilta
+// jota pyydetään), mutta on oleellista kun tätä dataa verrataan myyntiseurantaan (ks.
+// PAYOUT_DELAY trendit-sivulla).
 const RECEIPTS_ROOT_FOLDER_ID = '1rRTzs9EvBLTo7xpdkkOPD7smtezl7Vhi'
 
 function getAuth() {
@@ -21,18 +28,24 @@ function parseNum(v: unknown): number {
   return isNaN(n) ? 0 : n
 }
 
-// Nimet esiintyvät korvaus-Excelissä pelkkinä etuniminä isoin kirjaimin (esim. "ARBNOR").
-// Normalisoidaan tunnettuun RJ-Mob-myyjälistaan; tuntematon nimi (esim. "Petri", "Muut")
-// jää sellaisenaan, jotta rivi ei katoa vahingossa.
-const FIRST_NAME_TO_CANONICAL: Record<string, string> = {}
+// Nimet esiintyvät maksukuitin eri tauluissa vaihtelevasti: pelkkänä etunimenä isoin
+// kirjaimin (esim. "ARBNOR" myymäläblokin sarakeotsikkona), "Etunimi Sukunimi" -muodossa
+// tai "Sukunimi Etunimi" -muodossa (RJ_MOB_SELLERS listaa molemmat järjestykset pareina).
+// Kaikki kolme muotoa normalisoidaan samaan kanoniseen "Etunimi Sukunimi" -nimeen, jotta
+// sama myyjä ei pääse esiintymään kahtena eri rivinä eri tauluissa. Tuntematon nimi
+// (esim. "Petri", "Muut") jää sellaisenaan, jotta rivi ei katoa vahingossa.
+const CANONICAL_BY_ANY_FORM: Record<string, string> = {}
 for (let i = 0; i + 1 < RJ_MOB_SELLERS.length; i += 2) {
   const canonical = RJ_MOB_SELLERS[i]
-  FIRST_NAME_TO_CANONICAL[canonical.split(' ')[0].toLowerCase()] = canonical
+  const reversed = RJ_MOB_SELLERS[i + 1]
+  CANONICAL_BY_ANY_FORM[canonical.toLowerCase()] = canonical
+  CANONICAL_BY_ANY_FORM[reversed.toLowerCase()] = canonical
+  CANONICAL_BY_ANY_FORM[canonical.split(' ')[0].toLowerCase()] = canonical
 }
 
 function normalizeSellerName(raw: string): string {
   const trimmed = raw.trim()
-  const canonical = FIRST_NAME_TO_CANONICAL[trimmed.toLowerCase()]
+  const canonical = CANONICAL_BY_ANY_FORM[trimmed.toLowerCase()]
   if (canonical) return canonical
   // Tuntematon (esim. "Petri", "Muut") — näytetään omalla nimellä sellaisenaan.
   return trimmed.charAt(0) + trimmed.slice(1).toLowerCase()
@@ -82,6 +95,8 @@ interface ReceiptSeller {
   provisio: number
   liittymat: number
   fsecEur: number
+  bonus: number
+  kassamyynti: number
   palkka: number
   verottomat: number
   sivukulut: number
@@ -294,7 +309,11 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
   const stores: Record<string, ReceiptStore> = {}
   const provisioBySeller: Record<string, number> = {}
   const liittymatBySeller: Record<string, number> = {}
+  // F-Secure ja Bonus ovat kaksi erillistä riviä tuottotaulukossa (F-Secure € ja Bonukset €) —
+  // pidetään ne erillään sen sijaan että summattaisiin yhdeksi "fsecEur"-luvuksi, joka
+  // aiemmin yliarvioi F-Securen osuuden bonuksen verran.
   const fsecureBySeller: Record<string, number> = {}
+  const bonusBySeller: Record<string, number> = {}
 
   for (const storeLabel of STORE_SECTIONS) {
     const idx = rows.findIndex(r => (r[0] || '').trim() === storeLabel)
@@ -322,7 +341,8 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
       liittymatBySeller[s.nimi] = (liittymatBySeller[s.nimi] ?? 0) + parseNum(liittRow[s.col])
       const fsecPart = fsecRow ? parseNum(fsecRow[s.col]) : 0
       const bonusPart = bonusRow ? parseNum(bonusRow[s.col]) : 0
-      fsecureBySeller[s.nimi] = (fsecureBySeller[s.nimi] ?? 0) + fsecPart + bonusPart
+      fsecureBySeller[s.nimi] = (fsecureBySeller[s.nimi] ?? 0) + fsecPart
+      bonusBySeller[s.nimi] = (bonusBySeller[s.nimi] ?? 0) + bonusPart
     }
   }
 
@@ -358,6 +378,10 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
   const verottomatRow = findLabeledRow('verottomat')
   const sivukuluRow = findLabeledRow('sivukuluineen')
   const tulosRow = findLabeledRow('tulos')
+  // Myyjäkohtainen Kassamyynti-rivi (kassakate+huoltokate+rescue kate-ostorahdit per työntekijä)
+  // ei ole aina täytetty käsin ylläpidetyssä taulukossa (havaittu "Ei löydy" -teksti useissa
+  // kuukausissa) — parseNum palauttaa tällöin 0:n, mikä on oikea varalähde kun dataa ei ole.
+  const kassamyyntiRow = findLabeledRow('kassamyynti')
 
   // ---- Passiivitulo-paneeli: F-Secure-lisenssimäärä (koko tiimi) ----
   const passiivituloPanel = findPanelRow(rows, v => v === 'PASSIIVITULO')
@@ -395,6 +419,8 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
       provisio,
       liittymat: liittymatBySeller[nimi] ?? 0,
       fsecEur: fsecureBySeller[nimi] ?? 0,
+      bonus: bonusBySeller[nimi] ?? 0,
+      kassamyynti: emp && kassamyyntiRow ? parseNum(kassamyyntiRow[emp.col]) : 0,
       palkka,
       verottomat,
       sivukulut,

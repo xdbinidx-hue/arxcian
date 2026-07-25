@@ -38,9 +38,11 @@ const STORE_TOGGLE_OPTIONS = ['Kaikki myymälät', ...CANONICAL_STORES]
 const STORE_COLORS: Record<string, string> = {
   Holma: '#22c55e', Syke: '#3b82f6', Malmi: '#ef4444', Easton: '#f97316', Kivistö: '#eab308', 'Muut myymälät': '#94a3b8',
 }
-// Payout-viive: liittymäprovisio maksetaan 2 kk myöhässä, kassakate ja F-Secure 1 kk myöhässä
-// (verrattuna siihen kuukauteen kun myynti tehtiin myyntiseurannassa).
-const PAYOUT_DELAY: Record<'liittymat' | 'kassakate' | 'fsecure', number> = { liittymat: 2, kassakate: 1, fsecure: 1 }
+// Payout-viive (verrattuna siihen kuukauteen kun myynti tehtiin myyntiseurannassa):
+// liittymäprovisio maksetaan 3 kk myöhässä (myynti → aktivointi kuukausi myöhemmin →
+// maksu vielä kuukausi siitä eteenpäin, esim. helmikuun myynti aktivoituu huhtikuussa ja
+// maksetaan toukokuun maksukuitissa), kassakate ja F-Secure 1 kk myöhässä.
+const PAYOUT_DELAY: Record<'liittymat' | 'kassakate' | 'fsecure', number> = { liittymat: 3, kassakate: 1, fsecure: 1 }
 
 function parseMonthNum(name: string): number {
   const m = name.match(/(\d{1,2})\./)
