@@ -221,12 +221,15 @@ export default function TrendPage() {
   })
 
   // ---- OSIO 3: kokonaistulos per myymälä (liittymät+kassamyynti+F-Secure+bonukset, EI passiivi/kulut) ----
-  // Ei omaa Total-viivaa kaaviossa — riittää ilmoitus kokonaissummasta (kaikki myymälät, myös
-  // ei-kanoniset kuten "Muut myymälät", koko valitun vuoden ajalta).
-  let tulosSeurantaTotal = 0
+  // Ei omaa Total-viivaa kaaviossa, mutta jokaisen kuukauden kohdalla mainitaan kaikkien
+  // myymälöiden (myös ei-kanonisten, esim. "Muut myymälät") yhteistulos pelkkänä lukuna —
+  // toteutettu näkymättömällä Total-sarjalla (stroke none, ei legendissä) jonka LabelList
+  // piirtää numeron kunkin kuukauden kohdalle, ilman että itse viivaa näkyy.
   const tulosSeurantaData = yearMonths.map(m => {
     const point: Record<string, string | number> = { kuukausi: m.kuukausi }
-    for (const s of Object.values(m.stores)) tulosSeurantaTotal += s.liittymat + s.kassakate + s.fsecEur + s.bonus
+    let total = 0
+    for (const s of Object.values(m.stores)) total += s.liittymat + s.kassakate + s.fsecEur + s.bonus
+    point.Total = Math.round(total)
     for (const store of CANONICAL_STORES) {
       const key = findStoreKey(m.stores, store)
       const s = key ? m.stores[key] : undefined
@@ -250,13 +253,16 @@ export default function TrendPage() {
     }
   })
 
-  // Kaavio B — Kassakate per myymälä (Kassakate / Rescue kate / Huoltokate), viimeisin kk
+  // Kaavio B — Kassakate per myymälä (Kassakate / Rescue kate / Huoltokate), viimeisin kk.
+  // Ostorahdit vähennetään kassakatteesta (raakadatasta todennettu: RJ-Mob Oy -sarake =
+  // (kassakate - ostorahdit) × 0.5, eli Kassamyynti-taulukon oma "Kassakate"-sarake on
+  // ostorahtien osalta bruttoluku).
   const kaavioB = CANONICAL_STORES.map(store => {
     const key = findStoreKey(latestMonth?.kassamyynti, store)
     const row = key && latestMonth ? latestMonth.kassamyynti[key] : undefined
     return {
       myymala: STORE_DISPLAY_NAME[store],
-      kassakate: row?.kassakate,
+      kassakate: row ? row.kassakate - row.ostorahdit : undefined,
       rescueKate: row?.rescueKate,
       huoltokate: row?.huoltokate,
     }
@@ -365,7 +371,7 @@ export default function TrendPage() {
         </Card>
 
         {/* OSIO 3 — Tulos seuranta myymälöittäin */}
-        <Card title="Tulos seuranta myymälöittäin" note={`— liittymät + kassamyynti + F-Secure + bonukset (ei passiivituloa, ei työntekijäkuluja) · Yhteensä kaikista myymälöistä: ${fmt(tulosSeurantaTotal)}`}>
+        <Card title="Tulos seuranta myymälöittäin" note="— liittymät + kassamyynti + F-Secure + bonukset (ei passiivituloa, ei työntekijäkuluja) · luku jokaisen kuukauden kohdalla on kaikkien myymälöiden yhteistulos">
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={tulosSeurantaData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -376,6 +382,9 @@ export default function TrendPage() {
               {CANONICAL_STORES.map(store => (
                 <Line key={store} type="monotone" dataKey={store} name={STORE_DISPLAY_NAME[store]} stroke={STORE_COLORS[store]} strokeWidth={2} dot={{r:3}} connectNulls />
               ))}
+              <Line type="monotone" dataKey="Total" legendType="none" stroke="none" dot={false} activeDot={false} connectNulls isAnimationActive={false}>
+                <LabelList dataKey="Total" position="top" style={{fontSize:10, fontWeight:600, fill:'#111827'}} formatter={(v: number) => fmt(v)} />
+              </Line>
             </LineChart>
           </ResponsiveContainer>
         </Card>
