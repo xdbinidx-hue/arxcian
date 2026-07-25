@@ -572,6 +572,9 @@ export async function GET(req: NextRequest) {
       const maksuBox = maksuIdx >= 0 ? rows.slice(maksuIdx, maksuIdx + 6).map((r, i) => ({ row: maksuIdx + i, cells: r.slice(19, 32) })) : []
       const kassamyyntiIdx = rows.findIndex(r => r.some(c => (c || '').trim().toLowerCase() === 'kassamyynti'))
       const kassamyyntiBox = kassamyyntiIdx >= 0 ? rows.slice(kassamyyntiIdx, kassamyyntiIdx + 10).map((r, i) => ({ row: kassamyyntiIdx + i, cells: r.slice(19, 32) })) : []
+      const passiivituloPanelDbg = findPanelRow(rows, v => v === 'PASSIIVITULO')
+      const passiivituloIdxDbg = passiivituloPanelDbg?.rowIdx ?? -1
+      const passiivituloBox = passiivituloIdxDbg >= 0 ? rows.slice(passiivituloIdxDbg, passiivituloIdxDbg + 15).map((r, i) => ({ row: passiivituloIdxDbg + i, cells: r.slice(19, 32) })) : []
       const tyontekijatPanelDbg = findPanelRow(rows, v => v.startsWith('TYÖNTEKIJÄ'))
       const tyontekijatIdx = tyontekijatPanelDbg?.rowIdx ?? -1
       const tyontekijatBox = tyontekijatIdx >= 0 ? rows.slice(tyontekijatIdx, tyontekijatIdx + 20).map((r, i) => ({ row: tyontekijatIdx + i, cells: r.slice(19, 36) })) : []
@@ -580,7 +583,7 @@ export async function GET(req: NextRequest) {
       const parsedYhteenveto = parseYhteenveto(rows)
       const parsedKassamyynti = parseKassamyynti(rows)
       const parsedAlv0 = parseMaksuAlv0(rows)
-      return NextResponse.json({ name: meta.data.name, malmiBlock, yhteenvetoLabelIdx, yhteenvetoBox, maksuIdx, maksuBox, kassamyyntiIdx, kassamyyntiBox, tyontekijatIdx, tyontekijatBox, parsedYhteenveto, parsedKassamyynti, parsedAlv0 })
+      return NextResponse.json({ name: meta.data.name, malmiBlock, yhteenvetoLabelIdx, yhteenvetoBox, maksuIdx, maksuBox, kassamyyntiIdx, kassamyyntiBox, passiivituloIdxDbg, passiivituloBox, tyontekijatIdx, tyontekijatBox, parsedYhteenveto, parsedKassamyynti, parsedAlv0 })
     }
 
     const fileId = req.nextUrl.searchParams.get('fileId') ?? files[0]?.id
