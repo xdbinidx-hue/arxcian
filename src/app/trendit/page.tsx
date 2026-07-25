@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, LabelList } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, LabelList, Cell } from 'recharts'
 
 interface ReceiptStore {
   liittymat: number; fsecEur: number; kassakate: number; huoltokate: number; rescueKate: number
@@ -67,6 +67,13 @@ function monthKey(year: number, monthNum: number): string {
 function shiftMonth(year: number, monthNum: number, delta: number): { year: number, monthNum: number } {
   const total = year * 12 + (monthNum - 1) - delta
   return { year: Math.floor(total / 12), monthNum: (((total % 12) + 12) % 12) + 1 }
+}
+
+// Onko b tarkalleen a:ta seuraava kalenterikuukausi (huomioi vuodenvaihde). Käytetään F-Secure-
+// peruutuslaskennassa: jos kuukausien välissä on aukko (esim. maksukuitti puuttuu), laskentaa
+// ei tehdä sille välille, koska erotus näyttäisi silloin virheellisesti usean kuukauden peruutukset.
+function isNextMonth(a: { year: number, monthNum: number }, b: { year: number, monthNum: number }): boolean {
+  return a.monthNum === 12 ? (b.year === a.year + 1 && b.monthNum === 1) : (b.year === a.year && b.monthNum === a.monthNum + 1)
 }
 
 function monthLabel(year: number, monthNum: number, showYear: boolean): string {
@@ -293,6 +300,24 @@ export default function TrendPage() {
     return point
   })
 
+  // F-Secure peruutukset: kuukauden maksukuitin lisenssimäärä + saman kuukauden myyntiseurannan
+  // uudet F-Secure-myynnit (kaikki myymälät) on odotettu lisenssimäärä seuraavalle kuukaudelle.
+  // Jos seuraavan kuukauden maksukuitissa on vähemmän lisenssejä kuin odotettu, erotus on
+  // peruutettuja lisenssejä (esim. kesäkuu 1500 kpl + 150 kpl myyty kesäkuussa = odotettu 1650
+  // heinäkuulle; jos heinäkuun kuitissa on 1640, 10 lisenssiä on peruutettu). Käytetään koko
+  // maksukuittihistoriaa peräkkäisyyden tarkistamiseen (isNextMonth), mutta näytetään vain
+  // tämän vuoden havaintokuukaudet muiden käyrien tapaan.
+  const fsecPeruutuksetData = receiptsMonths.flatMap((m, i) => {
+    const next = receiptsMonths[i + 1]
+    if (!next || !isNextMonth(m, next) || next.year !== currentYear) return []
+    const salesForM = salesByKey.get(monthKey(m.year, m.monthNum))
+    const uudetLisenssit = sumOrPick(salesForM?.stores, 'fsecKpl', 'Kaikki myymälät') ?? 0
+    const odotettu = m.totals.fsecAsiakkuudet + uudetLisenssit
+    const peruutukset = Math.round(odotettu - next.totals.fsecAsiakkuudet)
+    return [{ kuukausi: next.kuukausi, peruutukset }]
+  })
+  const totalPeruutukset = fsecPeruutuksetData.reduce((s, d) => s + d.peruutukset, 0)
+
   if (loading) return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
       <TopBar activePage="/trendit" />
@@ -379,6 +404,31 @@ export default function TrendPage() {
           <TrendAreaChart title="Liittymät (€) — Todellinen / Brutto / Viime vuosi" data={liittTrend} fmt={fmt} />
           <TrendAreaChart title="Kassakate (€) — Todellinen / Viime vuosi" data={kassaTrend} fmt={fmt} showBrutto={false} />
           <TrendAreaChart title="F-Secure (€) — Todellinen / Viime vuosi" data={fsecTrend} fmt={fmt} showBrutto={false} />
+        </div>
+
+        <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+              F-Secure peruutukset <span style={{textTransform:'none',fontWeight:400}}>— (edellisen kk lisenssit + kk:n uudet myynnit) − todelliset lisenssit</span>
+            </div>
+            <div style={{fontSize:12,fontWeight:500,color:totalPeruutukset<=0?'#3B6D11':'#A32D2D'}}>
+              Yhteensä {fmtN(totalPeruutukset)} kpl
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={fsecPeruutuksetData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
+              <YAxis tick={{fontSize:11}} />
+              <Tooltip formatter={(v:number) => `${fmtN(v)} kpl`} />
+              <Bar dataKey="peruutukset" name="Peruutukset (kpl)" radius={[4,4,0,0]}>
+                <LabelList dataKey="peruutukset" position="top" style={{fontSize:10,fill:'#666'}} formatter={(v: number) => fmtN(v)} />
+                {fsecPeruutuksetData.map((d, i) => (
+                  <Cell key={i} fill={d.peruutukset > 0 ? '#E24B4A' : '#639922'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>
