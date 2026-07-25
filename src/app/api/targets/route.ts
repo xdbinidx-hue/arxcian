@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { isRJMobSeller, shouldSkip, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { cachedJson } from '@/lib/apiCache'
 
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!)
@@ -290,7 +291,7 @@ export async function GET(req: NextRequest) {
     }).filter(t => t.nimi !== 'Albin Rashica')
       .sort((a, b) => b.liittRunrate - a.liittRunrate)
 
-    return NextResponse.json({ kuukausi: fileName, targets, sheetNames })
+    return cachedJson({ kuukausi: fileName, targets, sheetNames })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })

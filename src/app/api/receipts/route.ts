@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import ExcelJS from 'exceljs'
 import { RJ_MOB_SELLERS, getTuntipalkka } from '@/lib/rjmob'
+import { cachedJson } from '@/lib/apiCache'
 
 // Maksukuitin tiedostonimi kertoo MAKSUKUUKAUDEN, ei myyntikuukauden — esim. "Maksukuitti
 // 5. Toukokuu" sisältää toukokuussa maksetut korvaukset, ei toukokuun myyntiä:
@@ -603,7 +604,7 @@ export async function GET(req: NextRequest) {
       : await loadRowsFromXlsx(drive, fileId)
 
     const result = parseReceiptRows(rows, meta.data.name ?? 'Maksukuitti')
-    return NextResponse.json({ files, ...result })
+    return cachedJson({ files, ...result })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })

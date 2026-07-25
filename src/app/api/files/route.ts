@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
+import { cachedJson } from '@/lib/apiCache'
 
 const FOLDER_ID = '1QKY-rxqFQwbfK9saX5fvhVIixrv_9kYz'
 
@@ -26,7 +27,7 @@ export async function GET() {
     })
 
     const files = res.data.files ?? []
-    return NextResponse.json({ files })
+    return cachedJson({ files })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })
