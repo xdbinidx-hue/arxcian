@@ -40,6 +40,9 @@ export const TUNTIPALKAT: Record<string, number> = {
   'Kadiri Ramin': 10,
   'Daniel Miettinen': 10,
   'Miettinen Daniel': 10,
+  // Ei enää töissä, mutta esiintyvät vanhemmissa (2025) myyntiseuranta-/maksukuittitiedostoissa
+  // pelkkinä etuniminä — Petri/Markus/Vili käyttävät oletuspalkkaa (13 €/h), Kasper poikkeaa siitä.
+  'Kasper': 10,
   default: 13,
 }
 
