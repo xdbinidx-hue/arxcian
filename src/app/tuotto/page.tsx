@@ -15,7 +15,7 @@ interface DashData {
 }
 
 interface DriveFile {
-  id: string; name: string; mimeType: string
+  id: string; name: string; mimeType: string; year?: number | null
 }
 
 interface ReceiptsData {
@@ -48,6 +48,7 @@ interface YearStore {
 
 interface MonthEntry {
   kuukausi: string
+  year: number
   monthNum: number
   sellers: YearSeller[]
   stores: Record<string, YearStore>
@@ -68,6 +69,14 @@ function parsePrefix(name: string): number {
 function monthNumOf(name: string): number {
   const m = name.match(/(\d{1,3})\./)
   return m ? Number(m[1]) : 0
+}
+
+// Varalähde jos api/receipts ei ole merkinnyt tiedostoa vuosikansion vuodella (esim. vanhempi
+// juurikansiorakenne ilman vuosikansioita) — arvataan kuluvasta päivämäärästä samalla logiikalla
+// kuin trendit-sivulla.
+function inferYear(monthNum: number): number {
+  const today = new Date()
+  return monthNum <= today.getMonth() + 1 ? today.getFullYear() : today.getFullYear() - 1
 }
 
 function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
@@ -158,10 +167,8 @@ export default function TuottoPage() {
 
   const [mode, setMode] = useState<'arvio'|'todellinen'>('arvio')
   const [receiptFiles, setReceiptFiles] = useState<DriveFile[]>([])
-  const [yearSellers, setYearSellers] = useState<YearSeller[]>([])
-  const [yearStores, setYearStores] = useState<Record<string, YearStore>>({})
-  const [yearMonths, setYearMonths] = useState(0)
   const [monthEntries, setMonthEntries] = useState<MonthEntry[]>([])
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [todellinenView, setTodellinenView] = useState<'vuosi' | number>('vuosi')
   const [yearLoaded, setYearLoaded] = useState(false)
   const [yearLoading, setYearLoading] = useState(false)
@@ -213,13 +220,16 @@ export default function TuottoPage() {
           salesKassaByMonth[monthNumOf(f.name)] = map
         }
 
-        const sellerAgg: Record<string, YearSeller> = {}
-        const storeAgg: Record<string, YearStore> = {}
+        // Kuukausikohtainen data kerätään sellaisenaan (vuosi mukana) — "koko vuosi"
+        // -summaus lasketaan erikseen valitulle vuodelle (ks. yearSellers/yearStores alla),
+        // koska maksukuitteja voi nyt olla usealta vuodelta yhtä aikaa.
         const months: MonthEntry[] = []
 
         for (const { f, d } of receiptResults) {
           if (d.error || !d.totals) continue
-          const kassaBySeller = salesKassaByMonth[monthNumOf(f.name)] ?? {}
+          const monthNum = monthNumOf(f.name)
+          const year = f.year ?? inferYear(monthNum)
+          const kassaBySeller = salesKassaByMonth[monthNum] ?? {}
 
           const monthSellers: YearSeller[] = []
           for (const s of (d.sellers ?? []) as ReceiptsData['sellers']) {
@@ -227,40 +237,18 @@ export default function TuottoPage() {
             const kassakate = kassaBySeller[s.nimi] ?? 0
             const roi = s.sivukulut > 0 ? (s.netto / s.sivukulut) * 100 : 0
             monthSellers.push({ nimi: s.nimi, liittymat: s.liittymat, kassakate, fsecEur: s.fsecEur, tyokulu: s.sivukulut, netto: s.netto, roi, isOwner })
-
-            const acc = sellerAgg[s.nimi] ?? { nimi: s.nimi, liittymat: 0, kassakate: 0, fsecEur: 0, tyokulu: 0, netto: 0, roi: 0, isOwner: true }
-            acc.liittymat += s.liittymat
-            acc.kassakate += kassakate
-            acc.fsecEur += s.fsecEur
-            acc.tyokulu += s.sivukulut
-            acc.netto += s.netto
-            acc.isOwner = acc.isOwner && isOwner
-            sellerAgg[s.nimi] = acc
           }
           monthSellers.sort((a, b) => b.netto - a.netto)
 
           const monthStores: Record<string, YearStore> = {}
           for (const [storeName, sv] of Object.entries(d.stores ?? {}) as [string, YearStore][]) {
             monthStores[storeName] = sv
-            const acc = storeAgg[storeName] ?? { liittymat: 0, fsecEur: 0, kassakate: 0, huoltokate: 0, rescueKate: 0 }
-            acc.liittymat += sv.liittymat
-            acc.fsecEur += sv.fsecEur
-            acc.kassakate += sv.kassakate
-            acc.huoltokate += sv.huoltokate
-            acc.rescueKate += sv.rescueKate
-            storeAgg[storeName] = acc
           }
 
-          months.push({ kuukausi: d.kuukausi ?? f.name, monthNum: monthNumOf(f.name), sellers: monthSellers, stores: monthStores })
+          months.push({ kuukausi: d.kuukausi ?? f.name, year, monthNum, sellers: monthSellers, stores: monthStores })
         }
-        months.sort((a, b) => a.monthNum - b.monthNum)
+        months.sort((a, b) => (a.year - b.year) || (a.monthNum - b.monthNum))
 
-        const sellersOut = Object.values(sellerAgg).map(s => ({ ...s, roi: s.tyokulu > 0 ? (s.netto / s.tyokulu) * 100 : 0 }))
-          .sort((a, b) => b.netto - a.netto)
-
-        setYearSellers(sellersOut)
-        setYearStores(storeAgg)
-        setYearMonths(months.length)
         setMonthEntries(months)
         setYearLoaded(true)
       } catch (e) {
@@ -271,14 +259,51 @@ export default function TuottoPage() {
     })()
   }, [mode, yearLoaded, receiptFiles])
 
+  // Maksukuitteja voi nyt olla usealta vuodelta — oletusvuodeksi valitaan uusin löytynyt heti
+  // kun kuukausidata on ladattu.
+  const availableYears = Array.from(new Set(monthEntries.map(m => m.year))).sort((a, b) => b - a)
+  useEffect(() => {
+    if (selectedYear === null && availableYears.length > 0) setSelectedYear(availableYears[0])
+  }, [availableYears, selectedYear])
+
+  const monthsForYear = selectedYear !== null ? monthEntries.filter(m => m.year === selectedYear) : []
+
   const activeRanked = data?.sellers
     .filter(r=>r.tyyppi!=='ref'&&r.tyyppi!=='standi')
     .sort((a,b)=>{ if(a.tyyppi==='owner') return -1; if(b.tyyppi==='owner') return 1; return b.netto-a.netto }) ?? []
 
-  const selectedMonthEntry = typeof todellinenView === 'number' ? monthEntries.find(m => m.monthNum === todellinenView) : null
+  // "Koko vuosi" -summaus lasketaan aina valitulle vuodelle erikseen kuukausidatasta, ei
+  // esilasketusta kaikkien vuosien summasta.
+  const yearSellerAgg: Record<string, YearSeller> = {}
+  const yearStoreAgg: Record<string, YearStore> = {}
+  for (const m of monthsForYear) {
+    for (const s of m.sellers) {
+      const acc = yearSellerAgg[s.nimi] ?? { nimi: s.nimi, liittymat: 0, kassakate: 0, fsecEur: 0, tyokulu: 0, netto: 0, roi: 0, isOwner: true }
+      acc.liittymat += s.liittymat
+      acc.kassakate += s.kassakate
+      acc.fsecEur += s.fsecEur
+      acc.tyokulu += s.tyokulu
+      acc.netto += s.netto
+      acc.isOwner = acc.isOwner && s.isOwner
+      yearSellerAgg[s.nimi] = acc
+    }
+    for (const [storeName, sv] of Object.entries(m.stores)) {
+      const acc = yearStoreAgg[storeName] ?? { liittymat: 0, fsecEur: 0, kassakate: 0, huoltokate: 0, rescueKate: 0 }
+      acc.liittymat += sv.liittymat
+      acc.fsecEur += sv.fsecEur
+      acc.kassakate += sv.kassakate
+      acc.huoltokate += sv.huoltokate
+      acc.rescueKate += sv.rescueKate
+      yearStoreAgg[storeName] = acc
+    }
+  }
+  const yearSellers = Object.values(yearSellerAgg).map(s => ({ ...s, roi: s.tyokulu > 0 ? (s.netto / s.tyokulu) * 100 : 0 }))
+    .sort((a, b) => b.netto - a.netto)
+
+  const selectedMonthEntry = typeof todellinenView === 'number' ? monthsForYear.find(m => m.monthNum === todellinenView) : null
   const displaySellers = todellinenView === 'vuosi' ? yearSellers : (selectedMonthEntry?.sellers ?? [])
-  const displayStores = todellinenView === 'vuosi' ? yearStores : (selectedMonthEntry?.stores ?? {})
-  const displayLabel = todellinenView === 'vuosi' ? `koko vuosi (${yearMonths} kk)` : (selectedMonthEntry?.kuukausi ?? '')
+  const displayStores = todellinenView === 'vuosi' ? yearStoreAgg : (selectedMonthEntry?.stores ?? {})
+  const displayLabel = todellinenView === 'vuosi' ? `koko vuosi ${selectedYear ?? ''} (${monthsForYear.length} kk)` : (selectedMonthEntry?.kuukausi ?? '')
 
   const alerts = data ? generateAlerts(data) : []
   const th = {fontSize:10,fontWeight:500,color:'#888',textAlign:'left' as const,padding:'5px 7px',borderBottom:'0.5px solid #eee',whiteSpace:'nowrap' as const}
@@ -476,6 +501,23 @@ export default function TuottoPage() {
           {yearLoading && <div style={{textAlign:'center',padding:40,color:'#888',fontSize:14}}>Ladataan koko vuoden maksukuittidataa...</div>}
           {yearLoaded && !yearLoading && (<>
 
+            {availableYears.length > 1 && (
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+                <span style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>Vuosi</span>
+                {availableYears.map(y => (
+                  <button key={y} onClick={()=>{ setSelectedYear(y); setTodellinenView('vuosi') }}
+                    style={{
+                      padding:'5px 12px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:12,
+                      fontWeight: selectedYear===y?500:400,
+                      background: selectedYear===y?'#185FA5':'white',
+                      color: selectedYear===y?'white':'#555',
+                    }}>
+                    {y}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
               <span style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>Näkymä</span>
               <button onClick={()=>setTodellinenView('vuosi')}
@@ -487,7 +529,7 @@ export default function TuottoPage() {
                 }}>
                 Koko vuosi
               </button>
-              {monthEntries.map(m => (
+              {monthsForYear.map(m => (
                 <button key={m.monthNum} onClick={()=>setTodellinenView(m.monthNum)}
                   style={{
                     padding:'5px 12px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:12,

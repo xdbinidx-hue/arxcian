@@ -491,21 +491,43 @@ export async function GET(req: NextRequest) {
     const drive = google.drive({ version: 'v3', auth })
     const sheets = google.sheets({ version: 'v4', auth })
 
-    // Kuittikansiossa on vuosikansio(t) (esim. "2026"); etsitään ensimmäinen alikansio.
-    const yearFolders = await drive.files.list({
+    // Kuittikansiossa on vuosikansio(t) (esim. "2025", "2026") — kaikki vuodet listataan ja
+    // yhdistetään, ei vain ensimmäinen Drive-haun palauttama (aiemmin luettiin vahingossa vain
+    // yhtä vuotta kerrallaan, jolloin toisen vuosikansion lisääminen saattoi jopa PIILOTTAA
+    // aiemmin näkyneen vuoden kuitit, koska Driven palautusjärjestys ei ole taattu). Jokainen
+    // tiedosto merkitään sen kansion nimestä pääteltävällä vuodella, jotta frontend ei joudu
+    // arvaamaan vuotta kuukausinumeron ja tämänhetkisen päivämäärän perusteella.
+    const yearFoldersRes = await drive.files.list({
       q: `'${RECEIPTS_ROOT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
       fields: 'files(id, name)',
     })
-    const folderId = yearFolders.data.files?.[0]?.id ?? RECEIPTS_ROOT_FOLDER_ID
+    const yearFolders = yearFoldersRes.data.files ?? []
 
-    const listRes = await drive.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      fields: 'files(id, name, mimeType, modifiedTime)',
-      orderBy: 'modifiedTime desc',
-    })
+    interface DriveFileWithYear { id?: string | null; name?: string | null; mimeType?: string | null; modifiedTime?: string | null; year: number | null }
+    let rawFiles: DriveFileWithYear[]
+    if (yearFolders.length > 0) {
+      const perYear = await Promise.all(yearFolders.map(async yf => {
+        const res = await drive.files.list({
+          q: `'${yf.id}' in parents and trashed = false`,
+          fields: 'files(id, name, mimeType, modifiedTime)',
+        })
+        const year = /^\d{4}$/.test((yf.name ?? '').trim()) ? Number(yf.name) : null
+        return (res.data.files ?? []).map(f => ({ ...f, year }))
+      }))
+      rawFiles = perYear.flat()
+    } else {
+      // Varalähde: ei vuosikansioita, listataan juurikansio suoraan (vanha käytös).
+      const listRes = await drive.files.list({
+        q: `'${RECEIPTS_ROOT_FOLDER_ID}' in parents and trashed = false`,
+        fields: 'files(id, name, mimeType, modifiedTime)',
+      })
+      rawFiles = (listRes.data.files ?? []).map(f => ({ ...f, year: null }))
+    }
+    rawFiles.sort((a, b) => (b.modifiedTime ?? '').localeCompare(a.modifiedTime ?? ''))
+
     // "Pohja" (template/blank) -tiedostot eivät ole todellista kuukausidataa — kuukausikopiot
     // ("Kopio tiedostosta Maksukuitti N. Kuukausi") tehdään niistä, mutta pohja itse jää kansioon.
-    const files = (listRes.data.files ?? [])
+    const files = rawFiles
       .filter(f => SPREADSHEET_MIMETYPES.includes(f.mimeType ?? ''))
       .filter(f => !(f.name ?? '').toLowerCase().includes('pohja'))
 

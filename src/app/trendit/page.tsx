@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, LabelList } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, LabelList, Cell } from 'recharts'
 
 interface ReceiptStore {
   liittymat: number; fsecEur: number; kassakate: number; huoltokate: number; rescueKate: number
@@ -29,7 +29,7 @@ interface SalesMonth {
 }
 
 interface DriveFile {
-  id: string; name: string; mimeType: string
+  id: string; name: string; mimeType: string; year?: number | null
 }
 
 const FINNISH_MONTHS = ['Tammikuu','Helmikuu','Maaliskuu','Huhtikuu','Toukokuu','Kesäkuu','Heinäkuu','Elokuu','Syyskuu','Lokakuu','Marraskuu','Joulukuu']
@@ -67,6 +67,13 @@ function monthKey(year: number, monthNum: number): string {
 function shiftMonth(year: number, monthNum: number, delta: number): { year: number, monthNum: number } {
   const total = year * 12 + (monthNum - 1) - delta
   return { year: Math.floor(total / 12), monthNum: (((total % 12) + 12) % 12) + 1 }
+}
+
+// Onko b tarkalleen a:ta seuraava kalenterikuukausi (huomioi vuodenvaihde). Käytetään F-Secure-
+// peruutuslaskennassa: jos kuukausien välissä on aukko (esim. maksukuitti puuttuu), laskentaa
+// ei tehdä sille välille, koska erotus näyttäisi silloin virheellisesti usean kuukauden peruutukset.
+function isNextMonth(a: { year: number, monthNum: number }, b: { year: number, monthNum: number }): boolean {
+  return a.monthNum === 12 ? (b.year === a.year + 1 && b.monthNum === 1) : (b.year === a.year && b.monthNum === a.monthNum + 1)
 }
 
 function monthLabel(year: number, monthNum: number, showYear: boolean): string {
@@ -172,7 +179,9 @@ export default function TrendPage() {
       for (const { f, d } of receiptResults) {
         if (d.error || !d.totals) continue
         const monthNum = parseMonthNum(f.name)
-        const year = inferYear(monthNum, parseYear(f.name))
+        // Vuosi tulee ensisijaisesti Drive-vuosikansion nimestä (api/receipts merkitsee sen
+        // jokaiseen tiedostoon) — arvaus kuukausinumerosta on vain varalähde jos sitä ei löydy.
+        const year = f.year ?? inferYear(monthNum, parseYear(f.name))
         rMonths.push({
           year, monthNum,
           kuukausi: monthLabel(year, monthNum, false),
@@ -202,13 +211,17 @@ export default function TrendPage() {
   const salesByKey = new Map(salesMonths.map(m => [monthKey(m.year, m.monthNum), m]))
   const receiptsByKey = new Map(receiptsMonths.map(m => [monthKey(m.year, m.monthNum), m]))
 
-  const currentYear = new Date().getFullYear()
-  const totalNettoThisYear = receiptsMonths.filter(m => m.year === currentYear).reduce((s, m) => s + m.totals.netto, 0)
+  // "Tämä vuosi" tarkoittaa uusinta vuotta jolta on maksukuittidataa (ei kalenterin
+  // todellista vuotta) — kuiteista voi nyt olla useampi vuosi yhtä aikaa, ja sivun pääkäyrät
+  // näyttävät vain uusimman vuoden, "Viime vuosi" -vertailu hakee vanhemmat vuodet erikseen.
+  const currentYear = receiptsMonths.length ? Math.max(...receiptsMonths.map(m => m.year)) : new Date().getFullYear()
+  const currentYearMonths = receiptsMonths.filter(m => m.year === currentYear)
+  const totalNettoThisYear = currentYearMonths.reduce((s, m) => s + m.totals.netto, 0)
   const latestMonth = receiptsMonths.length ? receiptsMonths[receiptsMonths.length - 1] : null
   const fsecLicensesNow = latestMonth?.totals.fsecAsiakkuudet ?? 0
   // F-Secure passiivitulo tämä vuosi: summataan jokaisen maksukuitin oma passiivitulo (ei
   // ekstrapoloida viimeisintä kuukautta × 12, koska joka kuukaudelta on jo oma todellinen luku).
-  const fsecPassiiviThisYear = receiptsMonths.filter(m => m.year === currentYear).reduce((s, m) => s + m.totals.fsecPassiivitulo, 0)
+  const fsecPassiiviThisYear = currentYearMonths.reduce((s, m) => s + m.totals.fsecPassiivitulo, 0)
 
   // Myynti (money in) vs Kulut (money out) — Myynti = Liittymät + Kassakate + F-Secure
   // passiivinen tulo (Yhteenveto-taulukosta). Kulut = työntekijäkulut (Yhteenveto-taulukon
@@ -220,12 +233,12 @@ export default function TrendPage() {
   // havaittujen kuukausien määrällä ja kerrottuna 12:lla (run rate) — ei keskiarvoa
   // "paras kuukausi pois laskuista" -menetelmällä, joka vääristyy pahasti kun mukana on
   // vain muutama kuukausi ja niistä osa poikkeuksellisen negatiivisia.
-  const nettoForecast = receiptsMonths.length
-    ? Math.round((receiptsMonths.reduce((s, m) => s + (moneyIn(m) - moneyOut(m)), 0) / receiptsMonths.length) * 12)
+  const nettoForecast = currentYearMonths.length
+    ? Math.round((currentYearMonths.reduce((s, m) => s + (moneyIn(m) - moneyOut(m)), 0) / currentYearMonths.length) * 12)
     : 0
 
-  const myyntiKuluData = receiptsMonths.map((m, i) => {
-    const prev = i > 0 ? receiptsMonths[i - 1] : null
+  const myyntiKuluData = currentYearMonths.map((m, i) => {
+    const prev = i > 0 ? currentYearMonths[i - 1] : null
     const pctChange = (curr: number, prevVal: number | undefined) =>
       prevVal === undefined || prevVal === 0 ? undefined : Math.round((curr - prevVal) / Math.abs(prevVal) * 100)
     const myyntiPct = prev ? pctChange(moneyIn(m), moneyIn(prev)) : undefined
@@ -238,8 +251,8 @@ export default function TrendPage() {
       kuluLabel: kuluPct !== undefined ? `${kuluPct >= 0 ? '+' : ''}${kuluPct}%` : '',
     }
   })
-  const totalMyyntiAll = receiptsMonths.reduce((s, m) => s + moneyIn(m), 0)
-  const totalKulutAll = receiptsMonths.reduce((s, m) => s + moneyOut(m), 0)
+  const totalMyyntiAll = currentYearMonths.reduce((s, m) => s + moneyIn(m), 0)
+  const totalKulutAll = currentYearMonths.reduce((s, m) => s + moneyOut(m), 0)
   const totalNettoAll = totalMyyntiAll - totalKulutAll
   const nettoMarginPct = totalMyyntiAll > 0 ? Math.round(totalNettoAll / totalMyyntiAll * 100) : 0
 
@@ -247,7 +260,7 @@ export default function TrendPage() {
   // siirretty payout-viiveen verran taaksepäin) ja Viime vuosi (sama kuukausi, maksukuitista).
   function buildAreaTrend(area: 'liittymat' | 'kassakate' | 'fsecure'): AreaTrendPoint[] {
     const delay = PAYOUT_DELAY[area]
-    return receiptsMonths.map(m => {
+    return currentYearMonths.map(m => {
       const todellinen = area === 'liittymat'
         ? sumOrPick(m.stores, 'liittymat', storeFilter)
         : area === 'kassakate'
@@ -277,7 +290,7 @@ export default function TrendPage() {
   const fsecTrend = buildAreaTrend('fsecure')
 
   // Myymäläkohtainen kokonaisnetto (liittymät + kassakate + rescue kate + huoltokate, EI f-secure).
-  const storeNettoData = receiptsMonths.map(m => {
+  const storeNettoData = currentYearMonths.map(m => {
     const point: Record<string, string | number> = { kuukausi: m.kuukausi }
     for (const store of CANONICAL_STORES) {
       const key = findStoreKey(m.stores, store)
@@ -286,6 +299,24 @@ export default function TrendPage() {
     }
     return point
   })
+
+  // F-Secure peruutukset: kuukauden maksukuitin lisenssimäärä + saman kuukauden myyntiseurannan
+  // uudet F-Secure-myynnit (kaikki myymälät) on odotettu lisenssimäärä seuraavalle kuukaudelle.
+  // Jos seuraavan kuukauden maksukuitissa on vähemmän lisenssejä kuin odotettu, erotus on
+  // peruutettuja lisenssejä (esim. kesäkuu 1500 kpl + 150 kpl myyty kesäkuussa = odotettu 1650
+  // heinäkuulle; jos heinäkuun kuitissa on 1640, 10 lisenssiä on peruutettu). Käytetään koko
+  // maksukuittihistoriaa peräkkäisyyden tarkistamiseen (isNextMonth), mutta näytetään vain
+  // tämän vuoden havaintokuukaudet muiden käyrien tapaan.
+  const fsecPeruutuksetData = receiptsMonths.flatMap((m, i) => {
+    const next = receiptsMonths[i + 1]
+    if (!next || !isNextMonth(m, next) || next.year !== currentYear) return []
+    const salesForM = salesByKey.get(monthKey(m.year, m.monthNum))
+    const uudetLisenssit = sumOrPick(salesForM?.stores, 'fsecKpl', 'Kaikki myymälät') ?? 0
+    const odotettu = m.totals.fsecAsiakkuudet + uudetLisenssit
+    const peruutukset = Math.round(odotettu - next.totals.fsecAsiakkuudet)
+    return [{ kuukausi: next.kuukausi, peruutukset }]
+  })
+  const totalPeruutukset = fsecPeruutuksetData.reduce((s, d) => s + d.peruutukset, 0)
 
   if (loading) return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
@@ -373,6 +404,31 @@ export default function TrendPage() {
           <TrendAreaChart title="Liittymät (€) — Todellinen / Brutto / Viime vuosi" data={liittTrend} fmt={fmt} />
           <TrendAreaChart title="Kassakate (€) — Todellinen / Viime vuosi" data={kassaTrend} fmt={fmt} showBrutto={false} />
           <TrendAreaChart title="F-Secure (€) — Todellinen / Viime vuosi" data={fsecTrend} fmt={fmt} showBrutto={false} />
+        </div>
+
+        <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+              F-Secure peruutukset <span style={{textTransform:'none',fontWeight:400}}>— (edellisen kk lisenssit + kk:n uudet myynnit) − todelliset lisenssit</span>
+            </div>
+            <div style={{fontSize:12,fontWeight:500,color:totalPeruutukset<=0?'#3B6D11':'#A32D2D'}}>
+              Yhteensä {fmtN(totalPeruutukset)} kpl
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={fsecPeruutuksetData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
+              <YAxis tick={{fontSize:11}} />
+              <Tooltip formatter={(v:number) => `${fmtN(v)} kpl`} />
+              <Bar dataKey="peruutukset" name="Peruutukset (kpl)" radius={[4,4,0,0]}>
+                <LabelList dataKey="peruutukset" position="top" style={{fontSize:10,fill:'#666'}} formatter={(v: number) => fmtN(v)} />
+                {fsecPeruutuksetData.map((d, i) => (
+                  <Cell key={i} fill={d.peruutukset > 0 ? '#E24B4A' : '#639922'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,padding:'16px',marginBottom:12}}>

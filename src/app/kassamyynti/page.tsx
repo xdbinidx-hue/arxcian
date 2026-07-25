@@ -9,10 +9,11 @@ interface KassamyyntiRow {
   rjmobOy: number
 }
 
-interface DriveFile { id: string; name: string; mimeType: string }
+interface DriveFile { id: string; name: string; mimeType: string; year?: number | null }
 
 interface MonthEntry {
   kuukausi: string
+  year: number
   monthNum: number
   stores: Record<string, KassamyyntiRow>
 }
@@ -24,6 +25,12 @@ function fmt(n: number) {
 function monthNumOf(name: string): number {
   const m = name.match(/(\d{1,3})\./)
   return m ? Number(m[1]) : 0
+}
+
+// Varalähde jos api/receipts ei ole merkinnyt tiedostoa vuosikansion vuodella.
+function inferYear(monthNum: number): number {
+  const today = new Date()
+  return monthNum <= today.getMonth() + 1 ? today.getFullYear() : today.getFullYear() - 1
 }
 
 const ZERO: KassamyyntiRow = { kassakate: 0, huoltokate: 0, rescueKate: 0, ostorahdit: 0, rjmobOy: 0 }
@@ -69,6 +76,7 @@ function TopBar({ activePage }: { activePage: string }) {
 
 export default function KassamyyntiPage() {
   const [months, setMonths] = useState<MonthEntry[]>([])
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [view, setView] = useState<'vuosi' | number>('vuosi')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -82,27 +90,36 @@ export default function KassamyyntiPage() {
       const out: MonthEntry[] = []
       for (const { f, d } of results) {
         if (d.error || !d.kassamyynti) continue
-        out.push({ kuukausi: d.kuukausi ?? f.name, monthNum: monthNumOf(f.name), stores: d.kassamyynti })
+        const monthNum = monthNumOf(f.name)
+        const year = f.year ?? inferYear(monthNum)
+        out.push({ kuukausi: d.kuukausi ?? f.name, year, monthNum, stores: d.kassamyynti })
       }
-      out.sort((a, b) => a.monthNum - b.monthNum)
+      out.sort((a, b) => (a.year - b.year) || (a.monthNum - b.monthNum))
       setMonths(out)
       setLoading(false)
     }).catch(e => { setError(String(e)); setLoading(false) })
   }, [])
 
-  const selectedMonth = typeof view === 'number' ? months.find(m => m.monthNum === view) : null
-  const storeNames = Array.from(new Set(months.flatMap(m => Object.keys(m.stores))))
+  // Kuitteja voi olla usealta vuodelta — oletusvuodeksi valitaan uusin heti kun data on ladattu.
+  const availableYears = Array.from(new Set(months.map(m => m.year))).sort((a, b) => b - a)
+  useEffect(() => {
+    if (selectedYear === null && availableYears.length > 0) setSelectedYear(availableYears[0])
+  }, [availableYears, selectedYear])
+
+  const monthsForYear = selectedYear !== null ? months.filter(m => m.year === selectedYear) : []
+  const selectedMonth = typeof view === 'number' ? monthsForYear.find(m => m.monthNum === view) : null
+  const storeNames = Array.from(new Set(monthsForYear.flatMap(m => Object.keys(m.stores))))
 
   const displayStores: Record<string, KassamyyntiRow> = {}
   for (const nimi of storeNames) {
     if (view === 'vuosi') {
-      displayStores[nimi] = sumRows(months.map(m => m.stores[nimi] ?? ZERO))
+      displayStores[nimi] = sumRows(monthsForYear.map(m => m.stores[nimi] ?? ZERO))
     } else {
       displayStores[nimi] = selectedMonth?.stores[nimi] ?? ZERO
     }
   }
   const grandTotal = sumRows(Object.values(displayStores))
-  const displayLabel = view === 'vuosi' ? `koko vuosi (${months.length} kk)` : (selectedMonth?.kuukausi ?? '')
+  const displayLabel = view === 'vuosi' ? `koko vuosi ${selectedYear ?? ''} (${monthsForYear.length} kk)` : (selectedMonth?.kuukausi ?? '')
 
   const th = {fontSize:10,fontWeight:500,color:'#888',textAlign:'left' as const,padding:'5px 7px',borderBottom:'0.5px solid #eee',whiteSpace:'nowrap' as const}
   const thR = {...th, textAlign:'right' as const}
@@ -117,6 +134,22 @@ export default function KassamyyntiPage() {
         {loading && <div style={{textAlign:'center',padding:60,color:'#888',fontSize:14}}>Ladataan kassamyyntidataa...</div>}
 
         {!loading && !error && (<>
+          {availableYears.length > 1 && (
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+              <span style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>Vuosi</span>
+              {availableYears.map(y => (
+                <button key={y} onClick={() => { setSelectedYear(y); setView('vuosi') }}
+                  style={{
+                    padding:'5px 12px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:12,
+                    fontWeight: selectedYear===y?500:400,
+                    background: selectedYear===y?'#185FA5':'white',
+                    color: selectedYear===y?'white':'#555',
+                  }}>
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
             <span style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px'}}>Näkymä</span>
             <button onClick={() => setView('vuosi')}
@@ -128,7 +161,7 @@ export default function KassamyyntiPage() {
               }}>
               Koko vuosi
             </button>
-            {months.map(m => (
+            {monthsForYear.map(m => (
               <button key={m.monthNum} onClick={() => setView(m.monthNum)}
                 style={{
                   padding:'5px 12px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:12,
