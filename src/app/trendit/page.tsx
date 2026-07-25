@@ -221,8 +221,13 @@ export default function TrendPage() {
   })
 
   // ---- OSIO 3: kokonaistulos per myymälä (liittymät+kassamyynti+F-Secure+bonukset, EI passiivi/kulut) ----
+  // Total-viiva on kaikkien myymälöiden (ei vain viiden kanonisen — myös esim. "Muut myymälät")
+  // saman kaavan mukainen kokonaistulos summattuna, ei pelkkä viiden näkyvän viivan summa.
   const tulosSeurantaData = yearMonths.map(m => {
     const point: Record<string, string | number> = { kuukausi: m.kuukausi }
+    let total = 0
+    for (const s of Object.values(m.stores)) total += s.liittymat + s.kassakate + s.fsecEur + s.bonus
+    point.Total = Math.round(total)
     for (const store of CANONICAL_STORES) {
       const key = findStoreKey(m.stores, store)
       const s = key ? m.stores[key] : undefined
@@ -372,6 +377,7 @@ export default function TrendPage() {
               {CANONICAL_STORES.map(store => (
                 <Line key={store} type="monotone" dataKey={store} name={STORE_DISPLAY_NAME[store]} stroke={STORE_COLORS[store]} strokeWidth={2} dot={{r:3}} connectNulls />
               ))}
+              <Line type="monotone" dataKey="Total" name="Total" stroke="#111827" strokeWidth={3} dot={{r:3}} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </Card>
