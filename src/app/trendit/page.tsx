@@ -441,16 +441,16 @@ export default function TrendPage() {
 
           <Card title="F-Secure" note="— passiivitulo € ja lisenssit kpl, koko yritys">
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioC}>
+              <BarChart data={kaavioC}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
                 <YAxis yAxisId="eur" tick={{fontSize:11}} tickFormatter={v => v/1000+'k'} />
                 <YAxis yAxisId="kpl" orientation="right" tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number, name: string) => name === 'Lisenssit (kpl)' ? `${fmtN(v)} kpl` : fmt(v)} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line yAxisId="eur" type="monotone" dataKey="passiivitulo" name="Passiivitulo (€)" stroke="#185FA5" strokeWidth={2} dot={{r:3}} connectNulls />
-                <Line yAxisId="kpl" type="monotone" dataKey="lisenssit" name="Lisenssit (kpl)" stroke="#0F6E56" strokeWidth={2} dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar yAxisId="eur" dataKey="passiivitulo" name="Passiivitulo (€)" fill="#185FA5" radius={[4,4,0,0]} />
+                <Bar yAxisId="kpl" dataKey="lisenssit" name="Lisenssit (kpl)" fill="#0F6E56" radius={[4,4,0,0]} />
+              </BarChart>
             </ResponsiveContainer>
           </Card>
         </>) : (<>
@@ -492,15 +492,15 @@ export default function TrendPage() {
 
           <Card title="F-Secure kpl per myymälä" note={`— ${latestSalesMonth?.kuukausi ?? ''} vs sama kk viime vuonna`}>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioF}>
+              <BarChart data={kaavioF}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="myymala" tick={{fontSize:11}} />
                 <YAxis tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number) => `${fmtN(v)} kpl`} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line type="monotone" dataKey="tamaKk" name="Tämä kk" stroke="#185FA5" strokeWidth={2} dot={{r:4}} connectNulls />
-                <Line type="monotone" dataKey="viimeVuosi" name="Viime vuosi" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="5 3" dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar dataKey="tamaKk" name="Tämä kk" fill="#185FA5" radius={[4,4,0,0]} />
+                <Bar dataKey="viimeVuosi" name="Viime vuosi" fill="#94a3b8" radius={[4,4,0,0]} />
+              </BarChart>
             </ResponsiveContainer>
           </Card>
         </>)}
