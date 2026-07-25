@@ -41,6 +41,12 @@ export async function GET(req: NextRequest) {
     const q = req.nextUrl.searchParams.get('q')
     const fileId = req.nextUrl.searchParams.get('fileId')
     const listChildrenOf = req.nextUrl.searchParams.get('folderId')
+    const whoami = req.nextUrl.searchParams.get('whoami')
+
+    if (whoami) {
+      const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!)
+      return NextResponse.json({ client_email: credentials.client_email })
+    }
 
     if (fileId) {
       const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType' })
