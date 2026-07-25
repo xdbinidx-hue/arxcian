@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, LabelList } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, LabelList, Cell } from 'recharts'
 
 interface ReceiptStore {
   liittymat: number; fsecEur: number; bonus: number; kassakate: number; huoltokate: number; rescueKate: number
@@ -396,30 +396,40 @@ export default function TrendPage() {
         {view4 === 'maksukuitit' ? (<>
           <Card title="Liittymät per myymälä" note={`— ${latestMonth?.kuukausi ?? ''} vs sama kk viime vuonna`}>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioA}>
+              <BarChart data={kaavioA}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="myymala" tick={{fontSize:11}} />
                 <YAxis tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number) => fmt(v)} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line type="monotone" dataKey="tamaKk" name="Tämä kk" stroke="#185FA5" strokeWidth={2} dot={{r:4}} connectNulls />
-                <Line type="monotone" dataKey="viimeVuosi" name="Viime vuosi" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="5 3" dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar dataKey="tamaKk" name="Tämä kk" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioA.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} />)}
+                </Bar>
+                <Bar dataKey="viimeVuosi" name="Viime vuosi" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioA.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} fillOpacity={0.4} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </Card>
 
           <Card title="Kassakate per myymälä" note={`— ${latestMonth?.kuukausi ?? ''}`}>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioB}>
+              <BarChart data={kaavioB}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="myymala" tick={{fontSize:11}} />
                 <YAxis tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number) => fmt(v)} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line type="monotone" dataKey="kassakate" name="Kassakate" stroke="#185FA5" strokeWidth={2} dot={{r:3}} connectNulls />
-                <Line type="monotone" dataKey="rescueKate" name="Rescue kate" stroke="#0F6E56" strokeWidth={2} dot={{r:3}} connectNulls />
-                <Line type="monotone" dataKey="huoltokate" name="Huoltokate" stroke="#EF9F27" strokeWidth={2} dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar dataKey="kassakate" name="Kassakate" stackId="kate" fill="#94a3b8">
+                  {kaavioB.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} />)}
+                </Bar>
+                <Bar dataKey="rescueKate" name="Rescue kate" stackId="kate" fill="#94a3b8">
+                  {kaavioB.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} fillOpacity={0.6} />)}
+                </Bar>
+                <Bar dataKey="huoltokate" name="Huoltokate" stackId="kate" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioB.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} fillOpacity={0.35} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </Card>
 
@@ -440,29 +450,37 @@ export default function TrendPage() {
         </>) : (<>
           <Card title="Liittymät brutto € per myymälä" note={`— ${latestSalesMonth?.kuukausi ?? ''} vs sama kk viime vuonna`}>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioD}>
+              <BarChart data={kaavioD}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="myymala" tick={{fontSize:11}} />
                 <YAxis tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number) => fmt(v)} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line type="monotone" dataKey="tamaKk" name="Tämä kk" stroke="#185FA5" strokeWidth={2} dot={{r:4}} connectNulls />
-                <Line type="monotone" dataKey="viimeVuosi" name="Viime vuosi" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="5 3" dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar dataKey="tamaKk" name="Tämä kk" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioD.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} />)}
+                </Bar>
+                <Bar dataKey="viimeVuosi" name="Viime vuosi" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioD.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} fillOpacity={0.4} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </Card>
 
           <Card title="Kassakate per myymälä" note={`— ${latestSalesMonth?.kuukausi ?? ''} vs sama kk viime vuonna`}>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioE}>
+              <BarChart data={kaavioE}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="myymala" tick={{fontSize:11}} />
                 <YAxis tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number) => fmt(v)} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line type="monotone" dataKey="tamaKk" name="Tämä kk" stroke="#185FA5" strokeWidth={2} dot={{r:4}} connectNulls />
-                <Line type="monotone" dataKey="viimeVuosi" name="Viime vuosi" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="5 3" dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar dataKey="tamaKk" name="Tämä kk" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioE.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} />)}
+                </Bar>
+                <Bar dataKey="viimeVuosi" name="Viime vuosi" fill="#94a3b8" radius={[4,4,0,0]}>
+                  {kaavioE.map((_, i) => <Cell key={i} fill={STORE_COLORS[CANONICAL_STORES[i]]} fillOpacity={0.4} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </Card>
 
