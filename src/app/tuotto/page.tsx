@@ -529,17 +529,20 @@ export default function TuottoPage() {
                 }}>
                 Koko vuosi
               </button>
-              {monthsForYear.map(m => (
-                <button key={m.monthNum} onClick={()=>setTodellinenView(m.monthNum)}
-                  style={{
-                    padding:'5px 12px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:12,
-                    fontWeight: todellinenView===m.monthNum?500:400,
-                    background: todellinenView===m.monthNum?'#185FA5':'white',
-                    color: todellinenView===m.monthNum?'white':'#555',
-                  }}>
-                  {m.kuukausi}
-                </button>
-              ))}
+              <select
+                value={typeof todellinenView === 'number' ? todellinenView : ''}
+                onChange={e => setTodellinenView(Number(e.target.value))}
+                style={{
+                  padding:'5px 12px',borderRadius:8,border:'0.5px solid #ddd',cursor:'pointer',fontSize:12,
+                  fontWeight: typeof todellinenView === 'number' ? 500 : 400,
+                  background: typeof todellinenView === 'number' ? '#185FA5' : 'white',
+                  color: typeof todellinenView === 'number' ? 'white' : '#555',
+                }}>
+                <option value="" disabled>Valitse kuukausi</option>
+                {monthsForYear.map(m => (
+                  <option key={m.monthNum} value={m.monthNum}>{m.kuukausi}</option>
+                ))}
+              </select>
             </div>
 
             <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
