@@ -221,13 +221,12 @@ export default function TrendPage() {
   })
 
   // ---- OSIO 3: kokonaistulos per myymälä (liittymät+kassamyynti+F-Secure+bonukset, EI passiivi/kulut) ----
-  // Total-viiva on kaikkien myymälöiden (ei vain viiden kanonisen — myös esim. "Muut myymälät")
-  // saman kaavan mukainen kokonaistulos summattuna, ei pelkkä viiden näkyvän viivan summa.
+  // Ei omaa Total-viivaa kaaviossa — riittää ilmoitus kokonaissummasta (kaikki myymälät, myös
+  // ei-kanoniset kuten "Muut myymälät", koko valitun vuoden ajalta).
+  let tulosSeurantaTotal = 0
   const tulosSeurantaData = yearMonths.map(m => {
     const point: Record<string, string | number> = { kuukausi: m.kuukausi }
-    let total = 0
-    for (const s of Object.values(m.stores)) total += s.liittymat + s.kassakate + s.fsecEur + s.bonus
-    point.Total = Math.round(total)
+    for (const s of Object.values(m.stores)) tulosSeurantaTotal += s.liittymat + s.kassakate + s.fsecEur + s.bonus
     for (const store of CANONICAL_STORES) {
       const key = findStoreKey(m.stores, store)
       const s = key ? m.stores[key] : undefined
@@ -366,7 +365,7 @@ export default function TrendPage() {
         </Card>
 
         {/* OSIO 3 — Tulos seuranta myymälöittäin */}
-        <Card title="Tulos seuranta myymälöittäin" note="— liittymät + kassamyynti + F-Secure + bonukset (ei passiivituloa, ei työntekijäkuluja)">
+        <Card title="Tulos seuranta myymälöittäin" note={`— liittymät + kassamyynti + F-Secure + bonukset (ei passiivituloa, ei työntekijäkuluja) · Yhteensä kaikista myymälöistä: ${fmt(tulosSeurantaTotal)}`}>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={tulosSeurantaData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -377,7 +376,6 @@ export default function TrendPage() {
               {CANONICAL_STORES.map(store => (
                 <Line key={store} type="monotone" dataKey={store} name={STORE_DISPLAY_NAME[store]} stroke={STORE_COLORS[store]} strokeWidth={2} dot={{r:3}} connectNulls />
               ))}
-              <Line type="monotone" dataKey="Total" name="Total" stroke="#111827" strokeWidth={3} dot={{r:3}} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -441,16 +439,16 @@ export default function TrendPage() {
 
           <Card title="F-Secure" note="— passiivitulo € ja lisenssit kpl, koko yritys">
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioC}>
+              <BarChart data={kaavioC}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="kuukausi" tick={{fontSize:11}} />
                 <YAxis yAxisId="eur" tick={{fontSize:11}} tickFormatter={v => v/1000+'k'} />
                 <YAxis yAxisId="kpl" orientation="right" tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number, name: string) => name === 'Lisenssit (kpl)' ? `${fmtN(v)} kpl` : fmt(v)} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line yAxisId="eur" type="monotone" dataKey="passiivitulo" name="Passiivitulo (€)" stroke="#185FA5" strokeWidth={2} dot={{r:3}} connectNulls />
-                <Line yAxisId="kpl" type="monotone" dataKey="lisenssit" name="Lisenssit (kpl)" stroke="#0F6E56" strokeWidth={2} dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar yAxisId="eur" dataKey="passiivitulo" name="Passiivitulo (€)" fill="#185FA5" radius={[4,4,0,0]} />
+                <Bar yAxisId="kpl" dataKey="lisenssit" name="Lisenssit (kpl)" fill="#0F6E56" radius={[4,4,0,0]} />
+              </BarChart>
             </ResponsiveContainer>
           </Card>
         </>) : (<>
@@ -492,15 +490,15 @@ export default function TrendPage() {
 
           <Card title="F-Secure kpl per myymälä" note={`— ${latestSalesMonth?.kuukausi ?? ''} vs sama kk viime vuonna`}>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={kaavioF}>
+              <BarChart data={kaavioF}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="myymala" tick={{fontSize:11}} />
                 <YAxis tick={{fontSize:11}} />
                 <Tooltip formatter={(v:number) => `${fmtN(v)} kpl`} />
                 <Legend wrapperStyle={{fontSize:11}} />
-                <Line type="monotone" dataKey="tamaKk" name="Tämä kk" stroke="#185FA5" strokeWidth={2} dot={{r:4}} connectNulls />
-                <Line type="monotone" dataKey="viimeVuosi" name="Viime vuosi" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="5 3" dot={{r:3}} connectNulls />
-              </LineChart>
+                <Bar dataKey="tamaKk" name="Tämä kk" fill="#185FA5" radius={[4,4,0,0]} />
+                <Bar dataKey="viimeVuosi" name="Viime vuosi" fill="#94a3b8" radius={[4,4,0,0]} />
+              </BarChart>
             </ResponsiveContainer>
           </Card>
         </>)}
