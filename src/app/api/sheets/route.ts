@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { laskeMyyja, shouldSkip, isStandi, isRJMobSeller, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { cachedJson } from '@/lib/apiCache'
 
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!)
@@ -251,7 +252,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     fsecFV: storeFsecKpl * FSEC_RECURRING * 12,
   }
 
-  return NextResponse.json({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' })
+  return cachedJson({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' })
 }
 
 async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: string, sheetNames: string[], fileName: string) {
@@ -359,5 +360,5 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     fsecFV: storeFsecKpl * FSEC_RECURRING * 12,
   }
 
-  return NextResponse.json({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' })
+  return cachedJson({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' })
 }
