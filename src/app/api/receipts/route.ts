@@ -78,14 +78,23 @@ function findColFrom(row: string[], minCol: number, matches: (v: string) => bool
   return -1
 }
 
-// Etsii rivin jolla jompikumpi sivupaneelin tavallisimmista alkusarakkeista (19 tai 20)
-// täsmää predikaattiin — sietää edellä mainitun 1 sarakkeen siirtymän ilman että joudutaan
-// skannaamaan koko riviä (mikä voisi osua myymäläblokin puolelle).
+// Etsii rivin jolla sivupaneelin alue (SIDE_PANEL_MIN_COL:sta eteenpäin) täsmää predikaattiin —
+// skannaa koko sarakealueen kiinteän 1-2 sarakkeen tarkistuksen sijaan, koska havaittu drift voi
+// olla suurempikin (esim. tammi-helmikuu 2026: Passiivitulo/Työntekijät-paneelit sarakkeessa 22,
+// ei 19/20 kuten useimmiten). SIDE_PANEL_MIN_COL rajaa haun pois myymäläblokin puolelta (0-18),
+// jotta esim. blokin oma "F-SECURE"-rivi ei täsmää vahingossa.
 function findPanelRow(rows: string[][], matches: (v: string) => boolean): { rowIdx: number, col: number } | null {
   for (let i = 0; i < rows.length; i++) {
-    for (const c of [SIDE_PANEL_MIN_COL, SIDE_PANEL_COL]) {
-      if (matches((rows[i][c] || '').trim().toUpperCase())) return { rowIdx: i, col: c }
-    }
+    // Yhteenveto-taulukon oma otsikkorivi käyttää samoja sanoja omina sarakeotsikkoinaan
+    // (esim. "PASSIIVITULO", "TYÖNTEKIJÄT") kuin Passiivitulo-/Työntekijät-paneelien omat
+    // otsikot — jos koko sarakealueen haku ei ohittaisi tätä riviä, se osuisi vahingossa
+    // Yhteenveto-taulukon otsikkoon sen sijaan että löytäisi oikean, erillisen paneelin
+    // myöhemmältä riviltä (havaittu helmikuu 2026 -kuitista). LIITTYMÄT+KASSAKATE-yhdistelmä
+    // esiintyy vain Yhteenveto-taulukon otsikkorivillä, ei koskaan näissä muissa paneeleissa.
+    const seg = rows[i].slice(SIDE_PANEL_MIN_COL).map(c => (c || '').trim().toUpperCase())
+    if (seg.includes('LIITTYMÄT') && seg.includes('KASSAKATE')) continue
+    const col = findColFrom(rows[i], SIDE_PANEL_MIN_COL, matches)
+    if (col >= 0) return { rowIdx: i, col }
   }
   return null
 }
