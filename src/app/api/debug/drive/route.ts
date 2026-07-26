@@ -24,10 +24,11 @@ async function readDocText(docs: ReturnType<typeof google.docs>, fileId: string)
   return text
 }
 
-async function readSheetText(sheets: ReturnType<typeof google.sheets>, fileId: string): Promise<string[][]> {
+async function readSheetText(sheets: ReturnType<typeof google.sheets>, fileId: string, wantedSheet?: string | null): Promise<string[][]> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: fileId })
-  const sheetName = meta.data.sheets?.[0]?.properties?.title ?? 'Sheet1'
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:Z200` })
+  const names = meta.data.sheets?.map(s => s.properties?.title ?? '') ?? []
+  const sheetName = (wantedSheet && names.find(n => n.toLowerCase().includes(wantedSheet.toLowerCase()))) || names[0] || 'Sheet1'
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${sheetName}'!A1:AZ200` })
   return (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 }
 
@@ -49,16 +50,22 @@ export async function GET(req: NextRequest) {
     }
 
     if (fileId) {
+      const sheetParam = req.nextUrl.searchParams.get('sheet')
       const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType' })
       const mime = meta.data.mimeType ?? ''
       let content: unknown = null
       if (mime === 'application/vnd.google-apps.document') content = await readDocText(docs, fileId)
-      else if (mime === 'application/vnd.google-apps.spreadsheet') content = await readSheetText(sheets, fileId)
+      else if (mime === 'application/vnd.google-apps.spreadsheet') content = await readSheetText(sheets, fileId, sheetParam)
       else if (mime === 'text/plain') {
         const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' })
         content = res.data
       }
-      return NextResponse.json({ meta: meta.data, content })
+      let sheetNames: string[] | undefined
+      if (mime === 'application/vnd.google-apps.spreadsheet') {
+        const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: fileId })
+        sheetNames = sheetMeta.data.sheets?.map(s => s.properties?.title ?? '')
+      }
+      return NextResponse.json({ meta: meta.data, sheetNames, content })
     }
 
     if (listChildrenOf) {
