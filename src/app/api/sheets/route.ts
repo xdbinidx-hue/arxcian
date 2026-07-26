@@ -278,17 +278,23 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
   const results = sellers.map(s => laskeMyyja(s))
   const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const tiimi = active.filter(r => r.tyyppi !== 'owner')
+  // Myymälätaulukon oma rakenne (yhteenvetorivi tai kustannuspaikan sarake) vaihtelee kuukausien
+  // välillä ja saattaa jäädä kokonaan löytymättä (esim. tammikuu 2026: Myyjät Myymälöittäin
+  // -välilehdeltä puuttuvat loppusummasarakkeet kokonaan) — silloin storeResults jää tyhjäksi.
+  // Myyjäkohtainen fsecKpl on jo luotettavasti laskettu joka tapauksessa, joten käytetään sitä
+  // varalähteenä sen sijaan että koko yrityksen F-Secure-lisenssimäärä näytettäisiin nollana.
   const storeFsecKpl = Object.values(storeResults).reduce((s, r) => s + r.fsecKpl, 0)
+  const totalFsecKpl = Object.keys(storeResults).length > 0 ? storeFsecKpl : active.reduce((s, r) => s + r.fsecKpl, 0)
 
   const totals = {
     liittKpl: active.reduce((s, r) => s + r.liittKpl, 0),
     liittEur: active.reduce((s, r) => s + r.liittEur, 0),
-    fsecKpl: storeFsecKpl,
+    fsecKpl: totalFsecKpl,
     kassa: active.reduce((s, r) => s + r.kassa, 0),
     rjmobTulo: active.reduce((s, r) => s + r.rjmobTulo, 0),
     tyokulu: tiimi.reduce((s, r) => s + r.tyokulu, 0),
     netto: active.reduce((s, r) => s + r.netto, 0),
-    fsecFV: storeFsecKpl * FSEC_RECURRING * 12,
+    fsecFV: totalFsecKpl * FSEC_RECURRING * 12,
   }
 
   return cachedJson({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' })
@@ -387,16 +393,17 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
   const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const tiimi = active.filter(r => r.tyyppi !== 'owner')
   const storeFsecKpl = Object.values(storeResults).reduce((s, r) => s + r.fsecKpl, 0)
+  const totalFsecKpl = Object.keys(storeResults).length > 0 ? storeFsecKpl : active.reduce((s, r) => s + r.fsecKpl, 0)
 
   const totals = {
     liittKpl: active.reduce((s, r) => s + r.liittKpl, 0),
     liittEur: active.reduce((s, r) => s + r.liittEur, 0),
-    fsecKpl: storeFsecKpl,
+    fsecKpl: totalFsecKpl,
     kassa: active.reduce((s, r) => s + r.kassa, 0),
     rjmobTulo: active.reduce((s, r) => s + r.rjmobTulo, 0),
     tyokulu: tiimi.reduce((s, r) => s + r.tyokulu, 0),
     netto: active.reduce((s, r) => s + r.netto, 0),
-    fsecFV: storeFsecKpl * FSEC_RECURRING * 12,
+    fsecFV: totalFsecKpl * FSEC_RECURRING * 12,
   }
 
   return cachedJson({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' })
