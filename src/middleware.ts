@@ -49,5 +49,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // PWA:n tiedostojen on oltava haettavissa ilman istuntoa, muuten
+  // asennus kotiruudulle ei onnistu. Ne eivät sisällä mitään arkaluontoista.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js).*)'],
 }

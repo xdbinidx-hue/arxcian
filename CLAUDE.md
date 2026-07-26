@@ -58,6 +58,16 @@ const omat = visibleTo(kaikki, user)
 
 Globaali `vercel` on 54.4.1 eikä osaa lisätä preview-muuttujia ei-interaktiivisesti (jää `git_branch_required`-tilaan). Päivitys vaatisi sudon, joten käytä preview-lisäyksiin `npx vercel@latest env add <NIMI> preview --value <arvo> --yes`.
 
+## PWA
+
+Asennettavissa kotiruudulle: manifest [src/app/manifest.ts](src/app/manifest.ts), service worker [public/sw.js](public/sw.js). `start_url` on `/arxcian`, mutta `scope` on `/`, jotta RJ-Mob aukeaa samassa ikkunassa eikä selaimessa.
+
+Service worker **ei tallenna HTML-sivuja välimuistiin** tarkoituksella — sisältö on henkilökohtaista ja Albin ja Arbnor voivat käyttää samaa laitetta. Vain muuttumattomat `/_next/static/*` ja `/icons/*` välimuistitetaan; verkon pettäessä näytetään offline-sivu. Rekisteröinti tapahtuu vain tuotannossa.
+
+Ikonit generoidaan ilman kuvakirjastoja: `node scripts/generate-icons.mjs`. Muokkaa skriptiä jos merkki vaihtuu.
+
+PWA-tiedostot on jätetty middlewaren ulkopuolelle, muuten asennus ei onnistu.
+
 ## Tunnetut puutteet
 
 - RJ-Mobin nykyiset API-reitit (`/api/sheets`, `/api/targets`, …) ovat middlewaressa auki ilman istuntoa — vanha käytäntö, ei muutettu jotta mikään ei hajoa. `/api/arxcian/*` vaatii aina istunnon.
