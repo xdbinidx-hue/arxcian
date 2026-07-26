@@ -58,6 +58,22 @@ const omat = visibleTo(kaikki, user)
 
 Globaali `vercel` on 54.4.1 eikä osaa lisätä preview-muuttujia ei-interaktiivisesti (jää `git_branch_required`-tilaan). Päivitys vaatisi sudon, joten käytä preview-lisäyksiin `npx vercel@latest env add <NIMI> preview --value <arvo> --yes`.
 
+## Ulkoinen data: hae ja välimuistita
+
+Kaikki ulkoiset lähteet kulkevat [src/lib/arxcian/cache.ts](src/lib/arxcian/cache.ts):n kautta. Älä hae RSS:ää tai markkinadataa suoraan sivulla.
+
+```ts
+const uutiset = await fetchAndCache(
+  { key: 'news:bisnes', ttl: 3600 },
+  () => haeSyote(url),
+)
+// uutiset.source: 'network' | 'cache' | 'stale'
+```
+
+Kolme periaatetta: sivulataus ei odota ulkoista lähdettä jos välimuistissa on tuoretta dataa (cron pitää sen lämpimänä), lähteen kaatuessa palautetaan vanhentunutta dataa virheen sijaan, ja Redisin ollessa poissa haku menee suoraan lähteeseen — välimuistin vika ei kaada sivua. Hauilla on aikakatkaisu (oletus 15 s).
+
+Ajastetut haut: työt lisätään `JOBS`-rekisteriin [src/lib/arxcian/cron.ts](src/lib/arxcian/cron.ts):ssä, jolloin cron-reittiä ei tarvitse muuttaa. Reitti on `/api/arxcian/cron`, todennus `CRON_SECRET` tai kirjautunut käyttäjä (käsin käynnistys testatessa). `/api/arxcian/health` kertoo onko Redis tavoitettavissa.
+
 ## PWA
 
 Asennettavissa kotiruudulle: manifest [src/app/manifest.ts](src/app/manifest.ts), service worker [public/sw.js](public/sw.js). `start_url` on `/arxcian`, mutta `scope` on `/`, jotta RJ-Mob aukeaa samassa ikkunassa eikä selaimessa.

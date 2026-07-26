@@ -14,7 +14,10 @@ function isPublic(pathname: string) {
   return (
     pathname === '/login' ||
     pathname.startsWith('/api/login') ||
-    pathname.startsWith('/api/logout')
+    pathname.startsWith('/api/logout') ||
+    // Cron-reitti todentaa itse CRON_SECRETilla. Istuntoa vaativa
+    // middleware estäisi Vercelin ajastetut kutsut kokonaan.
+    pathname.startsWith('/api/arxcian/cron')
   )
 }
 
