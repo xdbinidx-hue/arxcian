@@ -79,11 +79,15 @@ export function isRJMobSeller(nimi: string): boolean {
   return RJ_MOB_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
 }
 // Petri oli tiimissä marraskuusta maaliskuuhun (myyntiseuranta_ohje) — muina kuukausina
-// hänen rivinsä ei kuulu laskelmiin vaikka nimi esiintyisikin tiedostossa.
+// hänen rivinsä ei kuulu laskelmiin vaikka nimi esiintyisikin tiedostossa. Nimi esiintyy
+// tiedostosta riippuen joko pelkkänä "Petri" (maksukuitit) tai täydellisenä "Kaijanniemi
+// Petri" / "Petri Kaijanniemi" (myyntiseuranta) — tarkistetaan onko "petri" jompikumpi
+// välilyönnillä erotetuista nimiosista, ei vaadita täsmällistä koko nimen osumaa.
 const PETRI_ACTIVE_MONTHS = [11, 12, 1, 2, 3]
 export function isRJMobSellerForMonth(nimi: string, monthNum: number | null): boolean {
   if (isRJMobSeller(nimi)) return true
-  if (monthNum !== null && nimi.trim().toLowerCase() === 'petri' && PETRI_ACTIVE_MONTHS.includes(monthNum)) return true
+  const isPetri = nimi.trim().toLowerCase().split(/\s+/).includes('petri')
+  if (monthNum !== null && isPetri && PETRI_ACTIVE_MONTHS.includes(monthNum)) return true
   return false
 }
 export function getTuntipalkka(nimi: string): number {
