@@ -1,65 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getIronSession } from 'iron-session'
+import { cookies } from 'next/headers'
+import {
+  getSession,
+  guestOptions,
+  GUEST_MAX_USES,
+  GUEST_SESSION_HOURS,
+  USER_SESSION_DAYS,
+  USER_IDS,
+  type GuestData,
+  type UserId,
+} from '@/lib/session'
 
-const USERS: Record<string, string> = {
-  'albin': '1023',
-  'arbnor': '1023',
+/** Tunnukset ympäristömuuttujista, ei kovakoodattuna. */
+function pinFor(user: UserId): string | undefined {
+  return process.env[`${user.toUpperCase()}_PIN`]
 }
-
-const GUEST_PASSWORD = '0626'
-const GUEST_MAX_USES = 5
-const GUEST_SESSION_HOURS = 1
 
 export async function POST(req: NextRequest) {
   const { username, password } = await req.json()
+  const user = String(username ?? '').trim().toLowerCase()
+  const pin = String(password ?? '')
 
-  // Normal users
-  if (USERS[username] && USERS[username] === password) {
-    const res = NextResponse.json({ ok: true })
-    res.cookies.set('rjmob_auth', username, {
-      httpOnly: true,
-      secure: true,
-      maxAge: 60 * 60 * 24 * 30,
-      path: '/',
-    })
-    return res
+  // Varsinaiset käyttäjät
+  const known = USER_IDS.find(id => id === user)
+  if (known) {
+    const expected = pinFor(known)
+    if (expected && pin === expected) {
+      const session = await getSession()
+      session.user = known
+      session.expiresAt = Date.now() + USER_SESSION_DAYS * 24 * 60 * 60 * 1000
+      await session.save()
+      return NextResponse.json({ ok: true, user: known })
+    }
+    return NextResponse.json({ error: 'Väärä käyttäjätunnus tai salasana' }, { status: 401 })
   }
 
-  // Guest user
-  if (password === GUEST_PASSWORD) {
-    // Check usage count from cookie
-    const guestData = req.cookies.get('rjmob_guest_data')?.value
-    let uses = 0
-    
-    if (guestData) {
-      try {
-        const parsed = JSON.parse(guestData)
-        uses = parsed.uses ?? 0
-      } catch {}
-    }
+  // Vieraskäyttäjä: tunnin istunto, rajattu määrä kirjautumisia
+  const guestPin = process.env.GUEST_PIN
+  if (guestPin && pin === guestPin) {
+    const guest = await getIronSession<GuestData>(cookies(), guestOptions())
+    const uses = guest.uses ?? 0
 
     if (uses >= GUEST_MAX_USES) {
-      return NextResponse.json({ error: 'Vieraskäyttäjän kirjautumiskerrat täynnä (max 5)' }, { status: 401 })
+      return NextResponse.json(
+        { error: `Vieraskäyttäjän kirjautumiskerrat täynnä (max ${GUEST_MAX_USES})` },
+        { status: 401 },
+      )
     }
 
-    const res = NextResponse.json({ ok: true, guest: true })
-    
-    // Set auth cookie - expires in 1 hour
-    res.cookies.set('rjmob_auth', 'guest', {
-      httpOnly: true,
-      secure: true,
-      maxAge: 60 * 60 * GUEST_SESSION_HOURS,
-      path: '/',
-    })
+    const session = await getSession()
+    session.user = 'guest'
+    session.expiresAt = Date.now() + GUEST_SESSION_HOURS * 60 * 60 * 1000
+    await session.save()
 
-    // Track usage count
-    res.cookies.set('rjmob_guest_data', JSON.stringify({ uses: uses + 1 }), {
-      httpOnly: true,
-      secure: true,
-      maxAge: 60 * 60 * 24 * 365, // 1 year to track uses
-      path: '/',
-    })
+    guest.uses = uses + 1
+    await guest.save()
 
-    return res
+    return NextResponse.json({ ok: true, guest: true })
   }
 
   return NextResponse.json({ error: 'Väärä käyttäjätunnus tai salasana' }, { status: 401 })
