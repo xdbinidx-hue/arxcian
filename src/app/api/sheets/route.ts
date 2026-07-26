@@ -189,6 +189,13 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
       const mIdxFsecInternet = findCol(mHeaders, 'f-secure internet', 'fsecure internet', 'f-secure internet security')
       const mIdxTunnit = findCol(mHeaders, 'tunnit')
 
+      const normalizeStoreName = (kusta: string) => kusta
+        .replace('K-Citymarket Malmi', 'Malmi').replace('Helsinki, K-Citymarket Malmi', 'Helsinki, Malmi')
+        .replace('Kauppakeskus Easton', 'Easton').replace('Helsinki, Kauppakeskus Easton', 'Helsinki, Easton')
+        .replace('Prisma Holma', 'Holma').replace('Lahti, Prisma Holma', 'Lahti, Holma')
+        .replace('Prisma Syke', 'Syke').replace('Lahti, Prisma Syke', 'Lahti, Syke')
+        .replace('K-Citymarket Kivistö', 'Kivistö').replace('Vantaa, K-Citymarket Kivistö', 'Vantaa, Kivistö')
+
       for (let i = mHeaderIdx + 1; i < myymalaRows.length; i++) {
         const row = myymalaRows[i]
         const kusta = row[0]?.trim() ?? ''
@@ -197,12 +204,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
         if (kusta && !myyjä) {
           const isRJStore = RJ_STORES.some(s => kusta.toLowerCase().includes(s))
           if (isRJStore) {
-            const normalizedName = kusta
-              .replace('K-Citymarket Malmi', 'Malmi').replace('Helsinki, K-Citymarket Malmi', 'Helsinki, Malmi')
-              .replace('Kauppakeskus Easton', 'Easton').replace('Helsinki, Kauppakeskus Easton', 'Helsinki, Easton')
-              .replace('Prisma Holma', 'Holma').replace('Lahti, Prisma Holma', 'Lahti, Holma')
-              .replace('Prisma Syke', 'Syke').replace('Lahti, Prisma Syke', 'Lahti, Syke')
-              .replace('K-Citymarket Kivistö', 'Kivistö').replace('Vantaa, K-Citymarket Kivistö', 'Vantaa, Kivistö')
+            const normalizedName = normalizeStoreName(kusta)
 
             let standiLiittKpl = 0, standiLiittEur = 0
             for (let j = i + 1; j < myymalaRows.length; j++) {
@@ -230,6 +232,43 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               kassaRjmob: kassaRaw * 1,
               tunnit: parseNum(row[mIdxTunnit]),
             }
+          }
+        }
+      }
+
+      // Varalähde: käsin ylläpidetyissä kopioissa myymälän oma "vain kustannuspaikka, ei
+      // myyjää" -yhteenvetorivi puuttuu joskus kokonaan (havaittu maaliskuu 2026: Kustannuspaikka
+      // on merkitty vain kunkin myymälän ENSIMMÄISEN myyjän riville, ei omalle rivilleen) —
+      // tällöin yllä oleva silmukka ei löydä yhtään myymälää. Lasketaan tällöin myymäläkohtaiset
+      // summat itse ryhmittelemällä rivit "viimeisin nähty kustannuspaikka" mukaan.
+      if (Object.keys(storeResults).length === 0) {
+        let currentStore = ''
+        for (let i = mHeaderIdx + 1; i < myymalaRows.length; i++) {
+          const row = myymalaRows[i]
+          const kusta = row[0]?.trim() ?? ''
+          const myyjä = row[1]?.trim() ?? ''
+          if (kusta) currentStore = kusta
+          if (!currentStore || !myyjä) continue
+          if (isStandi(cleanUnmatchedName(myyjä))) continue
+          const isRJStore = RJ_STORES.some(s => currentStore.toLowerCase().includes(s))
+          if (!isRJStore) continue
+
+          const normalizedName = normalizeStoreName(currentStore)
+          const kassaRaw = parseNum(row[mIdxKassa])
+          const mFsecTotalKpl = mIdxFsecTotal >= 0 ? parseNum(row[mIdxFsecTotal]) : 0
+          const mFsecInternetKpl = mIdxFsecInternet >= 0 ? parseNum(row[mIdxFsecInternet]) : 0
+          const mFsecKpl = (mFsecTotalKpl + mFsecInternetKpl) > 0 ? mFsecTotalKpl + mFsecInternetKpl : parseNum(row[mIdxFsecKpl])
+          const mFsecEur = (mFsecTotalKpl * FSEC_TOTAL_SELLER) + (mFsecInternetKpl * FSEC_INTERNET_SELLER)
+
+          const prev = storeResults[normalizedName] ?? { liittKpl: 0, liittEur: 0, fsecKpl: 0, fsecEur: 0, kassa: 0, kassaRjmob: 0, tunnit: 0 }
+          storeResults[normalizedName] = {
+            liittKpl: prev.liittKpl + parseNum(row[mIdxLiittKpl]),
+            liittEur: prev.liittEur + parseNum(row[mIdxLiittEur]),
+            fsecKpl: prev.fsecKpl + mFsecKpl,
+            fsecEur: prev.fsecEur + mFsecEur,
+            kassa: prev.kassa + kassaRaw * 10,
+            kassaRjmob: prev.kassaRjmob + kassaRaw * 1,
+            tunnit: prev.tunnit + parseNum(row[mIdxTunnit]),
           }
         }
       }
