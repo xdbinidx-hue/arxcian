@@ -78,7 +78,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
   const myymalaSheet = sheetNames.find(n => n.toLowerCase().includes('myymäl') || n.toLowerCase().includes('myymäl')) ?? ''
   const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
 
-  const myyjatRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:Z200` })
+  const myyjatRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:BZ200` })
   const myyjatRows = (myyjatRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 
   let headerIdx = -1
@@ -105,7 +105,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
 
   const hoursMap: Record<string, { total: number, normaali: number, koulutus: number, sairas: number }> = {}
   if (dataSheet) {
-    const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:P200` })
+    const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:BZ200` })
     const dataRows = (dataRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
     const dataHeaders = dataRows[0]?.map(h => h.toLowerCase().trim()) ?? []
     const dNimi = findCol(dataHeaders, 'nimi')
@@ -171,7 +171,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
   const storeResults: Record<string, { liittKpl: number, liittEur: number, fsecKpl: number, fsecEur: number, kassa: number, kassaRjmob: number, tunnit: number }> = {}
 
   if (myymalaSheet) {
-    const myymalaRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myymalaSheet}'!A1:Z300` })
+    const myymalaRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myymalaSheet}'!A1:BZ300` })
     const myymalaRows = (myymalaRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 
     let mHeaderIdx = -1
@@ -261,7 +261,7 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     n.toLowerCase().includes('härät') || n.toLowerCase().includes('harat')
   ) ?? sheetNames[0]
 
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${targetSheet}'!A1:P200` })
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${targetSheet}'!A1:BZ200` })
   const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 
   let headerIdx = -1

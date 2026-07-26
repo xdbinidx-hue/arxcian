@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
     // ---- Tavoitteet: rivi 1 otsikko, rivi 2 headerit, rivi 3+ data ----
     const targetsMap: Record<string, { nimi: string; liittTavoite: number; fsecTavoite: number; kassaTavoite: number }> = {}
     {
-      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${tavoitteetSheet}'!A1:Z200` })
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${tavoitteetSheet}'!A1:BZ200` })
       const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
       const headerRow = rows[1] ?? []
       const headers = headerRow.map(h => h.toLowerCase().trim())
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
       dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
     }> = {}
     if (myyjatSheet) {
-      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:Z200` })
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:BZ200` })
       const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 
       let headerIdx = -1
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
     // ---- Kassakate: myynti / palautus / alennus / kuitit ----
     const kassaMap: Record<string, { kassaMyynti: number; kassaPalautus: number; kassaAlennus: number; kassaKuitit: number; kassaKate: number }> = {}
     if (kassakateSheet) {
-      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${kassakateSheet}'!A1:Z200` })
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${kassakateSheet}'!A1:BZ200` })
       const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 
       let headerIdx = -1
@@ -238,7 +238,7 @@ export async function GET(req: NextRequest) {
     // ---- data: kuluneet työpäivät myyjää kohden ----
     const paivatMap: Record<string, number> = {}
     if (dataSheet) {
-      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:P200` })
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:BZ200` })
       const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
       const headers = rows[0]?.map(h => h.toLowerCase().trim()) ?? []
       const idxNimi = findCol(headers, 'nimi', 'myyjä')
