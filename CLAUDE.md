@@ -56,7 +56,8 @@ const user = await currentUser()
 const omat = visibleTo(kaikki, user)
 ```
 
+Globaali `vercel` on 54.4.1 eikä osaa lisätä preview-muuttujia ei-interaktiivisesti (jää `git_branch_required`-tilaan). Päivitys vaatisi sudon, joten käytä preview-lisäyksiin `npx vercel@latest env add <NIMI> preview --value <arvo> --yes`.
+
 ## Tunnetut puutteet
 
 - RJ-Mobin nykyiset API-reitit (`/api/sheets`, `/api/targets`, …) ovat middlewaressa auki ilman istuntoa — vanha käytäntö, ei muutettu jotta mikään ei hajoa. `/api/arxcian/*` vaatii aina istunnon.
-- `SESSION_SECRET` ja PIN-muuttujat on asetettu Vercelin Production- ja Development-ympäristöihin. **Preview puuttuu**: Vercel CLI 54.4.1 ei osaa lisätä "kaikki preview-branchit" ei-interaktiivisesti, ja CLI:n päivitys vaatii sudon. Preview-deployt eivät toimi ennen kuin tämä korjataan.
