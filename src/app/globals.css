@@ -6,3 +6,63 @@ body {
   background: #f8f8f6;
   color: #1a1a1a;
 }
+
+/* ---------------------------------------------------------------
+   arxcian — tumma teema. Rajattu tarkoituksella .arxcian-root
+   -alipuuhun, jotta RJ-Mobin vaalea ulkoasu säilyy koskemattomana.
+   --------------------------------------------------------------- */
+
+/* Värit RGB-kanavina ilman rgb()-kuorta, jotta Tailwindin läpinäkyvyys-
+   modifierit (bg-ax-panel/80) toimivat. Kokonainen väriarvo muuttujassa
+   rikkoisi ne — lopputulos olisi täysin läpinäkyvä tausta. */
+.arxcian-root {
+  --ax-bg: 5 7 10;
+  --ax-panel: 11 15 20;
+  --ax-panel-hi: 16 22 29;
+  --ax-text: 220 230 240;
+  --ax-dim: 139 155 173;
+  --ax-faint: 86 104 120;
+  --ax-accent: 53 214 208;
+  --ax-up: 61 220 151;
+  --ax-down: 255 92 114;
+  --ax-warn: 245 181 68;
+  --ax-line: 148 180 210;
+
+  color: rgb(var(--ax-text));
+  background:
+    radial-gradient(1100px 520px at 50% -12%, rgb(var(--ax-accent) / 0.07), transparent 62%),
+    rgb(var(--ax-bg));
+}
+
+/* Estää vaalean bodyn vilahtamisen ylivierityksessä (mobiili) */
+body:has(.arxcian-root) {
+  background: rgb(5 7 10);
+  color: rgb(220 230 240);
+}
+
+@keyframes ax-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes ax-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.8); }
+}
+
+@keyframes ax-rise {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+
+.ax-ticker-track { animation: ax-ticker 46s linear infinite; }
+.ax-pulse { animation: ax-pulse 2.4s ease-in-out infinite; }
+.ax-rise { animation: ax-rise 0.45s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ax-ticker-track,
+  .ax-pulse,
+  .ax-rise {
+    animation: none !important;
+  }
+}
