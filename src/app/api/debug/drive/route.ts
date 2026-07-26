@@ -12,16 +12,11 @@ function getAuth() {
   })
 }
 
-async function readDocText(docs: ReturnType<typeof google.docs>, fileId: string): Promise<string> {
-  const res = await docs.documents.get({ documentId: fileId })
-  const content = res.data.body?.content ?? []
-  let text = ''
-  for (const el of content) {
-    for (const run of el.paragraph?.elements ?? []) {
-      text += run.textRun?.content ?? ''
-    }
-  }
-  return text
+// Drive-API:n oma export riittää Google Docsin tekstin lukemiseen — ei vaadi erillistä
+// Docs-API:n käyttöönottoa GCP-projektissa (joka ei ollut päällä).
+async function readDocText(drive: ReturnType<typeof google.drive>, fileId: string): Promise<string> {
+  const res = await drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' })
+  return res.data as unknown as string
 }
 
 async function readSheetText(sheets: ReturnType<typeof google.sheets>, fileId: string, wantedSheet?: string | null): Promise<string[][]> {
@@ -37,7 +32,6 @@ export async function GET(req: NextRequest) {
     const auth = getAuth()
     const drive = google.drive({ version: 'v3', auth })
     const sheets = google.sheets({ version: 'v4', auth })
-    const docs = google.docs({ version: 'v1', auth })
 
     const q = req.nextUrl.searchParams.get('q')
     const fileId = req.nextUrl.searchParams.get('fileId')
@@ -54,7 +48,7 @@ export async function GET(req: NextRequest) {
       const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType' })
       const mime = meta.data.mimeType ?? ''
       let content: unknown = null
-      if (mime === 'application/vnd.google-apps.document') content = await readDocText(docs, fileId)
+      if (mime === 'application/vnd.google-apps.document') content = await readDocText(drive, fileId)
       else if (mime === 'application/vnd.google-apps.spreadsheet') content = await readSheetText(sheets, fileId, sheetParam)
       else if (mime === 'text/plain') {
         const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' })
