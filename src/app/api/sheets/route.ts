@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
-import { laskeMyyja, shouldSkip, isStandi, isRJMobSeller, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { laskeMyyja, shouldSkip, isStandi, isRJMobSellerForMonth, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
 import { cachedJson } from '@/lib/apiCache'
 
 function getAuth() {
@@ -23,6 +23,13 @@ function findCol(headers: string[], ...patterns: string[]): number {
     if (idx >= 0) return idx
   }
   return -1
+}
+
+// Tiedostonimi esim. "Myyntiseuranta 7.Heinäkuu 2026" -> 7. Käytetään Petrin
+// kuukausirajatun jäsenyyden (isRJMobSellerForMonth) ratkaisemiseen.
+function parseMonthNumFromFileName(fileName: string): number | null {
+  const m = fileName.match(/(\d{1,2})\./)
+  return m ? Number(m[1]) : null
 }
 
 const RJ_STORES = ['malmi', 'easton', 'holma', 'syke', 'kivistö', 'kivisto']
@@ -74,6 +81,7 @@ export async function GET(req: NextRequest) {
 }
 
 async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: string, sheetNames: string[], fileName: string) {
+  const monthNum = parseMonthNumFromFileName(fileName)
   const myyjatSheet = sheetNames.find(n => n.toLowerCase().includes('myyjät yhteensä') || n.toLowerCase().includes('myyjat yhteensa')) ?? sheetNames[0]
   const myymalaSheet = sheetNames.find(n => n.toLowerCase().includes('myymäl') || n.toLowerCase().includes('myymäl')) ?? ''
   const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
@@ -163,7 +171,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
 
     if (isStandi(cleanedNimi)) {
       standiRows.push(raw)
-    } else if (isRJMobSeller(cleanedNimi)) {
+    } else if (isRJMobSellerForMonth(cleanedNimi, monthNum)) {
       sellers.push({ ...raw, tunnit: normaaliTunnit, palkkaTunnit: palkkaTunnit > 0 ? palkkaTunnit : normaaliTunnit })
     }
   }
@@ -189,12 +197,18 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
       const mIdxFsecInternet = findCol(mHeaders, 'f-secure internet', 'fsecure internet', 'f-secure internet security')
       const mIdxTunnit = findCol(mHeaders, 'tunnit')
 
-      const normalizeStoreName = (kusta: string) => kusta
-        .replace('K-Citymarket Malmi', 'Malmi').replace('Helsinki, K-Citymarket Malmi', 'Helsinki, Malmi')
-        .replace('Kauppakeskus Easton', 'Easton').replace('Helsinki, Kauppakeskus Easton', 'Helsinki, Easton')
-        .replace('Prisma Holma', 'Holma').replace('Lahti, Prisma Holma', 'Lahti, Holma')
-        .replace('Prisma Syke', 'Syke').replace('Lahti, Prisma Syke', 'Lahti, Syke')
-        .replace('K-Citymarket Kivistö', 'Kivistö').replace('Vantaa, K-Citymarket Kivistö', 'Vantaa, Kivistö')
+      // Tunnistaa myymälän kustannuspaikan tekstistä riippumatta siitä onko siinä valmiiksi
+      // kaupunkietuliite vai ei (esim. sekä "K-Citymarket Malmi" että "Helsinki, K-Citymarket
+      // Malmi" -> aina "Helsinki, Malmi") — ohjeen mukainen normalisointi (myyntiseuranta_ohje).
+      const normalizeStoreName = (kusta: string): string => {
+        const k = kusta.toLowerCase()
+        if (k.includes('malmi')) return 'Helsinki, Malmi'
+        if (k.includes('easton')) return 'Helsinki, Easton'
+        if (k.includes('kivistö') || k.includes('kivisto')) return 'Vantaa, Kivistö'
+        if (k.includes('holma')) return 'Lahti, Holma'
+        if (k.includes('syke')) return 'Lahti, Syke'
+        return kusta
+      }
 
       for (let i = mHeaderIdx + 1; i < myymalaRows.length; i++) {
         const row = myymalaRows[i]
@@ -301,6 +315,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
 }
 
 async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: string, sheetNames: string[], fileName: string) {
+  const monthNum = parseMonthNumFromFileName(fileName)
   const targetSheet = sheetNames.find(n =>
     n.toLowerCase().includes('etelän') || n.toLowerCase().includes('etela') ||
     n.toLowerCase().includes('härät') || n.toLowerCase().includes('harat')
@@ -366,7 +381,7 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
     if (raw.liittKpl === 0 && raw.liittEur === 0) continue
     if (isStandi(nimi)) standiRows.push(raw)
-    else sellers.push(raw)
+    else if (isRJMobSellerForMonth(nimi, monthNum)) sellers.push(raw)
   }
 
   const storeResults: Record<string, { liittKpl: number, liittEur: number, fsecKpl: number, fsecEur: number, kassa: number, kassaRjmob: number, tunnit: number }> = {}
