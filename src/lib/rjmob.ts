@@ -2,7 +2,9 @@
 export const LAPIMENO = 0.65
 export const NORMAL_MULT = 5.0
 export const KRENAR_SELLER_MULT = 4.0
-export const KRENAR_RJMOB_MULT = 1.0
+// RJ-Mob saa Krenarin liittymistä liittymä€ jaettuna neljällä (ohje: tuottoseuranta_ohje) —
+// ei sama NORMAL_MULT-kerroin kuin muilla myyjillä.
+export const KRENAR_RJMOB_MULT = 0.25
 export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
@@ -75,6 +77,14 @@ export const RJ_MOB_SELLERS = [
 
 export function isRJMobSeller(nimi: string): boolean {
   return RJ_MOB_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
+}
+// Petri oli tiimissä marraskuusta maaliskuuhun (myyntiseuranta_ohje) — muina kuukausina
+// hänen rivinsä ei kuulu laskelmiin vaikka nimi esiintyisikin tiedostossa.
+const PETRI_ACTIVE_MONTHS = [11, 12, 1, 2, 3]
+export function isRJMobSellerForMonth(nimi: string, monthNum: number | null): boolean {
+  if (isRJMobSeller(nimi)) return true
+  if (monthNum !== null && nimi.trim().toLowerCase() === 'petri' && PETRI_ACTIVE_MONTHS.includes(monthNum)) return true
+  return false
 }
 export function getTuntipalkka(nimi: string): number {
   return TUNTIPALKAT[nimi] ?? TUNTIPALKAT.default
@@ -169,11 +179,16 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
   let myyjaProv: number
 
   if (tyyppi === 'krenar') {
-    rjmobLiitt = liittEur * NORMAL_MULT
+    rjmobLiitt = liittEur * KRENAR_RJMOB_MULT
     myyjaProv = liittEur * KRENAR_SELLER_MULT
   } else {
     rjmobLiitt = liittEur * LAPIMENO * NORMAL_MULT
-    myyjaProv = liittEur * LAPIMENO
+    // Myyjän oma provisio (työkulun ja tehon pohja) on liittymä€ SELLAISENAAN, ei
+    // LAPIMENO-kertoimella diskontattuna — LAPIMENO koskee vain RJ-Mobin omaa tuloa
+    // (rjmobLiitt yllä). Todennettu tuotantodatasta: myyntiseurannan oma "Provikka"-
+    // sarake (= Kassaprovisio + Liittymäprovisio) täsmää tähän raakaan liittymä€-arvoon,
+    // ei LAPIMENOlla kerrottuna versioon.
+    myyjaProv = liittEur
   }
 
   const rjmobKassa = kassa * 5.0
