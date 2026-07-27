@@ -1,23 +1,39 @@
-import { SectionPlaceholder } from '@/components/arxcian/SectionPlaceholder'
+import { currentOwner } from '@/lib/session'
+import { getAlerts } from '@/lib/arxcian/trading/alerts'
+import { SentimentGauge } from '@/components/arxcian/trading/SentimentGauge'
+import { IctFeed } from '@/components/arxcian/trading/IctFeed'
+import { AlertsPanel } from '@/components/arxcian/trading/AlertsPanel'
+import { Panel } from '@/components/arxcian/Panel'
 
 export const metadata = { title: 'Trading · arxcian' }
+export const dynamic = 'force-dynamic'
 
-export default function TradingPage() {
+export default async function TradingPage() {
+  await currentOwner()
+  const alerts = await getAlerts()
+
   return (
-    <SectionPlaceholder
-      id="trading"
-      title="Trading"
-      description="Markkinat, watchlist ja ICT"
-      vaihe={2}
-      tulossa={[
-        'Watchlist: öljy, BTC, ETH, US500, NAS100, XAUUSD, DXY, EURUSD, GBPUSD, USDJPY',
-        'Top 10 osaketta ja 5–10 ajankohtaista kryptoa',
-        'Heatmap seuratuista instrumenteista ja sentimenttimittari',
-        'YouTube-syöte ICT-kanaville',
-        'Talouskalenteri: korkean vaikutuksen tapahtumat',
-        'Hälytysten perusversio, säilytys päivän ja viikon ajan',
-        'ICT session-kello, korrelaatiot ja COT-raportti (vaihe 5)',
-      ]}
-    />
+    <div className="mx-auto max-w-6xl">
+      <header className="ax-rise pb-6 pt-2">
+        <h1 className="text-2xl font-light tracking-tight text-ax-text">Trading</h1>
+        <p className="mt-1 text-[13px] text-ax-dim">Markkinat, watchlist ja ICT</p>
+      </header>
+
+      <div className="mb-4 grid gap-3 lg:grid-cols-2">
+        <SentimentGauge />
+        <Panel title="Watchlist" meta="Twelve Data">
+          <p className="py-6 text-center text-[13px] text-ax-faint">
+            Watchlist odottaa Twelve Data -API-avainta. Öljy, BTC, ETH, US500, NAS100, XAUUSD, DXY,
+            EURUSD, GBPUSD, USDJPY, top 10 osaketta ja 5–10 kryptoa tulevat tähän kun avain on käytössä.
+          </p>
+        </Panel>
+      </div>
+
+      <div className="mb-4">
+        <IctFeed />
+      </div>
+
+      <AlertsPanel initialAlerts={alerts} />
+    </div>
   )
 }

@@ -1,6 +1,8 @@
 import { currentUser } from '@/lib/session'
 import { CATEGORIES } from './news/types'
 import { refreshCategory, cacheKeyFor } from './news/fetchNews'
+import { getSentiment } from './trading/sentiment'
+import { getIctVideos } from './trading/ict'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -33,8 +35,27 @@ const newsJobs: CronJob[] = CATEGORIES.map(category => ({
   },
 }))
 
+const tradingJobs: CronJob[] = [
+  {
+    id: 'trading-sentiment',
+    description: 'Trading: sentimenttimittari',
+    run: async () => {
+      await getSentiment()
+      return { key: 'trading:sentiment' }
+    },
+  },
+  {
+    id: 'trading-ict',
+    description: 'Trading: ICT-videot',
+    run: async () => {
+      const result = await getIctVideos()
+      return { key: 'trading:ict-videos', items: result.data.length }
+    },
+  },
+]
+
 /** Työt lisätään tähän vaiheissa 1–3. */
-export const JOBS: readonly CronJob[] = [...newsJobs]
+export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs]
 
 export function jobsFor(schedule: string | null): readonly CronJob[] {
   if (!schedule) return JOBS
