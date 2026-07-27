@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCron, jobsFor } from '@/lib/arxcian/cron'
 
-// Ulkoiset lähteet ovat hitaita, joten oletusaikaraja ei riitä.
-export const maxDuration = 60
+// Ulkoiset lähteet ja AI-tiivistys ovat hitaita — ensimmäinen ajo per
+// kategoria voi tiivistää kymmeniä artikkeleita ja kestää yli minuutin.
+// 280 s jättää marginaalia alustan 300 s -kattoon.
+export const maxDuration = 280
 export const dynamic = 'force-dynamic'
 
 /**

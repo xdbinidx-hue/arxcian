@@ -1,4 +1,6 @@
 import { currentUser } from '@/lib/session'
+import { CATEGORIES } from './news/types'
+import { refreshCategory, cacheKeyFor } from './news/fetchNews'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -22,8 +24,17 @@ export type CronJob = {
   run: () => Promise<JobResult>
 }
 
+const newsJobs: CronJob[] = CATEGORIES.map(category => ({
+  id: `news-${category}`,
+  description: `Uutiset: ${category}`,
+  run: async () => {
+    const result = await refreshCategory(category)
+    return { key: cacheKeyFor(category), items: result.total }
+  },
+}))
+
 /** Työt lisätään tähän vaiheissa 1–3. */
-export const JOBS: readonly CronJob[] = []
+export const JOBS: readonly CronJob[] = [...newsJobs]
 
 export function jobsFor(schedule: string | null): readonly CronJob[] {
   if (!schedule) return JOBS
