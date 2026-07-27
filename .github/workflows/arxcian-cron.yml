@@ -1,0 +1,46 @@
+# Ajastetut haut arxcianille.
+#
+# Vercelin Hobby-taso sallii vain kaksi cronia ja nekin kerran päivässä,
+# joten ajastus hoidetaan täältä. Työ vain kutsuu sovelluksen cron-reittiä,
+# joka päättää mitä haetaan — työt lisätään koodissa JOBS-rekisteriin.
+#
+# HUOM: GitHubin ajastus on UTC:ssä eikä tunne kesäaikaa. Ajat alla
+# vastaavat Suomen aikaa 08/12/16/20 kesäaikana (UTC+3); talvella ne
+# osuvat tuntia myöhemmäksi. Välimuistin TTL joustaa tämän yli.
+
+name: arxcian cron
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # 08:00 Suomen kesäaikaa
+    - cron: '0 9 * * *'   # 12:00
+    - cron: '0 13 * * *'  # 16:00
+    - cron: '0 17 * * *'  # 20:00
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Käynnistä ajastetut haut
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          response=$(curl -sS --max-time 120 -w '\n%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://rjmob-portal.vercel.app/api/arxcian/cron)
+
+          body=$(printf '%s' "$response" | sed '$d')
+          status=$(printf '%s' "$response" | tail -n1)
+
+          echo "$body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Cron-reitti vastasi statuksella $status"
+            exit 1
+          fi
+
+          if printf '%s' "$body" | grep -q '"ok":false'; then
+            echo "::error::Osa töistä epäonnistui"
+            exit 1
+          fi
