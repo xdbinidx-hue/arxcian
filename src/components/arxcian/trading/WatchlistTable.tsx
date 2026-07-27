@@ -15,7 +15,7 @@ export async function WatchlistTable() {
   return (
     <Panel
       title="Watchlist"
-      meta={fetchedAt ? new Date(fetchedAt).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' }) : 'Twelve Data'}
+      meta={fetchedAt ? new Date(fetchedAt).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' }) : 'Yahoo Finance'}
     >
       {!cached ? (
         <p className="py-6 text-center text-[13px] text-ax-faint">
@@ -37,17 +37,7 @@ export async function WatchlistTable() {
                 const up = q && q.change >= 0
                 return (
                   <tr key={sym.quoteSymbol} className="border-t border-ax-line/60">
-                    <td className="py-1.5 pr-3 text-ax-text">
-                      {sym.label}
-                      {sym.quoteProvider === 'yahoo' && (
-                        <span
-                          title="Epävirallinen lähde (Yahoo Finance) — Twelve Datan ilmaistaso ei kata tätä instrumenttia"
-                          className="ml-1.5 rounded border border-ax-warn/30 px-1 text-[9px] text-ax-warn"
-                        >
-                          Yahoo
-                        </span>
-                      )}
-                    </td>
+                    <td className="py-1.5 pr-3 text-ax-text">{sym.label}</td>
                     <td className="py-1.5 pr-3 text-right font-mono tabular-nums text-ax-text">
                       {q ? fmtPrice(q.price) : '—'}
                     </td>
@@ -59,6 +49,9 @@ export async function WatchlistTable() {
               })}
             </tbody>
           </table>
+          <p className="mt-2 text-[10px] text-ax-faint">
+            Data Yahoo Financen dokumentoimattomasta rajapinnasta — ei virallista tukea eikä SLA:ta.
+          </p>
         </div>
       )}
     </Panel>
