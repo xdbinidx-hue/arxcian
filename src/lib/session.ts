@@ -14,6 +14,9 @@ export type SessionData = {
   user?: SessionUser
   /** Unix ms. Istunto vanhenee tähän myös palvelimella, ei pelkän evästeen varassa. */
   expiresAt?: number
+  /** Google-OAuthin kertakäyttöinen CSRF-tunniste. Ilman tätä hyökkääjä voisi
+   *  huijata kirjautuneen käyttäjän liittämään väärän Google-tilin. */
+  oauthState?: string
 }
 
 /** Vieraskäyttäjän käyttökerrat. Omassa pitkäikäisessä evästeessään, jotta
