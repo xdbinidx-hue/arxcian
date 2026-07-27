@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
     const sheetNames = sheetMeta.data.sheets?.map(s => s.properties?.title ?? '') ?? []
 
     const tavoitteetSheet = findSheet(sheetNames, 'tavoitteet')
-    const kassakateSheet = findSheet(sheetNames, 'kassakate')
+    const kassakateSheet = findSheet(sheetNames, 'kassakate', 'kassamyynti')
     const dataSheet = findSheet(sheetNames, 'data')
     const myyjatSheet = findSheet(sheetNames, 'myyjät yhteensä', 'myyjat yhteensa')
 
