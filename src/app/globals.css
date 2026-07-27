@@ -66,3 +66,17 @@ body:has(.arxcian-root) {
     animation: none !important;
   }
 }
+
+/* Leafletin oletustyylit (säätutka) ovat vaaleat — sovitetaan tummaan teemaan. */
+.arxcian-root .leaflet-control-attribution {
+  background: rgba(11, 15, 20, 0.85);
+  color: #8b9bad;
+}
+.arxcian-root .leaflet-control-attribution a {
+  color: #8b9bad;
+}
+.arxcian-root .leaflet-control-zoom a {
+  background: rgba(11, 15, 20, 0.9);
+  color: #dce6f0;
+  border-color: rgba(148, 180, 210, 0.12);
+}
