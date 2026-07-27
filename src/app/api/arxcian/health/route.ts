@@ -1,35 +1,52 @@
 import { NextResponse } from 'next/server'
-import { writeCached, readCached, invalidate } from '@/lib/arxcian/cache'
+import { kv } from '@vercel/kv'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Tarkistaa että välimuisti on tavoitettavissa: kirjoittaa, lukee ja
- * poistaa yhden avaimen. Middleware vaatii jo istunnon tähän reittiin.
+ * Kertoo onko välimuisti tavoitettavissa: kirjoittaa, lukee ja poistaa
+ * yhden avaimen. Middleware vaatii jo istunnon tähän reittiin.
  *
- * Hyödyllinen myöhemmin kun jokin osio ei näytä dataa — kertoo heti
- * onko vika Redisissä vai lähteessä.
+ * Käyttää kv:tä suoraan eikä cache.ts:n apureita, koska ne nielevät
+ * Redis-virheet tarkoituksella. Terveystarkistuksen pitää näyttää syy.
  */
 export async function GET() {
-  const key = 'health:ping'
+  const key = 'arxcian:health:ping'
   const stamp = Date.now()
   const started = Date.now()
 
   try {
-    await writeCached(key, { stamp }, 60)
-    const back = await readCached<{ stamp: number }>(key)
-    await invalidate(key)
+    await kv.set(key, { stamp }, { ex: 60 })
 
-    const ok = back?.data.stamp === stamp
+    // Ensimmäinen luku voi osua replikaan johon kirjoitus ei ole vielä
+    // ehtinyt. Uusintayritys kertoo onko kyse viiveestä vai oikeasta viasta.
+    let back = await kv.get<{ stamp: number }>(key)
+    const immediate = back?.stamp === stamp
+    let retried = false
+
+    if (!immediate) {
+      await new Promise(r => setTimeout(r, 400))
+      back = await kv.get<{ stamp: number }>(key)
+      retried = true
+    }
+
+    await kv.del(key)
+
+    const ok = back?.stamp === stamp
     return NextResponse.json({
       ok,
-      // Välimuistin virheet eivät heitä poikkeusta vaan palauttavat null,
-      // joten epäonnistunut edestakainen kirjoitus näkyy tässä.
-      cache: ok ? 'ok' : 'ei vastaa',
+      cache: ok ? (immediate ? 'ok' : 'ok, mutta viiveellä') : 'kirjoitus ei näy luettaessa',
+      immediate,
+      retried,
+      wrote: stamp,
+      read: back ?? null,
       ms: Date.now() - started,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ ok: false, cache: 'virhe', error: message }, { status: 500 })
+    return NextResponse.json(
+      { ok: false, cache: 'virhe', error: message, ms: Date.now() - started },
+      { status: 500 },
+    )
   }
 }
