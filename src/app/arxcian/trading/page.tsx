@@ -3,6 +3,7 @@ import { getAlerts } from '@/lib/arxcian/trading/alerts'
 import { SentimentGauge } from '@/components/arxcian/trading/SentimentGauge'
 import { IctFeed } from '@/components/arxcian/trading/IctFeed'
 import { AlertsPanel } from '@/components/arxcian/trading/AlertsPanel'
+import { ChartPanel } from '@/components/arxcian/trading/ChartPanel'
 import { Panel } from '@/components/arxcian/Panel'
 
 export const metadata = { title: 'Trading · arxcian' }
@@ -18,6 +19,10 @@ export default async function TradingPage() {
         <h1 className="text-2xl font-light tracking-tight text-ax-text">Trading</h1>
         <p className="mt-1 text-[13px] text-ax-dim">Markkinat, watchlist ja ICT</p>
       </header>
+
+      <div className="mb-4">
+        <ChartPanel />
+      </div>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-2">
         <SentimentGauge />
