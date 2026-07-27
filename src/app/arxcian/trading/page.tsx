@@ -4,7 +4,7 @@ import { SentimentGauge } from '@/components/arxcian/trading/SentimentGauge'
 import { IctFeed } from '@/components/arxcian/trading/IctFeed'
 import { AlertsPanel } from '@/components/arxcian/trading/AlertsPanel'
 import { ChartPanel } from '@/components/arxcian/trading/ChartPanel'
-import { Panel } from '@/components/arxcian/Panel'
+import { WatchlistTable } from '@/components/arxcian/trading/WatchlistTable'
 
 export const metadata = { title: 'Trading · arxcian' }
 export const dynamic = 'force-dynamic'
@@ -26,12 +26,7 @@ export default async function TradingPage() {
 
       <div className="mb-4 grid gap-3 lg:grid-cols-2">
         <SentimentGauge />
-        <Panel title="Watchlist" meta="Twelve Data">
-          <p className="py-6 text-center text-[13px] text-ax-faint">
-            Watchlist odottaa Twelve Data -API-avainta. Öljy, BTC, ETH, US500, NAS100, XAUUSD, DXY,
-            EURUSD, GBPUSD, USDJPY, top 10 osaketta ja 5–10 kryptoa tulevat tähän kun avain on käytössä.
-          </p>
-        </Panel>
+        <WatchlistTable />
       </div>
 
       <div className="mb-4">

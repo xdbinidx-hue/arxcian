@@ -3,6 +3,8 @@ import { CATEGORIES } from './news/types'
 import { refreshCategory, cacheKeyFor } from './news/fetchNews'
 import { getSentiment } from './trading/sentiment'
 import { getIctVideos } from './trading/ict'
+import { refreshQuotes } from './trading/quotes'
+import { checkAlerts } from './trading/alerts'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -50,6 +52,15 @@ const tradingJobs: CronJob[] = [
     run: async () => {
       const result = await getIctVideos()
       return { key: 'trading:ict-videos', items: result.data.length }
+    },
+  },
+  {
+    id: 'trading-quotes',
+    description: 'Trading: watchlist-kurssit',
+    run: async () => {
+      const data = await refreshQuotes()
+      await checkAlerts(data.quotes)
+      return { key: 'trading:quotes', items: Object.keys(data.quotes).length }
     },
   },
 ]
