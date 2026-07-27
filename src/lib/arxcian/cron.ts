@@ -65,7 +65,7 @@ const tradingJobs: CronJob[] = [
   },
 ]
 
-/** Työt lisätään tähän vaiheissa 1–3. */
+/** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
 export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs]
 
 export function jobsFor(schedule: string | null): readonly CronJob[] {

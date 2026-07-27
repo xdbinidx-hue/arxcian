@@ -50,3 +50,16 @@ export const WATCHLIST: readonly WatchSymbol[] = [
   { quoteSymbol: 'ADA-USD', tvSymbol: 'BINANCE:ADAUSDT', label: 'ADA', assetClass: 'crypto' },
   { quoteSymbol: 'AVAX-USD', tvSymbol: 'BINANCE:AVAXUSDT', label: 'AVAX', assetClass: 'crypto' },
 ]
+
+/**
+ * Hubin etusivun tiivis markkinanäkymä — kuusi makrosymbolia koko
+ * watchlistin sijaan. Poimitaan WATCHLISTista, jotta nimet ja symbolit
+ * pysyvät yhdessä paikassa.
+ */
+const HUB_QUOTE_SYMBOLS = ['^GSPC', '^NDX', 'BTC-USD', 'GC=F', 'DX-Y.NYB', 'EURUSD=X']
+
+export const HUB_SYMBOLS: readonly WatchSymbol[] = HUB_QUOTE_SYMBOLS.map(symbol => {
+  const found = WATCHLIST.find(w => w.quoteSymbol === symbol)
+  if (!found) throw new Error(`HUB_SYMBOLS: symbolia ${symbol} ei ole WATCHLISTissa`)
+  return found
+})

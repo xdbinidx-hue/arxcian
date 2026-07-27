@@ -10,7 +10,7 @@ type Props = {
  * TradingViewn ilmainen upotettava kaaviowidget. Ei vaadi tiliä eikä
  * API-avainta — TradingView itsessään ei tarjoa julkista data-APIa,
  * vain tämän widgetin kaltaisia upotuksia. Watchlistin kurssiluvut
- * (hälytyksiä varten) tulevat erikseen Twelve Datasta.
+ * (hälytyksiä varten) tulevat erikseen Yahoo Financesta.
  */
 export function TradingViewChart({ symbol }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)

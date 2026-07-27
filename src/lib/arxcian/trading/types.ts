@@ -1,19 +1,11 @@
 export type AssetClass = 'forex' | 'crypto' | 'index' | 'commodity' | 'stock'
 
-export type Instrument = {
-  /** Twelve Data -symboli, esim. "EUR/USD", "BTC/USD", "AAPL" */
-  symbol: string
-  /** Käyttöliittymässä näytettävä nimi, esim. "EURUSD" */
-  label: string
-  assetClass: AssetClass
-}
-
 export type Quote = {
   symbol: string
   price: number
   change: number
   changePercent: number
-  /** Unix ms, milloin Twelve Data laski kurssin */
+  /** Unix ms, milloin kurssi haettiin */
   timestamp: number
 }
 

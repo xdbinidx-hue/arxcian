@@ -5,3 +5,8 @@ node_modules/
 .vercel
 .env*
 tsconfig.tsbuildinfo
+
+# Claude Coden paikalliset tiedostot — eivät kuulu versionhallintaan
+.claude/settings.local.json
+.claude/launch.json
+.claude/worktrees/

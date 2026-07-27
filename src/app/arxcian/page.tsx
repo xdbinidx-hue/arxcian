@@ -3,6 +3,11 @@ import { currentOwner } from '@/lib/session'
 import { SECTIONS } from '@/lib/arxcian/nav'
 import { SectionIcon } from '@/components/arxcian/icons'
 import { Panel } from '@/components/arxcian/Panel'
+import { AlertsSummary } from '@/components/arxcian/hub/AlertsSummary'
+import { NewsDigest } from '@/components/arxcian/hub/NewsDigest'
+import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
+
+export const dynamic = 'force-dynamic'
 
 const TZ = 'Europe/Helsinki'
 
@@ -49,17 +54,10 @@ export default async function ArxcianHub() {
             className="ax-rise group rounded-lg border border-ax-line bg-ax-panel/70 p-4 transition-colors hover:border-ax-line-strong hover:bg-ax-panel-hi"
             style={{ animationDelay: `${0.04 * i}s` }}
           >
-            <div className="flex items-start justify-between">
-              <SectionIcon
-                id={section.id}
-                className="h-5 w-5 text-ax-accent transition-transform group-hover:scale-110"
-              />
-              {section.vaihe !== null && (
-                <span className="rounded border border-ax-line px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ax-faint">
-                  vaihe {section.vaihe}
-                </span>
-              )}
-            </div>
+            <SectionIcon
+              id={section.id}
+              className="h-5 w-5 text-ax-accent transition-transform group-hover:scale-110"
+            />
             <h2 className="mt-3 text-[15px] font-medium text-ax-text">{section.label}</h2>
             <p className="mt-1 text-[12px] leading-relaxed text-ax-faint">{section.description}</p>
           </Link>
@@ -68,30 +66,15 @@ export default async function ArxcianHub() {
 
       {/* Pikanäkymä */}
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <Panel
-          title="Hälytykset"
-          meta="vaihe 2"
-          delay={0.16}
-          empty="Hälytykset tulevat käyttöön Trading-osion myötä."
-        />
-        <Panel
-          title="Päivän uutiskooste"
-          meta="vaihe 1"
-          delay={0.2}
-          empty="Koosteet haetaan neljästi päivässä, kun uutislähteet on kytketty."
-        />
+        <AlertsSummary delay={0.16} />
+        <NewsDigest delay={0.2} />
         <Panel
           title="Seuraavat tapahtumat"
-          meta="vaihe 3"
+          meta="Google Calendar"
           delay={0.24}
-          empty="Kalenteri synkronoidaan Google Calendarista Personal-osiossa."
+          empty="Kalenterisynkronointi vaatii OAuth-kytkennän — ei vielä käytössä."
         />
-        <Panel
-          title="Markkinatilanne"
-          meta="vaihe 2"
-          delay={0.28}
-          empty="Watchlistin instrumentit näkyvät tässä markkinadatan kytkennän jälkeen."
-        />
+        <MarketSnapshot delay={0.28} />
       </div>
     </div>
   )
