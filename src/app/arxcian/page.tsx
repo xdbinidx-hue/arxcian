@@ -2,10 +2,10 @@ import Link from 'next/link'
 import { currentOwner } from '@/lib/session'
 import { SECTIONS } from '@/lib/arxcian/nav'
 import { SectionIcon } from '@/components/arxcian/icons'
-import { Panel } from '@/components/arxcian/Panel'
 import { AlertsSummary } from '@/components/arxcian/hub/AlertsSummary'
 import { NewsDigest } from '@/components/arxcian/hub/NewsDigest'
 import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
+import { UpcomingEvents } from '@/components/arxcian/hub/UpcomingEvents'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,12 +68,7 @@ export default async function ArxcianHub() {
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <AlertsSummary delay={0.16} />
         <NewsDigest delay={0.2} />
-        <Panel
-          title="Seuraavat tapahtumat"
-          meta="Google Calendar"
-          delay={0.24}
-          empty="Kalenterisynkronointi vaatii OAuth-kytkennän — ei vielä käytössä."
-        />
+        <UpcomingEvents delay={0.24} />
         <MarketSnapshot delay={0.28} />
       </div>
     </div>

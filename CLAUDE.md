@@ -39,9 +39,12 @@ Noudata olemassa olevan koodin tyyliä:
 |---|---|
 | `SESSION_SECRET` | iron-session salausavain, väh. 32 merkkiä |
 | `ALBIN_PIN`, `ARBNOR_PIN`, `GUEST_PIN` | kirjautumistunnusluvut |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Sheets / Drive |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Sheets / Drive (palvelutili, RJ-Mob) |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Calendar (käyttäjän oma tili, arxcian) |
 | `ANTHROPIC_API_KEY` | AI-tiivistelmät |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis -välimuisti |
+
+Kaksi eri Google-tunnistautumista tarkoituksella: RJ-Mob lukee jaettuja taulukoita **palvelutilillä**, arxcianin kalenteri vaatii **käyttäjän oman OAuth-luvan** omaan kalenteriinsa. Näitä ei voi yhdistää.
 
 ## Käyttäjät ja näkyvyys
 
@@ -77,6 +80,18 @@ Ajastetut haut: työt lisätään `JOBS`-rekisteriin [src/lib/arxcian/cron.ts](s
 **Ajastus ei ole Vercel Cronissa.** Projekti on Hobby-tasolla, joka sallii kaksi cronia kerran päivässä — `vercel.json`issa on jo yksi (`/api/webhook/register`). Uutisten neljä päivittäistä hakua ajetaan [.github/workflows/arxcian-cron.yml](.github/workflows/arxcian-cron.yml):stä, joka kutsuu samaa reittiä. Jos taso joskus nousee Prohon, ajastuksen voi siirtää `vercel.json`iin koodia muuttamatta.
 
 Redis on Upstash-resurssi `upstash-kv-amethyst-river`, liitetty vakionimillä kaikkiin kolmeen ympäristöön. Paikallinen kehitys käyttää samaa kantaa — aja `vercel env pull .env.local --environment development` kun tunnukset vaihtuvat.
+
+## Google Calendar
+
+Käyttäjäkohtainen OAuth, erillään sovelluksen PIN-kirjautumisesta: [oauth.ts](src/lib/arxcian/personal/calendar/oauth.ts) hoitaa luvan, [events.ts](src/lib/arxcian/personal/calendar/events.ts) haun. Tokenit Redisissä avaimella `calendar:tokens:<käyttäjä>`, eivät koskaan selaimeen.
+
+Scope on vain `calendar.readonly`. Tapahtumat haetaan kaikista kalentereista jotka käyttäjä on valinnut näkyviin Googlessa, `singleEvents=true` purkaa toistuvat tapahtumat palvelinpuolella (siksi RRULE-jäsennintä ei tarvita).
+
+**OAuth-suostumusnäyttö on oltava "In Production", ei "Testing".** Testing-tilassa Google vanhentaa refresh-tokenit 7 päivässä, jolloin kalenteri pitäisi liittää uudelleen viikoittain. Vahvistamaton sovellus tuotantotilassa näyttää varoitusnäytön ja on rajattu 100 käyttäjään — molemmat merkityksettömiä kahdelle käyttäjälle.
+
+Valtuutuksen `state` tallennetaan iron-session-istuntoon ja kelpaa kertaalleen. Uudelleenohjausosoite johdetaan pyynnön originista, joten sama koodi toimii localhostissa ja tuotannossa — molemmat on rekisteröitävä Google-konsoliin.
+
+Valtuutusvirhe (peruutettu lupa) poistaa tokenit ja palauttaa tilan "ei yhdistetty"; verkkovirheessä näytetään vanhentunut data kuten muuallakin.
 
 ## PWA
 
