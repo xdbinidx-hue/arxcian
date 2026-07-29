@@ -43,21 +43,51 @@ function dateLabel(dateStr: string, weekday: number): string {
   return `${WEEKDAY_SHORT[weekday]}.${day}.8.`
 }
 
-function ShiftCell({ seller, day }: { seller: string; day: DayInfo }) {
+// Kolme erillistä saraketta per myyjä (Vuoro/Tunnit/Myymälä-kirjain),
+// samaa mallia kuin käyttäjän omassa Sheets-vuorolistassa.
+function ShiftCells({ seller, day }: { seller: string; day: DayInfo }) {
   const td = { padding:'4px 5px', fontSize:10, textAlign:'center' as const, borderBottom:'0.5px solid #f0f0f0' }
+  const lastTd = { ...td, borderRight:'1px solid #eee' }
 
-  if (day.closed) return <td style={{...td, background:'#fef2f2', color:'#e5b4b4'}}>—</td>
+  if (day.closed) {
+    return (
+      <>
+        <td style={{...td, background:'#fef2f2', color:'#e5b4b4'}}>—</td>
+        <td style={{...td, background:'#fef2f2'}}></td>
+        <td style={{...lastTd, background:'#fef2f2'}}></td>
+      </>
+    )
+  }
 
   const absence = getAbsenceLabel(seller, day.date)
-  if (absence) return <td style={{...td, background:'#f3f4f6', color:'#999', fontStyle:'italic'}}>{absence}</td>
+  if (absence) {
+    return (
+      <>
+        <td style={{...td, background:'#f3f4f6', color:'#999', fontStyle:'italic'}}>{absence}</td>
+        <td style={{...td, background:'#f3f4f6'}}></td>
+        <td style={{...lastTd, background:'#f3f4f6'}}></td>
+      </>
+    )
+  }
 
   const shift = day.shifts.find(s => s.seller === seller)
-  if (!shift) return <td style={{...td, color:'#ddd'}}>·</td>
+  if (!shift) {
+    return (
+      <>
+        <td style={{...td, color:'#ddd'}}>·</td>
+        <td style={{...td, color:'#ddd'}}></td>
+        <td style={{...lastTd, color:'#ddd'}}></td>
+      </>
+    )
+  }
 
+  const cellStyle = { ...td, background: STORE_COLORS[shift.store], color:'#333', fontWeight:500 }
   return (
-    <td style={{...td, background: STORE_COLORS[shift.store], color:'#333', fontWeight:500, whiteSpace:'nowrap'}}>
-      {fmtTime(shift.start)}–{fmtTime(shift.end)}
-    </td>
+    <>
+      <td style={{...cellStyle, whiteSpace:'nowrap'}}>{fmtTime(shift.start)}–{fmtTime(shift.end)}</td>
+      <td style={cellStyle}>{shift.hours}</td>
+      <td style={{...cellStyle, ...lastTd}}>{shift.store.charAt(0).toLowerCase()}</td>
+    </>
   )
 }
 
@@ -143,7 +173,7 @@ export default function TyovuorotPage() {
                   <tr>
                     <th style={{...th, textAlign:'left', position:'sticky', left:0, background:'#f8f8f6'}}>Pvm</th>
                     {ROSTER_COLUMNS.map(seller => (
-                      <th key={seller} style={th}>{seller.split(' ')[0]}</th>
+                      <th key={seller} colSpan={3} style={{...th, borderRight:'1px solid #ddd'}}>{seller.split(' ')[0]}</th>
                     ))}
                     <th style={{...th, textAlign:'left', minWidth:180}}>Tapahtumat</th>
                   </tr>
@@ -155,7 +185,7 @@ export default function TyovuorotPage() {
                         {dateLabel(day.date, day.weekday)}
                       </td>
                       {ROSTER_COLUMNS.map(seller => (
-                        <ShiftCell key={seller} seller={seller} day={day} />
+                        <ShiftCells key={seller} seller={seller} day={day} />
                       ))}
                       <td style={{padding:'5px 8px', fontSize:10, color:'#185FA5'}}>{day.note ?? ''}</td>
                     </tr>
