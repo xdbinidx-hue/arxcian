@@ -16,9 +16,20 @@ export async function NewsDigest({ delay }: { delay?: number }) {
     CATEGORIES.map(async c => (await readCached<Article[]>(cacheKeyFor(c)))?.data ?? []),
   )
 
+  // Sama artikkeli voi olla useassa kategoriassa (esim. MarketWatchin juttu
+  // sekä bisnes- että sijoittaminen-syötteessä). fetchNews poistaa
+  // kaksoiskappaleet vain kategorian sisällä, joten kooste karsii ne myös
+  // kategorioiden yli — muuten sama otsikko näkyisi listassa kahdesti ja
+  // Reactin avaimet (id = linkki) menisivät päällekkäin.
+  const seen = new Set<string>()
   const latest = lists
     .flat()
     .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
+    .filter(a => {
+      if (seen.has(a.id)) return false
+      seen.add(a.id)
+      return true
+    })
     .slice(0, MAX_SHOWN)
 
   return (

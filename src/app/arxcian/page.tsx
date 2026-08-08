@@ -7,6 +7,7 @@ import { NewsDigest } from '@/components/arxcian/hub/NewsDigest'
 import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
 import { UpcomingEvents } from '@/components/arxcian/hub/UpcomingEvents'
 import { DailyFocus } from '@/components/arxcian/hub/DailyFocus'
+import { Globe } from '@/components/arxcian/hub/Globe'
 import { GoalsProgress } from '@/components/arxcian/hub/GoalsProgress'
 import { QuickActions } from '@/components/arxcian/hub/QuickActions'
 
@@ -41,17 +42,23 @@ export default async function ArxcianHub() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="ax-rise relative overflow-hidden pb-6 pt-2">
-        {/* Hento hehkupallo tervehdyksen takana — varattu tila tulevalle 3D-maapallolle */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-24 -top-32 h-72 w-72 rounded-full bg-ax-accent/20 blur-[90px]"
-        />
-        <p className="relative font-mono text-[11px] uppercase tracking-[0.2em] text-ax-faint">{date}</p>
-        <h1 className="relative mt-1.5 text-2xl font-light tracking-tight text-ax-text sm:text-3xl">
-          {greeting(hour)}, <span className="font-medium">{name}</span>
-        </h1>
-        <DailyFocus />
+      <header className="ax-rise grid items-center gap-4 pb-6 pt-2 lg:grid-cols-[1fr_320px] lg:gap-8">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ax-faint">{date}</p>
+          <h1 className="mt-1.5 text-2xl font-light tracking-tight text-ax-text sm:text-3xl">
+            {greeting(hour)}, <span className="font-medium">{name}</span>
+          </h1>
+          <DailyFocus />
+        </div>
+
+        <div className="relative mx-auto w-52 sm:w-60 lg:w-[320px]">
+          {/* Pehmeä ilmakehän hehku pallon takana */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-full bg-ax-accent/15 blur-[70px]"
+          />
+          <Globe className="relative" />
+        </div>
       </header>
 
       {/* Neljä pääosiota */}
