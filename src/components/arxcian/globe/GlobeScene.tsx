@@ -364,7 +364,10 @@ export default function GlobeScene({
       vertexShader: ATMOSPHERE_VERTEX,
       fragmentShader: ATMOSPHERE_FRAGMENT,
       uniforms: {
-        glowColor: { value: new THREE.Color(0x38c7ff) }, // teeman --ax-accent
+        // Tarkoituksella oma arvo eikä sama kuin teeman --ax-accent:
+        // additiivinen sekoitus ja fresnel siirtävät sävyä, joten sama heksa
+        // näyttäisi pallolla eri väriltä kuin käyttöliittymässä.
+        glowColor: { value: new THREE.Color(0x38c7ff) },
         strength: { value: 2.6 },
       },
       side: THREE.BackSide,

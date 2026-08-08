@@ -23,11 +23,15 @@ body {
   --ax-text: 226 235 247;
   --ax-dim: 150 171 197;
   --ax-faint: 84 105 133;
-  --ax-accent: 56 199 255;
+  /* Sininen, ei turkoosi: sävy on sovitettu siihen miltä maapallon ilmakehä
+     NÄYTTÄÄ. Pallon shaderissa on sama heksa kuin tässä ennen oli, mutta
+     additiivinen sekoitus ja fresnel siirtävät sen käytännössä sinisemmäksi,
+     jolloin käyttöliittymä erottui turkoosina pallon rinnalla. */
+  --ax-accent: 82 156 255;
   --ax-up: 61 220 151;
   --ax-down: 255 92 114;
   --ax-warn: 245 181 68;
-  --ax-line: 120 175 225;
+  --ax-line: 112 158 230;
 
   color: rgb(var(--ax-text));
   background:
