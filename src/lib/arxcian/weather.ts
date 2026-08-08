@@ -93,7 +93,20 @@ export type CityWeather = {
   isDay: boolean
 }
 
-const CITIES_CACHE_KEY = 'weather:cities'
+/**
+ * Välimuistiavain johdetaan kaupunkilistasta, jottei listan muuttaminen jätä
+ * vanhoja kaupunkeja näkyviin. Kiinteällä avaimella poistettu kaupunki
+ * palautuisi välimuistista TTL:n loppuun asti — tämä havaittiin kun listan
+ * vaihdon jälkeen kartalla näkyi yhä Lagos.
+ */
+function citiesFingerprint(): string {
+  const s = GLOBE_CITIES.map(c => `${c.name}:${c.lat}:${c.lon}`).join(',')
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0
+  return Math.abs(h).toString(36)
+}
+
+export const CITIES_CACHE_KEY = `weather:cities:${citiesFingerprint()}`
 
 /** Vastaus on TAULUKKO kun sijainteja on useita, ja samassa järjestyksessä kuin syöte. */
 type OpenMeteoCity = {

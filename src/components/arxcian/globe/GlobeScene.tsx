@@ -119,6 +119,104 @@ const ATMOSPHERE_FRAGMENT = `
   }
 `
 
+/* ---------------------------------------------------------------
+   Avaruustausta.
+
+   Sumu ja tähdet lasketaan proseduraalisesti kohinasta — valmista
+   taustakuvaa ei ladata, joten se ei maksa tavuakaan siirtoa ja on
+   tarkka millä tahansa resoluutiolla.
+
+   Tausta on staattinen, joten se renderöidään KERRAN tekstuuriksi.
+   Kohinan laskeminen joka ruudulla olisi tuhlausta: viisi oktaavia
+   3D-kohinaa yli miljoonalle pikselille 60 kertaa sekunnissa söisi
+   akkua puhelimessa turhaan.
+   --------------------------------------------------------------- */
+
+const QUAD_VERTEX = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`
+
+// Sumu lasketaan RUUTUKOORDINAATEISSA eikä pallon pinnalla. Pallolle
+// kiedottuna tekstuuri kattaisi 360°, mutta kamera näkee siitä vain noin 38°,
+// jolloin näkyviin jäisi pieni venytetty pala eikä rakenne erottuisi.
+const NEBULA_FRAGMENT = `
+  varying vec2 vUv;
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(233.34, 851.73));
+    p += dot(p, p + 23.45);
+    return fract(p.x * p.y);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+      v += a * noise(p);
+      p *= 2.07;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // Pyöreä tähti solun keskellä: solu arvotaan hashilla ja etäisyys
+  // keskipisteestä pehmentää reunan, jolloin tähdistä ei tule neliöitä.
+  float stars(vec2 uv, float density, float threshold, float size) {
+    vec2 p = uv * density;
+    vec2 cell = floor(p);
+    if (hash(cell) < threshold) return 0.0;
+    float d = length(fract(p) - 0.5);
+    return smoothstep(size, 0.0, d) * (0.45 + 0.75 * hash(cell + 7.3));
+  }
+
+  void main() {
+    vec2 uv = vUv;
+
+    float n1 = fbm(uv * 3.4);
+    float n2 = fbm(uv * 7.1 + 21.7);
+    float n3 = fbm(uv * 12.5 - 4.3);
+
+    vec3 col = vec3(0.012, 0.020, 0.045);
+    col += vec3(0.075, 0.170, 0.400) * pow(smoothstep(0.28, 0.80, n1), 1.4);
+    col += vec3(0.200, 0.075, 0.320) * pow(smoothstep(0.38, 0.86, n2), 2.1);
+    col += vec3(0.250, 0.115, 0.040) * pow(smoothstep(0.54, 0.92, n3), 2.6);
+
+    col += vec3(0.85, 0.90, 1.00) * stars(uv, 210.0, 0.9930, 0.32);
+    col += vec3(0.95, 0.97, 1.00) * stars(uv, 78.0, 0.9970, 0.26) * 1.4;
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`
+
+// Valmis sumu näytetään yhtenä tekstuurihakuna ja häivytetään PYÖREÄSTI
+// läpinäkyväksi, jottei neliön muotoinen piirtoalue erotu sivun taustasta.
+//
+// Mitoitus: kameran fov 38° ja etäisyys 4,2 → näkymän puolikorkeus
+// 4,2·tan(19°) ≈ 1,45, joten säteen 1 maapallon reuna osuu kohtaan r ≈ 0,69.
+// Häivytys alkaa vasta sen jälkeen (0,74) ja päättyy nollaan kohdassa 1,02
+// eli juuri canvasin reunalla — kulmat (r ≈ 1,41) jäävät täysin
+// läpinäkyviksi, jolloin taustasta tulee pehmeä kehä eikä laatikko.
+const BLIT_FRAGMENT = `
+  uniform sampler2D map;
+  varying vec2 vUv;
+  void main() {
+    float r = length(vUv - 0.5) * 2.0;
+    gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0 - smoothstep(0.74, 1.02, r));
+  }
+`
+
 type SceneRefs = {
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
@@ -276,52 +374,51 @@ export default function GlobeScene({
     })
     scene.add(new THREE.Mesh(atmosphereGeometry, atmosphereMaterial))
 
-    const rings: THREE.Mesh[] = []
-    const ringGeometry = new THREE.TorusGeometry(1.42, 0.0022, 8, 220)
-    const ringMaterial = new THREE.MeshBasicMaterial({
-      color: 0x38c7ff,
-      transparent: true,
-      opacity: 0.3,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    })
-    for (const [rx, ry] of [
-      [1.15, 0.2],
-      [1.42, -0.55],
-      [0.95, 0.85],
-    ]) {
-      const ring = new THREE.Mesh(ringGeometry, ringMaterial)
-      ring.rotation.x = rx
-      ring.rotation.y = ry
-      scene.add(ring)
-      rings.push(ring)
-    }
+    /* --- Avaruustausta ---
+       Sumu on staattinen, joten se lasketaan KERRAN tekstuuriksi canvasin
+       kokoisena. Viiden oktaavin kohinan laskeminen joka ruudulla söisi
+       akkua turhaan; näin ruutua kohden jää yksi tekstuurihaku.
+       Tausta piirretään omana vaiheenaan ennen pääkohtausta. */
+    const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+    const quadGeometry = new THREE.PlaneGeometry(2, 2)
 
-    // Tähtitausta: pisteitä satunnaisilla suunnilla kaukana pallosta. Luodaan
-    // kerran puskuriin, ei omaa geometriaa per tähti.
-    const STAR_COUNT = 1100
-    const starPositions = new Float32Array(STAR_COUNT * 3)
-    for (let i = 0; i < STAR_COUNT; i++) {
-      // acos(2u−1) antaa tasaisen jakauman pallon pinnalle; pelkkä
-      // satunnainen kulma kasaisi tähdet navoille.
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(2 * Math.random() - 1)
-      const r = 22 + Math.random() * 18
-      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta)
-      starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-      starPositions[i * 3 + 2] = r * Math.cos(phi)
-    }
-    const starGeometry = new THREE.BufferGeometry()
-    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
-    const starMaterial = new THREE.PointsMaterial({
-      color: 0xd6e9ff,
-      size: 0.17,
-      sizeAttenuation: true,
+    const nebulaScene = new THREE.Scene()
+    const nebulaMaterial = new THREE.ShaderMaterial({
+      vertexShader: QUAD_VERTEX,
+      fragmentShader: NEBULA_FRAGMENT,
+    })
+    nebulaScene.add(new THREE.Mesh(quadGeometry, nebulaMaterial))
+
+    let bgTarget = new THREE.WebGLRenderTarget(2, 2, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+    })
+
+    const blitScene = new THREE.Scene()
+    const blitMaterial = new THREE.ShaderMaterial({
+      vertexShader: QUAD_VERTEX,
+      fragmentShader: BLIT_FRAGMENT,
+      uniforms: { map: { value: bgTarget.texture } },
       transparent: true,
-      opacity: 0.8,
+      depthTest: false,
       depthWrite: false,
     })
-    scene.add(new THREE.Points(starGeometry, starMaterial))
+    blitScene.add(new THREE.Mesh(quadGeometry, blitMaterial))
+
+    /** Piirtää sumun uudelleen kun canvasin koko muuttuu. */
+    const renderNebula = () => {
+      const size = renderer.getDrawingBufferSize(new THREE.Vector2())
+      if (size.x === 0) return
+      bgTarget.dispose()
+      bgTarget = new THREE.WebGLRenderTarget(size.x, size.y, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+      })
+      blitMaterial.uniforms.map.value = bgTarget.texture
+      renderer.setRenderTarget(bgTarget)
+      renderer.render(nebulaScene, bgCamera)
+      renderer.setRenderTarget(null)
+    }
 
     refs.current = { scene, camera, renderer, earth, pointGroup }
 
@@ -332,6 +429,7 @@ export default function GlobeScene({
       renderer.setSize(size, size, false)
       camera.aspect = 1
       camera.updateProjectionMatrix()
+      renderNebula()
     }
     resize()
     const observer = new ResizeObserver(resize)
@@ -457,18 +555,17 @@ export default function GlobeScene({
         }
       }
 
-      // Kiertoratojen pyöriminen ja pilvien ajautuminen ovat oikeaa liikettä
-      // — ne pysäytetään.
-      if (!reduceMotion) {
-        rings[0].rotation.z += 0.0006
-        rings[1].rotation.z -= 0.0004
-        rings[2].rotation.z += 0.0003
-        clouds.rotation.y += 0.00009
-      }
+      // Pilvien ajautuminen on oikeaa liikettä — se pysäytetään.
+      if (!reduceMotion) clouds.rotation.y += 0.00009
 
+      // Tausta omana vaiheenaan ennen pääkohtausta, jolloin syvyyspuskuri ei
+      // sekaannu eikä piirtojärjestys riipu läpinäkyvyyslajittelusta.
+      renderer.clear()
+      renderer.render(blitScene, bgCamera)
       renderer.render(scene, camera)
       frame = requestAnimationFrame(animate)
     }
+    renderer.autoClear = false
     animate()
 
     return () => {
@@ -489,12 +586,12 @@ export default function GlobeScene({
       cloudGeometry.dispose()
       cloudMaterial.dispose()
       cloudTexture.dispose()
-      starGeometry.dispose()
-      starMaterial.dispose()
+      quadGeometry.dispose()
+      nebulaMaterial.dispose()
+      blitMaterial.dispose()
+      bgTarget.dispose()
       atmosphereGeometry.dispose()
       atmosphereMaterial.dispose()
-      ringGeometry.dispose()
-      ringMaterial.dispose()
       renderer.dispose()
       renderer.domElement.remove()
       refs.current = null

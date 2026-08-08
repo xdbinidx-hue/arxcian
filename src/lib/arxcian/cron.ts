@@ -5,7 +5,7 @@ import { getSentiment } from './trading/sentiment'
 import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
-import { getCityWeather } from './weather'
+import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -72,7 +72,7 @@ const globeJobs: CronJob[] = [
     description: 'Maapallo: kaupunkien sää',
     run: async () => {
       const result = await getCityWeather()
-      return { key: 'weather:cities', items: result.data.length }
+      return { key: CITIES_CACHE_KEY, items: result.data.length }
     },
   },
 ]
