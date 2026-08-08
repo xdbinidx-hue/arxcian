@@ -110,16 +110,34 @@ type SceneRefs = {
   pointGroup: THREE.Group
 }
 
+/** Kameran etäisyys kun zoom = 0 (kaukana) ja zoom = 1 (lähellä). */
+const CAMERA_Z_FAR = 4.2
+const CAMERA_Z_NEAR = 2.7
+
 type Props = {
   layer: GlobeLayer
   selectedId: string | null
   onSelectPoint: (point: GlobePoint | null) => void
+  /** 0 = kaukana, 1 = lähellä */
+  zoom: number
+  onZoomChange: (zoom: number) => void
 }
 
-export default function GlobeScene({ layer, selectedId, onSelectPoint }: Props) {
+export default function GlobeScene({
+  layer,
+  selectedId,
+  onSelectPoint,
+  zoom,
+  onZoomChange,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const refs = useRef<SceneRefs | null>(null)
   const [ready, setReady] = useState(false)
+
+  // Zoom ja tarkennuskulma luetaan refeistä animaatiosilmukassa, jottei
+  // kohtausta tarvitse rakentaa uudelleen kun propsit muuttuvat.
+  const zoomRef = useRef(zoom)
+  const focusRef = useRef<number | null>(null)
 
   // Callback refin kautta, jottei kohtausta tarvitse rakentaa uudelleen kun
   // vanhemman komponentin funktioviite vaihtuu.
@@ -127,6 +145,21 @@ export default function GlobeScene({ layer, selectedId, onSelectPoint }: Props) 
   useEffect(() => {
     onSelectRef.current = onSelectPoint
   }, [onSelectPoint])
+
+  const onZoomRef = useRef(onZoomChange)
+  useEffect(() => {
+    onZoomRef.current = onZoomChange
+  }, [onZoomChange])
+
+  useEffect(() => {
+    zoomRef.current = zoom
+  }, [zoom])
+
+  // Valinta kääntää maapallon niin että piste tulee kameraa kohti.
+  useEffect(() => {
+    const point = layer.points.find(p => p.id === selectedId)
+    focusRef.current = point ? faceLongitude(point.lng) : null
+  }, [selectedId, layer])
 
   // --- Kohtaus rakennetaan kerran ---
   useEffect(() => {
@@ -250,25 +283,58 @@ export default function GlobeScene({ layer, selectedId, onSelectPoint }: Props) 
     let dragStartRotation = 0
     let dragged = false
 
+    // Aktiiviset osoittimet nipistystä varten. Kahdella sormella zoomataan,
+    // yhdellä käännetään.
+    const pointers = new Map<number, { x: number; y: number }>()
+    let pinchStartDistance = 0
+    let pinchStartZoom = 0
+
+    const pinchDistance = () => {
+      const [a, b] = Array.from(pointers.values())
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
+
     const onPointerDown = (e: PointerEvent) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      renderer.domElement.setPointerCapture(e.pointerId)
+
+      if (pointers.size === 2) {
+        pinchStartDistance = pinchDistance()
+        pinchStartZoom = zoomRef.current
+        dragStartX = null // nipistys keskeyttää käännön
+        return
+      }
+
       dragStartX = e.clientX
       dragStartY = e.clientY
       dragStartRotation = earth.rotation.y
       dragged = false
-      renderer.domElement.setPointerCapture(e.pointerId)
       renderer.domElement.style.cursor = 'grabbing'
     }
 
     const onPointerMove = (e: PointerEvent) => {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+      if (pointers.size === 2 && pinchStartDistance > 0) {
+        const ratio = pinchDistance() / pinchStartDistance
+        onZoomRef.current(Math.min(1, Math.max(0, pinchStartZoom + (ratio - 1))))
+        return
+      }
+
       if (dragStartX === null) return
       const dx = e.clientX - dragStartX
       // Yli 5 px liike tulkitaan raahaukseksi, jottei pieni tärähdys
       // klikatessa jää tunnistamatta valinnaksi.
       if (Math.abs(dx) > 5 || Math.abs(e.clientY - dragStartY) > 5) dragged = true
+      // Käsin kääntäminen kumoaa tarkennuksen, muuten ne kilpailisivat.
+      if (dragged) focusRef.current = null
       earth.rotation.y = dragStartRotation + dx / 180
     }
 
     const onPointerUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId)
+      if (pointers.size < 2) pinchStartDistance = 0
+
       const wasDragging = dragStartX !== null
       dragStartX = null
       renderer.domElement.style.cursor = 'grab'
@@ -306,6 +372,27 @@ export default function GlobeScene({ layer, selectedId, onSelectPoint }: Props) 
       for (const p of pointGroup.children) {
         const base = (p.userData.baseScale as number) ?? 1
         p.scale.setScalar(p.userData.selected ? base * (1.35 + 0.15 * Math.sin(t * 3)) : base)
+      }
+
+      // Kamera liukuu kohti zoom-tasoa. reduceMotion-tilassa hypätään suoraan.
+      const targetZ = CAMERA_Z_FAR + (CAMERA_Z_NEAR - CAMERA_Z_FAR) * zoomRef.current
+      camera.position.z = reduceMotion
+        ? targetZ
+        : camera.position.z + (targetZ - camera.position.z) * 0.08
+
+      // Tarkennus valittuun pisteeseen: käännetään lyhintä reittiä, siksi
+      // kulmaero normalisoidaan välille [−π, π].
+      if (focusRef.current !== null) {
+        const diff = Math.atan2(
+          Math.sin(focusRef.current - earth.rotation.y),
+          Math.cos(focusRef.current - earth.rotation.y),
+        )
+        if (Math.abs(diff) < 0.002) {
+          earth.rotation.y = focusRef.current
+          focusRef.current = null
+        } else {
+          earth.rotation.y += reduceMotion ? diff : diff * 0.07
+        }
       }
 
       // Kiertoratojen pyöriminen on oikeaa liikettä — se pysäytetään.

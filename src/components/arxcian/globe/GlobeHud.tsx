@@ -27,9 +27,24 @@ type Props = {
   onSelectLayer: (id: string) => void
   selected: GlobePoint | null
   onClearSelection: () => void
+  zoom: number
+  onZoomIn: () => void
+  onZoomOut: () => void
 }
 
-export function GlobeHud({ layers, activeId, onSelectLayer, selected, onClearSelection }: Props) {
+const ZOOM_BUTTON =
+  'pointer-events-auto flex h-7 w-7 items-center justify-center rounded-lg border border-ax-line bg-ax-panel/70 text-[13px] leading-none text-ax-faint transition-colors hover:text-ax-text disabled:opacity-30 disabled:hover:text-ax-faint'
+
+export function GlobeHud({
+  layers,
+  activeId,
+  onSelectLayer,
+  selected,
+  onClearSelection,
+  zoom,
+  onZoomIn,
+  onZoomOut,
+}: Props) {
   const active = layers.find(l => l.id === activeId) ?? layers[0]
 
   return (
@@ -60,6 +75,23 @@ export function GlobeHud({ layers, activeId, onSelectLayer, selected, onClearSel
         {active.source.fetchedAt !== null && (
           <p className="font-mono text-[10px] text-ax-faint/70">{fmtTime(active.source.fetchedAt)}</p>
         )}
+      </div>
+
+      {/* Zoom. Rullaa ei kaapata: maapallo on iso keskellä vieritettävää sivua,
+          ja rullan kaappaaminen rikkoisi sivun selaamisen. Kosketuksella
+          nipistys toimii suoraan kohtauksessa. */}
+      <div className="absolute bottom-0 right-0 flex flex-col gap-1.5">
+        <button onClick={onZoomIn} disabled={zoom >= 1} aria-label="Lähennä" className={ZOOM_BUTTON}>
+          +
+        </button>
+        <button
+          onClick={onZoomOut}
+          disabled={zoom <= 0}
+          aria-label="Loitonna"
+          className={ZOOM_BUTTON}
+        >
+          −
+        </button>
       </div>
 
       {/* Valitun pisteen kortti */}

@@ -126,10 +126,15 @@ nykyiseen/tulevaan rakenteeseen:
 | Calendar | Personal → Google Calendar (olemassa) |
 | Goals & Habits | Personal → tavoitteet/rutiinit (olemassa) |
 | Intelligence Feed | Uutiset (olemassa) |
-| Interactive World | Hubin 3D-maapallo (suunniteltu, ei vielä toteutettu) |
+| Interactive World | Hubin 3D-maapallo kerroksineen — World ja Markets toteutettu, Weather seuraavana |
 | Files | Drive-integraatio, palvelutilillä RJ-Mobin jaettu Drive (suunniteltu) |
 | AI (chat, planner, automations) | Kirjoitusoikeuksin toimiva AI-avustaja (suunniteltu, iso arkkitehtuuripäätös → Opus 5) |
 | Knowledge Vault, Projects, Finance, People CRM, Voice Center, Automation Builder, Mission Control | Ei vielä suunniteltu — käsitellään yksi kerrallaan kun ajankohtaista |
+
+Maapallon kerroksista **Intel, Network ja Travel on rajattu pois** (päätös
+9.8.2026): niille ei ole datalähdettä, eikä kerroksia rakenneta keksityn datan
+varaan. GlobalNews on yhä auki — RSS-artikkeleissa ei ole sijaintikenttää, joten
+se vaatisi AI-geokoodauksen jossa sijainti on pääteltu eikä artikkelin metadataa.
 
 Edetään näidenkin kanssa "Työtapa"-osion periaatteella: vaihe kerrallaan, ei
 kaikkea kerralla.

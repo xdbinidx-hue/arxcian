@@ -20,9 +20,12 @@ const GlobeScene = dynamic(() => import('./GlobeScene'), {
   ),
 })
 
+const ZOOM_STEP = 0.25
+
 export function Globe({ layers, className = '' }: { layers: GlobeLayer[]; className?: string }) {
   const [activeId, setActiveId] = useState<string>(layers[0]?.id ?? 'world')
   const [selected, setSelected] = useState<GlobePoint | null>(null)
+  const [zoom, setZoom] = useState(0)
 
   const active = layers.find(l => l.id === activeId) ?? layers[0]
 
@@ -31,9 +34,17 @@ export function Globe({ layers, className = '' }: { layers: GlobeLayer[]; classN
     setSelected(null) // valinta ei kuulu toiseen kerrokseen
   }
 
+  const nudgeZoom = (delta: number) => setZoom(z => Math.min(1, Math.max(0, z + delta)))
+
   return (
     <div className={`relative ${className}`}>
-      <GlobeScene layer={active} selectedId={selected?.id ?? null} onSelectPoint={setSelected} />
+      <GlobeScene
+        layer={active}
+        selectedId={selected?.id ?? null}
+        onSelectPoint={setSelected}
+        zoom={zoom}
+        onZoomChange={setZoom}
+      />
 
       {/* HUD ei saa napata osoitinta, muuten palloa ei voi raahata.
           Yksittäiset painikkeet palauttavat pointer-eventsin itselleen. */}
@@ -44,6 +55,9 @@ export function Globe({ layers, className = '' }: { layers: GlobeLayer[]; classN
           onSelectLayer={selectLayer}
           selected={selected}
           onClearSelection={() => setSelected(null)}
+          zoom={zoom}
+          onZoomIn={() => nudgeZoom(ZOOM_STEP)}
+          onZoomOut={() => nudgeZoom(-ZOOM_STEP)}
         />
       </div>
     </div>
