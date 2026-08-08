@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { latLngToVec3, faceLongitude } from '@/lib/arxcian/globe/geo'
+import type { GlobeLayer, GlobePoint, PointTone } from '@/lib/arxcian/globe/types'
 
 /**
  * Fotorealistinen maapallo hubin keskiöön.
@@ -14,30 +16,18 @@ import * as THREE from 'three'
  * Referenssi-ilme vaatii MOLEMMAT: valaistu puolisko hohtaa sinisenä ja
  * varjon puolella näkyvät kaupunkivalot, väliin pehmeä terminaattori.
  *
- * Tämä tiedosto ladataan dynaamisesti (ks. Globe.tsx) jottei three.js ole
- * mukana ensilatauksen bundlessa — arxcian on PWA jota käytetään puhelimella.
+ * Datapisteet tulevat kerroksina (ks. lib/arxcian/globe/types.ts) — kohtaus
+ * ei tiedä mitään yksittäisen kerroksen sisällöstä.
  */
 
-const HELSINKI: [number, number] = [60.1699, 24.9384]
+/** Keskitettävä pituuspiiri: Keski-Eurooppa. */
+const CENTER_LNG = 12
 
-/** Markkinakeskukset jotka vastaavat watchlistin instrumentteja. */
-const MARKERS: [number, number][] = [
-  HELSINKI,
-  [40.7128, -74.006], // New York — US500, NAS100
-  [51.5074, -0.1278], // Lontoo — forex
-  [35.6762, 139.6503], // Tokio — USDJPY
-  [50.1109, 8.6821], // Frankfurt — EURUSD
-]
-
-/** Maantieteelliset koordinaatit pallon pinnalle. */
-function latLngToVec3(lat: number, lng: number, radius: number): THREE.Vector3 {
-  const phi = ((90 - lat) * Math.PI) / 180
-  const theta = ((lng + 180) * Math.PI) / 180
-  return new THREE.Vector3(
-    -radius * Math.sin(phi) * Math.cos(theta),
-    radius * Math.cos(phi),
-    radius * Math.sin(phi) * Math.sin(theta),
-  )
+const TONE_COLORS: Record<PointTone, number> = {
+  up: 0x3ddc97,
+  down: 0xff5c72,
+  warn: 0xf5b544,
+  neutral: 0x9fe8ff,
 }
 
 const EARTH_VERTEX = `
@@ -92,8 +82,6 @@ const EARTH_FRAGMENT = `
   }
 `
 
-// Ilmakehän hehku: fresnel-efekti pallon ulkopuolelle. Piirretään sisäpinta
-// (BackSide) additiivisella sekoituksella, jolloin reunat hehkuvat.
 const ATMOSPHERE_VERTEX = `
   varying vec3 vNormal;
   void main() {
@@ -114,10 +102,33 @@ const ATMOSPHERE_FRAGMENT = `
   }
 `
 
-export default function GlobeScene({ className = '' }: { className?: string }) {
+type SceneRefs = {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  renderer: THREE.WebGLRenderer
+  earth: THREE.Mesh
+  pointGroup: THREE.Group
+}
+
+type Props = {
+  layer: GlobeLayer
+  selectedId: string | null
+  onSelectPoint: (point: GlobePoint | null) => void
+}
+
+export default function GlobeScene({ layer, selectedId, onSelectPoint }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const refs = useRef<SceneRefs | null>(null)
   const [ready, setReady] = useState(false)
 
+  // Callback refin kautta, jottei kohtausta tarvitse rakentaa uudelleen kun
+  // vanhemman komponentin funktioviite vaihtuu.
+  const onSelectRef = useRef(onSelectPoint)
+  useEffect(() => {
+    onSelectRef.current = onSelectPoint
+  }, [onSelectPoint])
+
+  // --- Kohtaus rakennetaan kerran ---
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -127,14 +138,13 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
     // Etäisyys mitoitettu niin että uloin kiertorata (säde 1.42) mahtuu kuvaan:
-    // näkymän puolikorkeus = z * tan(fov/2) = z * 0.344, joten z ≈ 4.2 riittää.
+    // näkymän puolikorkeus = z * tan(fov/2) = z * 0.344.
     camera.position.z = 4.2
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
-    // Renderöidään aina 2× logiikkapikselitarkkuudella. window.devicePixelRatio
-    // voi olla ALLE 1 (esim. 0,9 kun selain on zoomattu ulos), jolloin
-    // Math.min(dpr, 2) piirtäisi natiivia pienemmällä tarkkuudella ja kuva
-    // skaalattaisiin ylös sumeaksi.
+    // Kiinteä 2×: window.devicePixelRatio voi olla ALLE 1 (esim. 0,9 kun selain
+    // on zoomattu ulos), jolloin Math.min(dpr, 2) piirtäisi natiivia pienemmällä
+    // tarkkuudella ja kuva skaalattaisiin ylös sumeaksi.
     renderer.setPixelRatio(2)
     container.appendChild(renderer.domElement)
     renderer.domElement.style.width = '100%'
@@ -153,8 +163,7 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       loaded++
       if (loaded === 2) setReady(true)
     }
-    // colorSpace jätetään oletukseksi (lineaarinen/raaka), koska shader purkaa
-    // sRGB:n itse — SRGBColorSpace tekisi purun kahdesti.
+    // colorSpace jätetään oletukseksi (raaka), koska shader purkaa sRGB:n itse.
     const dayTexture = loader.load('/textures/earth-day.jpg', onTextureLoad)
     const nightTexture = loader.load('/textures/earth-night.jpg', onTextureLoad)
     for (const t of [dayTexture, nightTexture]) {
@@ -168,20 +177,20 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       uniforms: {
         dayMap: { value: dayTexture },
         nightMap: { value: nightTexture },
-        // Valo tulee vasemmalta ja hieman TAKAA (negatiivinen z), jolloin vain
-        // vasen reuna hohtaa valaistuna sirppinä ja suurin osa näkyvästä
-        // puoliskosta — Eurooppa mukaan lukien — jää yön puolelle
-        // kaupunkivaloineen. Sama sommittelu kuin referenssikuvassa.
+        // Valo vasemmalta ja hieman takaa: vain vasen reuna hohtaa sirppinä ja
+        // Eurooppa jää keskelle yön puolelle kaupunkivaloineen.
         lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
         uTime: { value: 0 },
       },
     })
 
     const earth = new THREE.Mesh(earthGeometry, earthMaterial)
-    // Kiinteä asento: Eurooppa keskellä. Kaava: kulma = −90° − keskitettävä
-    // pituuspiiri, joten Keski-Eurooppa (+12°) antaa −102°.
-    earth.rotation.y = (-102 * Math.PI) / 180
+    earth.rotation.y = faceLongitude(CENTER_LNG)
     world.add(earth)
+
+    // Datapisteet maapallon lapsina, jotta ne kiertyvät sen mukana.
+    const pointGroup = new THREE.Group()
+    earth.add(pointGroup)
 
     const atmosphereGeometry = new THREE.SphereGeometry(1.13, 64, 64)
     const atmosphereMaterial = new THREE.ShaderMaterial({
@@ -196,20 +205,8 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       transparent: true,
       depthWrite: false,
     })
-    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial)
-    scene.add(atmosphere)
+    scene.add(new THREE.Mesh(atmosphereGeometry, atmosphereMaterial))
 
-    // Markkerit lisätään maapallon LAPSIKSI, jolloin ne kiertyvät sen mukana —
-    // markkerin oman rotaation muuttaminen ei siirtäisi sitä mihinkään.
-    const markerGeometry = new THREE.SphereGeometry(0.014, 12, 12)
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x9fe8ff })
-    for (const [lat, lng] of MARKERS) {
-      const marker = new THREE.Mesh(markerGeometry, markerMaterial)
-      marker.position.copy(latLngToVec3(lat, lng, 1.012))
-      earth.add(marker)
-    }
-
-    // Kiertoradat: ohuet renkaat eri kulmissa, kuten referenssikuvassa.
     const rings: THREE.Mesh[] = []
     const ringGeometry = new THREE.TorusGeometry(1.42, 0.0022, 8, 220)
     const ringMaterial = new THREE.MeshBasicMaterial({
@@ -231,7 +228,9 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       rings.push(ring)
     }
 
-    // --- Koko ja raahaus ---
+    refs.current = { scene, camera, renderer, earth, pointGroup }
+
+    // --- Koko ---
     const resize = () => {
       const size = container.clientWidth
       if (size === 0) return
@@ -243,23 +242,49 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     const observer = new ResizeObserver(resize)
     observer.observe(container)
 
+    // --- Raahaus ja klikkaus ---
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
     let dragStartX: number | null = null
+    let dragStartY = 0
     let dragStartRotation = 0
+    let dragged = false
 
     const onPointerDown = (e: PointerEvent) => {
       dragStartX = e.clientX
+      dragStartY = e.clientY
       dragStartRotation = earth.rotation.y
+      dragged = false
       renderer.domElement.setPointerCapture(e.pointerId)
       renderer.domElement.style.cursor = 'grabbing'
     }
+
     const onPointerMove = (e: PointerEvent) => {
       if (dragStartX === null) return
-      earth.rotation.y = dragStartRotation + (e.clientX - dragStartX) / 180
+      const dx = e.clientX - dragStartX
+      // Yli 5 px liike tulkitaan raahaukseksi, jottei pieni tärähdys
+      // klikatessa jää tunnistamatta valinnaksi.
+      if (Math.abs(dx) > 5 || Math.abs(e.clientY - dragStartY) > 5) dragged = true
+      earth.rotation.y = dragStartRotation + dx / 180
     }
-    const onPointerUp = () => {
+
+    const onPointerUp = (e: PointerEvent) => {
+      const wasDragging = dragStartX !== null
       dragStartX = null
       renderer.domElement.style.cursor = 'grab'
+      if (!wasDragging || dragged) return
+
+      // Klikkaus: osumatesti datapisteisiin.
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const hits = raycaster.intersectObjects(pointGroup.children, false)
+      // Piste luetaan meshin userDatasta, jolloin klikkauskäsittelijä ei
+      // tarvitse viittausta kerrokseen eikä vanhene sulkeuman mukana.
+      onSelectRef.current(hits.length > 0 ? (hits[0].object.userData.point as GlobePoint) : null)
     }
+
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerup', onPointerUp)
@@ -276,6 +301,12 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       // hitaat häivytykset ovat nimenomaan suositeltu vaihtoehto sille.
       earthMaterial.uniforms.uTime.value = t
       atmosphereMaterial.uniforms.strength.value = 2.6 + 0.35 * Math.sin(t * 0.55)
+
+      // Valittu piste sykkii, jotta sen erottaa muista.
+      for (const p of pointGroup.children) {
+        const base = (p.userData.baseScale as number) ?? 1
+        p.scale.setScalar(p.userData.selected ? base * (1.35 + 0.15 * Math.sin(t * 3)) : base)
+      }
 
       // Kiertoratojen pyöriminen on oikeaa liikettä — se pysäytetään.
       if (!reduceMotion) {
@@ -296,27 +327,62 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
       renderer.domElement.removeEventListener('pointerleave', onPointerUp)
+      for (const child of pointGroup.children as THREE.Mesh[]) {
+        child.geometry.dispose()
+        ;(child.material as THREE.Material).dispose()
+      }
       earthGeometry.dispose()
       earthMaterial.dispose()
       dayTexture.dispose()
       nightTexture.dispose()
       atmosphereGeometry.dispose()
       atmosphereMaterial.dispose()
-      markerGeometry.dispose()
-      markerMaterial.dispose()
       ringGeometry.dispose()
       ringMaterial.dispose()
       renderer.dispose()
       renderer.domElement.remove()
+      refs.current = null
     }
   }, [])
+
+  // --- Datapisteet rakennetaan uudelleen kun kerros vaihtuu ---
+  //
+  // Pisteitä on kerrosta kohden vain kymmeniä, joten erilliset meshit ovat
+  // yksinkertaisempia ja riittävän nopeita. Jos jokin kerros kasvaa satoihin
+  // pisteisiin, tämä kannattaa vaihtaa InstancedMeshiin.
+  useEffect(() => {
+    const current = refs.current
+    if (!current) return
+    const { pointGroup } = current
+
+    for (const child of [...pointGroup.children] as THREE.Mesh[]) {
+      pointGroup.remove(child)
+      child.geometry.dispose()
+      ;(child.material as THREE.Material).dispose()
+    }
+
+    for (const point of layer.points) {
+      const radius = 0.012 + 0.016 * (point.weight ?? 0.5)
+      const geometry = new THREE.SphereGeometry(radius, 16, 16)
+      const material = new THREE.MeshBasicMaterial({
+        color: TONE_COLORS[point.tone ?? 'neutral'],
+      })
+      const mesh = new THREE.Mesh(geometry, material)
+      const pos = latLngToVec3(point.lat, point.lng, 1.015)
+      mesh.position.set(pos.x, pos.y, pos.z)
+      mesh.userData.point = point
+      mesh.userData.baseScale = 1
+      mesh.userData.selected = point.id === selectedId
+      pointGroup.add(mesh)
+    }
+  }, [layer, selectedId])
 
   return (
     <div
       ref={containerRef}
-      aria-label="Maapallo, markkinakeskukset korostettuna"
+      aria-label={`Maapallo, kerros: ${layer.label}`}
       role="img"
-      className={`aspect-square transition-opacity duration-1000 ${ready ? 'opacity-100' : 'opacity-0'} ${className}`}
+      className={`aspect-square transition-opacity duration-1000 ${ready ? 'opacity-100' : 'opacity-0'}`}
     />
   )
 }

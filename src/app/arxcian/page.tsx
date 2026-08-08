@@ -7,7 +7,8 @@ import { NewsDigest } from '@/components/arxcian/hub/NewsDigest'
 import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
 import { UpcomingEvents } from '@/components/arxcian/hub/UpcomingEvents'
 import { DailyFocus } from '@/components/arxcian/hub/DailyFocus'
-import { Globe } from '@/components/arxcian/hub/Globe'
+import { Globe } from '@/components/arxcian/globe/Globe'
+import { worldLayer, marketsLayer } from '@/lib/arxcian/globe/layers'
 import { GoalsProgress } from '@/components/arxcian/hub/GoalsProgress'
 import { QuickActions } from '@/components/arxcian/hub/QuickActions'
 
@@ -39,6 +40,10 @@ export default async function ArxcianHub() {
   const user = await currentOwner()
   const name = user ? user[0].toUpperCase() + user.slice(1) : ''
   const { hour, date } = helsinki(new Date())
+
+  // Kerrokset kootaan palvelimella olemassa olevasta välimuistista — maapallo
+  // ei koskaan hae dataa itse.
+  const layers = [worldLayer(), await marketsLayer()]
 
   return (
     <div className="mx-auto max-w-[1600px]">
@@ -81,7 +86,7 @@ export default async function ArxcianHub() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-[12%] rounded-full bg-ax-accent/20 blur-[100px]"
           />
-          <Globe className="relative mx-auto w-full max-w-[560px]" />
+          <Globe layers={layers} className="relative mx-auto w-full max-w-[560px]" />
         </div>
 
         <div className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">
