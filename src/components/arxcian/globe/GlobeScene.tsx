@@ -82,6 +82,23 @@ const EARTH_FRAGMENT = `
   }
 `
 
+// Pilvet käyttävät samaa valosuuntaa kuin maapallo: ne hohtavat valaistulla
+// puolella ja häviävät varjoon. Ilman tätä pilvet näkyisivät yhtä kirkkaina
+// yön puolella, mikä näyttäisi väärältä kaupunkivalojen päällä.
+const CLOUD_FRAGMENT = `
+  uniform sampler2D cloudMap;
+  uniform vec3 lightDir;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+
+  void main() {
+    float cloud = texture2D(cloudMap, vUv).r;
+    float lambert = dot(normalize(vNormal), normalize(lightDir));
+    float dayAmount = smoothstep(-0.25, 0.40, lambert);
+    gl_FragColor = vec4(vec3(1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9);
+  }
+`
+
 const ATMOSPHERE_VERTEX = `
   varying vec3 vNormal;
   void main() {
@@ -199,7 +216,10 @@ export default function GlobeScene({
     // colorSpace jätetään oletukseksi (raaka), koska shader purkaa sRGB:n itse.
     const dayTexture = loader.load('/textures/earth-day.jpg', onTextureLoad)
     const nightTexture = loader.load('/textures/earth-night.jpg', onTextureLoad)
-    for (const t of [dayTexture, nightTexture]) {
+    // Pilvet eivät estä esiintuloa: ne ovat koriste, ja niiden odottaminen
+    // viivästyttäisi maapallon näkymistä turhaan.
+    const cloudTexture = loader.load('/textures/earth-clouds.jpg')
+    for (const t of [dayTexture, nightTexture, cloudTexture]) {
       t.anisotropy = renderer.capabilities.getMaxAnisotropy()
     }
 
@@ -220,6 +240,22 @@ export default function GlobeScene({
     const earth = new THREE.Mesh(earthGeometry, earthMaterial)
     earth.rotation.y = faceLongitude(CENTER_LNG)
     world.add(earth)
+
+    // Pilvikerros maapallon lapsena, jotta se seuraa raahausta. Oma hidas
+    // kiertonsa saa sään ajautumaan pinnan yli.
+    const cloudGeometry = new THREE.SphereGeometry(1.006, 96, 96)
+    const cloudMaterial = new THREE.ShaderMaterial({
+      vertexShader: EARTH_VERTEX,
+      fragmentShader: CLOUD_FRAGMENT,
+      uniforms: {
+        cloudMap: { value: cloudTexture },
+        lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
+      },
+      transparent: true,
+      depthWrite: false,
+    })
+    const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial)
+    earth.add(clouds)
 
     // Datapisteet maapallon lapsina, jotta ne kiertyvät sen mukana.
     const pointGroup = new THREE.Group()
@@ -260,6 +296,32 @@ export default function GlobeScene({
       scene.add(ring)
       rings.push(ring)
     }
+
+    // Tähtitausta: pisteitä satunnaisilla suunnilla kaukana pallosta. Luodaan
+    // kerran puskuriin, ei omaa geometriaa per tähti.
+    const STAR_COUNT = 1100
+    const starPositions = new Float32Array(STAR_COUNT * 3)
+    for (let i = 0; i < STAR_COUNT; i++) {
+      // acos(2u−1) antaa tasaisen jakauman pallon pinnalle; pelkkä
+      // satunnainen kulma kasaisi tähdet navoille.
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      const r = 22 + Math.random() * 18
+      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta)
+      starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
+      starPositions[i * 3 + 2] = r * Math.cos(phi)
+    }
+    const starGeometry = new THREE.BufferGeometry()
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
+    const starMaterial = new THREE.PointsMaterial({
+      color: 0xd6e9ff,
+      size: 0.17,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+    })
+    scene.add(new THREE.Points(starGeometry, starMaterial))
 
     refs.current = { scene, camera, renderer, earth, pointGroup }
 
@@ -395,11 +457,13 @@ export default function GlobeScene({
         }
       }
 
-      // Kiertoratojen pyöriminen on oikeaa liikettä — se pysäytetään.
+      // Kiertoratojen pyöriminen ja pilvien ajautuminen ovat oikeaa liikettä
+      // — ne pysäytetään.
       if (!reduceMotion) {
         rings[0].rotation.z += 0.0006
         rings[1].rotation.z -= 0.0004
         rings[2].rotation.z += 0.0003
+        clouds.rotation.y += 0.00009
       }
 
       renderer.render(scene, camera)
@@ -422,6 +486,11 @@ export default function GlobeScene({
       earthMaterial.dispose()
       dayTexture.dispose()
       nightTexture.dispose()
+      cloudGeometry.dispose()
+      cloudMaterial.dispose()
+      cloudTexture.dispose()
+      starGeometry.dispose()
+      starMaterial.dispose()
       atmosphereGeometry.dispose()
       atmosphereMaterial.dispose()
       ringGeometry.dispose()
