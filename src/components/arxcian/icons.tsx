@@ -73,6 +73,55 @@ export function IconSearch({ className }: IconProps) {
   )
 }
 
+export function IconTarget({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconCheckCircle({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.5 12.5 2.3 2.3L15.5 10" />
+    </svg>
+  )
+}
+
+export function IconNote({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M6 3.5h9l3 3V19a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+      <path d="M14.5 3.5V7h3.5" />
+      <path d="M8 11h8M8 14.5h8M8 17.5h4.5" />
+    </svg>
+  )
+}
+
+export function IconCalendarPlus({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3.5" y="5" width="17" height="15" rx="1.5" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" />
+      <path d="M12 12.5v4.5M9.75 14.75h4.5" />
+    </svg>
+  )
+}
+
+export function IconAlertPlus({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M12 4 3 19h18Z" />
+      <path d="M12 10v4" />
+      <circle cx="12" cy="16.3" r="0.3" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function IconLogout({ className }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

@@ -6,6 +6,9 @@ import { AlertsSummary } from '@/components/arxcian/hub/AlertsSummary'
 import { NewsDigest } from '@/components/arxcian/hub/NewsDigest'
 import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
 import { UpcomingEvents } from '@/components/arxcian/hub/UpcomingEvents'
+import { DailyFocus } from '@/components/arxcian/hub/DailyFocus'
+import { GoalsProgress } from '@/components/arxcian/hub/GoalsProgress'
+import { QuickActions } from '@/components/arxcian/hub/QuickActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,11 +41,17 @@ export default async function ArxcianHub() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="ax-rise pb-6 pt-2">
-        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ax-faint">{date}</p>
-        <h1 className="mt-1.5 text-2xl font-light tracking-tight text-ax-text sm:text-3xl">
+      <header className="ax-rise relative overflow-hidden pb-6 pt-2">
+        {/* Hento hehkupallo tervehdyksen takana — varattu tila tulevalle 3D-maapallolle */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-24 -top-32 h-72 w-72 rounded-full bg-ax-accent/20 blur-[90px]"
+        />
+        <p className="relative font-mono text-[11px] uppercase tracking-[0.2em] text-ax-faint">{date}</p>
+        <h1 className="relative mt-1.5 text-2xl font-light tracking-tight text-ax-text sm:text-3xl">
           {greeting(hour)}, <span className="font-medium">{name}</span>
         </h1>
+        <DailyFocus />
       </header>
 
       {/* Neljä pääosiota */}
@@ -65,11 +74,13 @@ export default async function ArxcianHub() {
       </nav>
 
       {/* Pikanäkymä */}
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <AlertsSummary delay={0.16} />
-        <NewsDigest delay={0.2} />
-        <UpcomingEvents delay={0.24} />
-        <MarketSnapshot delay={0.28} />
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <NewsDigest delay={0.16} />
+        <UpcomingEvents delay={0.2} />
+        <MarketSnapshot delay={0.24} />
+        <GoalsProgress delay={0.28} />
+        <AlertsSummary delay={0.32} />
+        <QuickActions delay={0.36} />
       </div>
     </div>
   )
