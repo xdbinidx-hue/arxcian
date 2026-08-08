@@ -229,13 +229,16 @@ const NEBULA_FRAGMENT = `
     float n2 = fbm(uv * 7.1 + 21.7);
     float n3 = fbm(uv * 12.5 - 4.3);
 
-    vec3 col = vec3(0.012, 0.020, 0.045);
-    col += vec3(0.075, 0.170, 0.400) * pow(smoothstep(0.28, 0.80, n1), 1.4);
-    col += vec3(0.200, 0.075, 0.320) * pow(smoothstep(0.38, 0.86, n2), 2.1);
-    col += vec3(0.250, 0.115, 0.040) * pow(smoothstep(0.54, 0.92, n3), 2.6);
+    // Yksi väriperhe: syvä sininen. Aiemmat liila- ja oranssikerrokset on
+    // poistettu, jotta tausta ei riitele maapallon ja käyttöliittymän
+    // sinisen kanssa.
+    vec3 col = vec3(0.010, 0.016, 0.034);
+    col += vec3(0.052, 0.125, 0.310) * pow(smoothstep(0.30, 0.82, n1), 1.5);
+    col += vec3(0.036, 0.092, 0.235) * pow(smoothstep(0.40, 0.88, n2), 2.2);
+    col += vec3(0.060, 0.135, 0.275) * pow(smoothstep(0.56, 0.94, n3), 2.8);
 
-    col += vec3(0.85, 0.90, 1.00) * stars(uv, 210.0, 0.9930, 0.32);
-    col += vec3(0.95, 0.97, 1.00) * stars(uv, 78.0, 0.9970, 0.26) * 1.4;
+    col += vec3(0.82, 0.89, 1.00) * stars(uv, 210.0, 0.9945, 0.30);
+    col += vec3(0.90, 0.95, 1.00) * stars(uv, 78.0, 0.9975, 0.24) * 1.15;
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -244,17 +247,17 @@ const NEBULA_FRAGMENT = `
 // Valmis sumu näytetään yhtenä tekstuurihakuna ja häivytetään PYÖREÄSTI
 // läpinäkyväksi, jottei neliön muotoinen piirtoalue erotu sivun taustasta.
 //
-// Mitoitus: kameran fov 38° ja etäisyys 4,2 → näkymän puolikorkeus
-// 4,2·tan(19°) ≈ 1,45, joten säteen 1 maapallon reuna osuu kohtaan r ≈ 0,69.
-// Häivytys alkaa vasta sen jälkeen (0,74) ja päättyy nollaan kohdassa 1,02
-// eli juuri canvasin reunalla — kulmat (r ≈ 1,41) jäävät täysin
-// läpinäkyviksi, jolloin taustasta tulee pehmeä kehä eikä laatikko.
+// Mitoitus: kameran fov 38° ja etäisyys 3,45 → näkymän puolikorkeus
+// 3,45·tan(19°) ≈ 1,19, joten säteen 1 maapallon reuna osuu kohtaan r ≈ 0,84.
+// Häivytys alkaa vasta sen jälkeen (0,88) ja päättyy nollaan kohdassa 1,12 —
+// kulmat (r ≈ 1,41) jäävät täysin läpinäkyviksi, jolloin taustasta tulee
+// pehmeä kehä eikä laatikko.
 const BLIT_FRAGMENT = `
   uniform sampler2D map;
   varying vec2 vUv;
   void main() {
     float r = length(vUv - 0.5) * 2.0;
-    gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0 - smoothstep(0.74, 1.02, r));
+    gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0 - smoothstep(0.88, 1.12, r));
   }
 `
 
@@ -266,9 +269,13 @@ type SceneRefs = {
   pointGroup: THREE.Group
 }
 
-/** Kameran etäisyys kun zoom = 0 (kaukana) ja zoom = 1 (lähellä). */
-const CAMERA_Z_FAR = 4.2
-const CAMERA_Z_NEAR = 2.7
+/**
+ * Kameran etäisyys kun zoom = 0 (kaukana) ja zoom = 1 (lähellä).
+ * Perusetäisyys on tarkoituksella lähellä: pallo täyttää kuvan ja Eurooppa
+ * erottuu kaupunkivaloineen ilman että käyttäjän pitää zoomata itse.
+ */
+const CAMERA_Z_FAR = 3.45
+const CAMERA_Z_NEAR = 2.35
 
 type Props = {
   layer: GlobeLayer
@@ -326,9 +333,7 @@ export default function GlobeScene({
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
-    // Etäisyys mitoitettu niin että uloin kiertorata (säde 1.42) mahtuu kuvaan:
-    // näkymän puolikorkeus = z * tan(fov/2) = z * 0.344.
-    camera.position.z = 4.2
+    camera.position.z = CAMERA_Z_FAR
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
     // Kiinteä 2×: window.devicePixelRatio voi olla ALLE 1 (esim. 0,9 kun selain
@@ -342,8 +347,11 @@ export default function GlobeScene({
     renderer.domElement.style.touchAction = 'none'
 
     const world = new THREE.Group()
-    world.rotation.z = (-23.4 * Math.PI) / 180 // maapallon akselikallistuma
-    world.rotation.x = 0.3 // pohjoinen pallonpuolisko kallistuu katsojaa kohti
+    world.rotation.z = (-18 * Math.PI) / 180 // maapallon akselikallistuma
+    // Pohjoinen pallonpuolisko kallistuu katsojaa kohti. Kun kamera on lähellä,
+    // pelkkä pituuspiirin keskitys ei riitä: ilman tätä Eurooppa (~50°N) jäisi
+    // kuvan yläreunaan. Kallistus nostaa sen keskelle.
+    world.rotation.x = 0.52
     scene.add(world)
 
     const loader = new THREE.TextureLoader()
@@ -420,8 +428,8 @@ export default function GlobeScene({
         // Tarkoituksella oma arvo eikä sama kuin teeman --ax-accent:
         // additiivinen sekoitus ja fresnel siirtävät sävyä, joten sama heksa
         // näyttäisi pallolla eri väriltä kuin käyttöliittymässä.
-        glowColor: { value: new THREE.Color(0x38c7ff) },
-        strength: { value: 2.6 },
+        glowColor: { value: new THREE.Color(0x3f9bff) },
+        strength: { value: 1.9 },
       },
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
@@ -582,7 +590,7 @@ export default function GlobeScene({
       // prefers-reduced-motion -tilassa: liikerajoitus koskee liikettä, ja
       // hitaat häivytykset ovat nimenomaan suositeltu vaihtoehto sille.
       earthMaterial.uniforms.uTime.value = t
-      atmosphereMaterial.uniforms.strength.value = 2.6 + 0.35 * Math.sin(t * 0.55)
+      atmosphereMaterial.uniforms.strength.value = 1.9 + 0.22 * Math.sin(t * 0.55)
 
       // Valittu piste sykkii, jotta sen erottaa muista.
       for (const p of pointGroup.children) {

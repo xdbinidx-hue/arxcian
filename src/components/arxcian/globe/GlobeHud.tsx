@@ -52,46 +52,37 @@ export function GlobeHud({
       {/*
         HUD-renkaat maapallon ympärille. SVG eikä WebGL: viivat pysyvät
         terävinä millä tahansa tarkkuudella eivätkä kuluta piirtokutsuja.
-        Säteet on suhteutettu pallon näkyvään reunaan (r ≈ 0,69 · puolikkaasta),
-        joten renkaat asettuvat sen ulkopuolelle.
+        Säteet on suhteutettu pallon näkyvään reunaan: kameran ollessa
+        etäisyydellä 3,45 reuna osuu kohtaan r ≈ 0,84 · puolikkaasta eli
+        r ≈ 42 tässä 100 yksikön viewBoxissa. Renkaat jäävät sen ulkopuolelle.
       */}
       <svg
         viewBox="0 0 100 100"
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full text-ax-accent"
       >
-        <circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" strokeWidth="0.12" opacity="0.35" />
+        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.11" opacity="0.3" />
         <circle
           cx="50"
           cy="50"
-          r="42"
+          r="48.6"
           fill="none"
           stroke="currentColor"
-          strokeWidth="0.1"
-          opacity="0.22"
+          strokeWidth="0.09"
+          opacity="0.18"
           strokeDasharray="1.2 2.4"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r="47"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="0.08"
-          opacity="0.14"
-          strokeDasharray="0.4 3.2"
         />
         {/* Kulmamerkit neljännesten kohdalle */}
         {[0, 90, 180, 270].map(deg => (
           <line
             key={deg}
             x1="50"
-            y1="8"
+            y1="0.7"
             x2="50"
-            y2="11.5"
+            y2="3.4"
             stroke="currentColor"
             strokeWidth="0.16"
-            opacity="0.45"
+            opacity="0.4"
             transform={`rotate(${deg} 50 50)`}
           />
         ))}
