@@ -101,7 +101,7 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-ax-line bg-ax-panel/70">
+    <div className="rounded-2xl border border-ax-line bg-ax-panel/70">
       <header className="flex items-center justify-between border-b border-ax-line px-4 py-2.5">
         <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-ax-dim">Muistiinpanot</h2>
         <div className="flex gap-1.5">

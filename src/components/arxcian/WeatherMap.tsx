@@ -70,7 +70,7 @@ export function WeatherMap({ radarTileUrl }: Props) {
   return (
     <div
       ref={containerRef}
-      className="h-72 w-full overflow-hidden rounded-lg border border-ax-line"
+      className="h-72 w-full overflow-hidden rounded-2xl border border-ax-line"
     />
   )
 }

@@ -16,28 +16,34 @@ body {
    modifierit (bg-ax-panel/80) toimivat. Kokonainen väriarvo muuttujassa
    rikkoisi ne — lopputulos olisi täysin läpinäkyvä tausta. */
 .arxcian-root {
-  --ax-bg: 5 7 10;
-  --ax-panel: 11 15 20;
-  --ax-panel-hi: 16 22 29;
-  --ax-text: 220 230 240;
-  --ax-dim: 139 155 173;
-  --ax-faint: 86 104 120;
-  --ax-accent: 53 214 208;
+  /* Tausta täsmälleen JARVIS OS -briefin #05070B. */
+  --ax-bg: 5 7 11;
+  --ax-panel: 11 17 27;
+  --ax-panel-hi: 17 26 40;
+  --ax-text: 226 235 247;
+  --ax-dim: 150 171 197;
+  --ax-faint: 84 105 133;
+  --ax-accent: 56 199 255;
   --ax-up: 61 220 151;
   --ax-down: 255 92 114;
   --ax-warn: 245 181 68;
-  --ax-line: 148 180 210;
+  --ax-line: 120 175 225;
 
   color: rgb(var(--ax-text));
   background:
-    radial-gradient(1100px 520px at 50% -12%, rgb(var(--ax-accent) / 0.07), transparent 62%),
+    radial-gradient(1000px 580px at 50% -10%, rgb(var(--ax-accent) / 0.22), transparent 62%),
+    radial-gradient(1500px 1000px at 50% 30%, rgb(var(--ax-accent) / 0.09), transparent 74%),
+    radial-gradient(700px 700px at 8% 100%, rgb(var(--ax-accent) / 0.08), transparent 60%),
+    repeating-linear-gradient(0deg, rgb(var(--ax-accent) / 0.02) 0px, transparent 1px, transparent 32px),
+    repeating-linear-gradient(90deg, rgb(var(--ax-accent) / 0.02) 0px, transparent 1px, transparent 32px),
     rgb(var(--ax-bg));
+  background-attachment: fixed;
 }
 
 /* Estää vaalean bodyn vilahtamisen ylivierityksessä (mobiili) */
 body:has(.arxcian-root) {
-  background: rgb(5 7 10);
-  color: rgb(220 230 240);
+  background: rgb(4 6 12);
+  color: rgb(224 233 245);
 }
 
 @keyframes ax-ticker {

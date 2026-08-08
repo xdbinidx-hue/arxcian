@@ -19,7 +19,7 @@ type PanelProps = {
 export function Panel({ title, meta, empty, children, className = '', delay = 0 }: PanelProps) {
   return (
     <section
-      className={`ax-rise rounded-lg border border-ax-line bg-ax-panel/80 backdrop-blur-sm ${className}`}
+      className={`ax-rise rounded-2xl border border-ax-line bg-ax-panel/80 shadow-[0_0_32px_-6px_rgb(var(--ax-accent)/0.32)] backdrop-blur-sm ${className}`}
       style={delay ? { animationDelay: `${delay}s` } : undefined}
     >
       <header className="flex items-center justify-between gap-3 border-b border-ax-line px-4 py-2.5">

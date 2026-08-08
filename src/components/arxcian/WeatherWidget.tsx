@@ -6,7 +6,7 @@ export async function WeatherWidget() {
     data = await getWeather()
   } catch {
     return (
-      <div className="rounded-lg border border-ax-line bg-ax-panel/70 p-4 text-[13px] text-ax-faint">
+      <div className="rounded-2xl border border-ax-line bg-ax-panel/70 p-4 text-[13px] text-ax-faint">
         Sää ei ole juuri nyt saatavilla.
       </div>
     )
@@ -17,7 +17,7 @@ export async function WeatherWidget() {
   const next6h = hourly.slice(0, 6)
 
   return (
-    <div className="rounded-lg border border-ax-line bg-ax-panel/70 p-4">
+    <div className="rounded-2xl border border-ax-line bg-ax-panel/70 p-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[11px] uppercase tracking-[0.14em] text-ax-faint">{location.name}</p>

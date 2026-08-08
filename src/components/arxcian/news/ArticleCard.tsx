@@ -24,7 +24,7 @@ export function ArticleCard({ article, saved, onToggleSaved }: Props) {
   }
 
   return (
-    <article className="ax-rise rounded-lg border border-ax-line bg-ax-panel/70 p-4">
+    <article className="ax-rise rounded-2xl border border-ax-line bg-ax-panel/70 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 text-[11px] text-ax-faint">
           {article.kind === 'video' && <span className="text-ax-accent">▶</span>}

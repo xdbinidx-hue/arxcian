@@ -103,6 +103,37 @@ Ikonit generoidaan ilman kuvakirjastoja: `node scripts/generate-icons.mjs`. Muok
 
 PWA-tiedostot on jätetty middlewaren ulkopuolelle, muuten asennus ei onnistu.
 
+## arxcianin visuaalinen suunta ja pitkän tähtäimen roadmap
+
+Visuaalinen kieli on tietoisesti "JARVIS OS" -henkinen: matta lähes musta tausta
+(`#05070B`), elektroninen sinisyaani korostusväri, kerroksellinen hehku
+(radial-gradient taustassa + hohtovarjo paneeleissa), lasimainen läpikuultavuus
+(`backdrop-blur`), ohuet valaistut reunaviivat ja pyöristys 16 px (`rounded-2xl`).
+Kaikki värit kulkevat `.arxcian-root`-luokan CSS-muuttujien kautta
+([globals.css](src/app/globals.css)) — yksi muutos näkyy kaikissa osioissa.
+
+**Brändi pysyy "arxcian":na, ei "JARVIS":na** — visuaalinen referenssi, ei
+nimeämisohje.
+
+Käyttäjän antama design-brief (17-sivuinen "JARVIS OS" -konsepti: AI-chat,
+tietoholvi, projektit, CRM, automaatiobuilder, ääniohjaus, jne.) on hyväksytty
+**pitkän tähtäimen suunnaksi**, ei välitöntä toteutuslistaa. Karkea vastaavuus
+nykyiseen/tulevaan rakenteeseen:
+
+| JARVIS OS -sivu | arxcian-vastine |
+|---|---|
+| Home / Command Center | Hub-etusivu (olemassa) |
+| Calendar | Personal → Google Calendar (olemassa) |
+| Goals & Habits | Personal → tavoitteet/rutiinit (olemassa) |
+| Intelligence Feed | Uutiset (olemassa) |
+| Interactive World | Hubin 3D-maapallo (suunniteltu, ei vielä toteutettu) |
+| Files | Drive-integraatio, palvelutilillä RJ-Mobin jaettu Drive (suunniteltu) |
+| AI (chat, planner, automations) | Kirjoitusoikeuksin toimiva AI-avustaja (suunniteltu, iso arkkitehtuuripäätös → Opus 5) |
+| Knowledge Vault, Projects, Finance, People CRM, Voice Center, Automation Builder, Mission Control | Ei vielä suunniteltu — käsitellään yksi kerrallaan kun ajankohtaista |
+
+Edetään näidenkin kanssa "Työtapa"-osion periaatteella: vaihe kerrallaan, ei
+kaikkea kerralla.
+
 ## Tunnetut puutteet
 
 - RJ-Mobin nykyiset API-reitit (`/api/sheets`, `/api/targets`, …) ovat middlewaressa auki ilman istuntoa — vanha käytäntö, ei muutettu jotta mikään ei hajoa. `/api/arxcian/*` vaatii aina istunnon.

@@ -50,7 +50,7 @@ export function CalendarPanel({ status, notice }: Props) {
 
   if (status.state === 'not-configured') {
     return (
-      <div className="rounded-lg border border-ax-line bg-ax-panel/70">
+      <div className="rounded-2xl border border-ax-line bg-ax-panel/70">
         {header(<span className="font-mono text-[10px] uppercase text-ax-faint">Google Calendar</span>)}
         <p className="px-4 py-6 text-center text-[13px] text-ax-faint">
           Google-tunnukset puuttuvat. Lisää <code className="text-ax-dim">GOOGLE_OAUTH_CLIENT_ID</code> ja{' '}
@@ -62,7 +62,7 @@ export function CalendarPanel({ status, notice }: Props) {
 
   if (status.state === 'disconnected') {
     return (
-      <div className="rounded-lg border border-ax-line bg-ax-panel/70">
+      <div className="rounded-2xl border border-ax-line bg-ax-panel/70">
         {header(<span className="font-mono text-[10px] uppercase text-ax-faint">Google Calendar</span>)}
         <div className="px-4 py-6 text-center">
           {message && (
@@ -84,7 +84,7 @@ export function CalendarPanel({ status, notice }: Props) {
 
   if (status.state === 'error') {
     return (
-      <div className="rounded-lg border border-ax-line bg-ax-panel/70">
+      <div className="rounded-2xl border border-ax-line bg-ax-panel/70">
         {header()}
         <p className="px-4 py-6 text-center text-[13px] text-ax-down">
           Kalenterin haku epäonnistui: {status.message}
@@ -97,7 +97,7 @@ export function CalendarPanel({ status, notice }: Props) {
   const viewProps = { events, anchor }
 
   return (
-    <div className="rounded-lg border border-ax-line bg-ax-panel/70">
+    <div className="rounded-2xl border border-ax-line bg-ax-panel/70">
       {header(
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-ax-faint">

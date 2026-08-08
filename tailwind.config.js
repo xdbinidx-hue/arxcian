@@ -19,8 +19,8 @@ module.exports = {
           down: 'rgb(var(--ax-down) / <alpha-value>)',
           warn: 'rgb(var(--ax-warn) / <alpha-value>)',
           // Viivat käyttävät kiinteää alfaa, ei modifieria
-          line: 'rgb(var(--ax-line) / 0.12)',
-          'line-strong': 'rgb(var(--ax-line) / 0.26)',
+          line: 'rgb(var(--ax-line) / 0.18)',
+          'line-strong': 'rgb(var(--ax-line) / 0.34)',
         },
       },
     },
