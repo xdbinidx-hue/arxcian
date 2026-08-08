@@ -6,10 +6,13 @@ import * as THREE from 'three'
 /**
  * Fotorealistinen maapallo hubin keskiöön.
  *
- * Tekstuurina NASA:n Black Marble -yövalokuva (public domain, 2048×1024,
- * 232 kB) — juuri se ilme jota haettiin: tumma maapallo, kultaiset
- * kaupunkivalot, sininen ilmakehän kehä. Päivätekstuuria ei ladata
- * lainkaan, koska yöpuoli on koko idea ja se puolittaa siirrettävän datan.
+ * Tekstuurit NASA:lta (public domain, molemmat 3600×1800):
+ * - Blue Marble (päivä) — siniset meret ja mantereet
+ * - Black Marble (yö) — kaupunkivalot
+ *
+ * Pelkkä yötekstuuri antaisi lähes mustan pallon oransseine pisteineen.
+ * Referenssi-ilme vaatii MOLEMMAT: valaistu puolisko hohtaa sinisenä ja
+ * varjon puolella näkyvät kaupunkivalot, väliin pehmeä terminaattori.
  *
  * Tämä tiedosto ladataan dynaamisesti (ks. Globe.tsx) jottei three.js ole
  * mukana ensilatauksen bundlessa — arxcian on PWA jota käytetään puhelimella.
@@ -37,6 +40,58 @@ function latLngToVec3(lat: number, lng: number, radius: number): THREE.Vector3 {
   )
 }
 
+const EARTH_VERTEX = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+// Värinhallinta tehdään käsin, koska raakaan ShaderMaterialiin three ei lisää
+// automaattista sRGB-purkua: tekstuurit luetaan sRGB:nä ja muunnetaan
+// lineaariseksi, ja ulostulo jätetään lineaariseksi jolloin renderöijä
+// koodaa sen takaisin sRGB:hen.
+const EARTH_FRAGMENT = `
+  uniform sampler2D dayMap;
+  uniform sampler2D nightMap;
+  uniform vec3 lightDir;
+  uniform float uTime;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+
+  vec3 toLinear(vec3 c) { return pow(c, vec3(2.2)); }
+
+  void main() {
+    vec3 n = normalize(vNormal);
+    float lambert = dot(n, normalize(lightDir));
+
+    vec3 day = toLinear(texture2D(dayMap, vUv).rgb);
+    vec3 night = toLinear(texture2D(nightMap, vUv).rgb);
+
+    // Kaupunkivalojen tuike: paikkariippuvainen vaihe saa eri alueet
+    // huippuunsa eri aikaan, joten valot kirkastuvat ja himmenevät
+    // vuorotellen eikä koko pallo syki yhtenä.
+    float phase = sin(vUv.x * 47.0) * cos(vUv.y * 31.0);
+    float twinkle = 1.15 + 0.22 * sin(uTime * 1.1 + phase * 6.2831);
+
+    // Pehmeä terminaattori valon ja varjon väliin.
+    float dayAmount = smoothstep(-0.22, 0.38, lambert);
+
+    vec3 lit = day * (0.32 + 0.95 * max(lambert, 0.0));
+    vec3 dark = night * twinkle * 2.4;
+    vec3 color = mix(dark, lit, dayAmount);
+
+    // Reunavalo korostaa ilmakehän rajaa myös itse planeetassa.
+    float rim = pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 3.0);
+    color += vec3(0.10, 0.34, 0.62) * rim * 0.5;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`
+
 // Ilmakehän hehku: fresnel-efekti pallon ulkopuolelle. Piirretään sisäpinta
 // (BackSide) additiivisella sekoituksella, jolloin reunat hehkuvat.
 const ATMOSPHERE_VERTEX = `
@@ -52,8 +107,8 @@ const ATMOSPHERE_FRAGMENT = `
   uniform vec3 glowColor;
   uniform float strength;
   void main() {
-    // Korkeampi eksponentti kaventaa hehkun lähemmäs siluettia, jottei
-    // planeetan ympärille jää paksua neonrengasta.
+    // Korkea eksponentti kaventaa hehkun lähelle siluettia, jottei planeetan
+    // ympärille jää paksua neonrengasta.
     float intensity = pow(0.58 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 5.0);
     gl_FragColor = vec4(glowColor, 1.0) * intensity * strength;
   }
@@ -76,7 +131,11 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     camera.position.z = 4.2
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // Renderöidään aina 2× logiikkapikselitarkkuudella. window.devicePixelRatio
+    // voi olla ALLE 1 (esim. 0,9 kun selain on zoomattu ulos), jolloin
+    // Math.min(dpr, 2) piirtäisi natiivia pienemmällä tarkkuudella ja kuva
+    // skaalattaisiin ylös sumeaksi.
+    renderer.setPixelRatio(2)
     container.appendChild(renderer.domElement)
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
@@ -88,44 +147,40 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     world.rotation.x = 0.3 // pohjoinen pallonpuolisko kallistuu katsojaa kohti
     scene.add(world)
 
-    const earthGeometry = new THREE.SphereGeometry(1, 64, 64)
-    const texture = new THREE.TextureLoader().load('/textures/earth-night.jpg', () => setReady(true))
-    texture.colorSpace = THREE.SRGBColorSpace
-    texture.anisotropy = renderer.capabilities.getMaxAnisotropy()
-    // MeshBasicMaterial ei reagoi valoon — kaupunkivalot hehkuvat itsestään,
-    // mikä on juuri haluttu "yön puoli" -vaikutelma.
-    const earthMaterial = new THREE.MeshBasicMaterial({ map: texture })
-
-    // Kaupunkivalojen tuike. Injektoidaan valmiiseen shaderiin onBeforeCompilella
-    // eikä omalla ShaderMaterialilla, jotta three:n värinhallinta (sRGB-tekstuuri
-    // → lineaarinen → ulostulo) säilyy oikeana.
-    //
-    // Tekstuuri jaetaan ruudukkoon ja jokainen solu saa oman vaiheensa, jolloin
-    // valot kirkastuvat ja himmenevät VUOROTELLEN eri puolilla palloa — yhtenä
-    // globaalina sykkeenä se näyttäisi pelkältä kirkkaussäädöltä.
-    const twinkleUniforms = { uTime: { value: 0 } }
-    earthMaterial.onBeforeCompile = shader => {
-      shader.uniforms.uTime = twinkleUniforms.uTime
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;')
-        .replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-           // Pehmeä paikkariippuvainen vaihe (ei ruudukkoa, joka näkyisi saumoina):
-           // eri alueet saavuttavat huippunsa eri aikaan, joten valot kirkastuvat
-           // ja himmenevät vuorotellen. Perustaso 1.18 kirkastaa kaupunkivaloja
-           // hieman NASA-tekstuurin omaa tasoa enemmän, jotta ilme on elävämpi.
-           float phase = sin(vMapUv.x * 47.0) * cos(vMapUv.y * 31.0);
-           float twinkle = 1.18 + 0.20 * sin(uTime * 1.1 + phase * 6.2831);
-           diffuseColor.rgb *= twinkle;`,
-        )
+    const loader = new THREE.TextureLoader()
+    let loaded = 0
+    const onTextureLoad = () => {
+      loaded++
+      if (loaded === 2) setReady(true)
+    }
+    // colorSpace jätetään oletukseksi (lineaarinen/raaka), koska shader purkaa
+    // sRGB:n itse — SRGBColorSpace tekisi purun kahdesti.
+    const dayTexture = loader.load('/textures/earth-day.jpg', onTextureLoad)
+    const nightTexture = loader.load('/textures/earth-night.jpg', onTextureLoad)
+    for (const t of [dayTexture, nightTexture]) {
+      t.anisotropy = renderer.capabilities.getMaxAnisotropy()
     }
 
+    const earthGeometry = new THREE.SphereGeometry(1, 128, 128)
+    const earthMaterial = new THREE.ShaderMaterial({
+      vertexShader: EARTH_VERTEX,
+      fragmentShader: EARTH_FRAGMENT,
+      uniforms: {
+        dayMap: { value: dayTexture },
+        nightMap: { value: nightTexture },
+        // Valo tulee vasemmalta ja hieman TAKAA (negatiivinen z), jolloin vain
+        // vasen reuna hohtaa valaistuna sirppinä ja suurin osa näkyvästä
+        // puoliskosta — Eurooppa mukaan lukien — jää yön puolelle
+        // kaupunkivaloineen. Sama sommittelu kuin referenssikuvassa.
+        lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
+        uTime: { value: 0 },
+      },
+    })
+
     const earth = new THREE.Mesh(earthGeometry, earthMaterial)
-    // Kiinteä asento: pituuspiiri −25° kohti kameraa, jolloin sekä Yhdysvaltain
-    // itärannikko (−74°) että Eurooppa (+25°) jäävät symmetrisesti näkyviin.
-    // Kaava: kulma = −90° − keskitettävä pituuspiiri.
-    earth.rotation.y = (-65 * Math.PI) / 180
+    // Kiinteä asento: Eurooppa keskellä. Kaava: kulma = −90° − keskitettävä
+    // pituuspiiri, joten Keski-Eurooppa (+12°) antaa −102°.
+    earth.rotation.y = (-102 * Math.PI) / 180
     world.add(earth)
 
     const atmosphereGeometry = new THREE.SphereGeometry(1.13, 64, 64)
@@ -144,11 +199,10 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial)
     scene.add(atmosphere)
 
-    // Markkerit: pienet hehkuvat pisteet markkinakeskuksissa. Lisätään
-    // maapallon LAPSIKSI, jolloin ne kiertyvät sen mukana automaattisesti —
+    // Markkerit lisätään maapallon LAPSIKSI, jolloin ne kiertyvät sen mukana —
     // markkerin oman rotaation muuttaminen ei siirtäisi sitä mihinkään.
-    const markerGeometry = new THREE.SphereGeometry(0.016, 12, 12)
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x7fdcff })
+    const markerGeometry = new THREE.SphereGeometry(0.014, 12, 12)
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x9fe8ff })
     for (const [lat, lng] of MARKERS) {
       const marker = new THREE.Mesh(markerGeometry, markerMaterial)
       marker.position.copy(latLngToVec3(lat, lng, 1.012))
@@ -161,7 +215,7 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     const ringMaterial = new THREE.MeshBasicMaterial({
       color: 0x38c7ff,
       transparent: true,
-      opacity: 0.32,
+      opacity: 0.3,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     })
@@ -211,9 +265,6 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerUp)
 
-    // Maapallo ei pyöri itsestään, jotta Eurooppa ja Yhdysvallat pysyvät
-    // näkyvissä. "Elävyys" tulee kaupunkivalojen tuikkeesta ja hitaasti
-    // liikkuvista kiertoradoista. Raahaamalla palloa voi silti kääntää.
     const clock = new THREE.Clock()
     let frame = 0
     const animate = () => {
@@ -223,8 +274,7 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       // eivät liikettä ruudulla, joten ne jäävät päälle myös
       // prefers-reduced-motion -tilassa: liikerajoitus koskee liikettä, ja
       // hitaat häivytykset ovat nimenomaan suositeltu vaihtoehto sille.
-      // Taajuus on kaukana välkyntärajasta (3 Hz).
-      twinkleUniforms.uTime.value = t
+      earthMaterial.uniforms.uTime.value = t
       atmosphereMaterial.uniforms.strength.value = 2.6 + 0.35 * Math.sin(t * 0.55)
 
       // Kiertoratojen pyöriminen on oikeaa liikettä — se pysäytetään.
@@ -248,7 +298,8 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
       renderer.domElement.removeEventListener('pointerleave', onPointerUp)
       earthGeometry.dispose()
       earthMaterial.dispose()
-      texture.dispose()
+      dayTexture.dispose()
+      nightTexture.dispose()
       atmosphereGeometry.dispose()
       atmosphereMaterial.dispose()
       markerGeometry.dispose()
@@ -263,7 +314,7 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
   return (
     <div
       ref={containerRef}
-      aria-label="Pyörivä maapallo, markkinakeskukset korostettuna"
+      aria-label="Maapallo, markkinakeskukset korostettuna"
       role="img"
       className={`aspect-square transition-opacity duration-1000 ${ready ? 'opacity-100' : 'opacity-0'} ${className}`}
     />
