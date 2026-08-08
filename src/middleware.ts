@@ -54,5 +54,10 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // PWA:n tiedostojen on oltava haettavissa ilman istuntoa, muuten
   // asennus kotiruudulle ei onnistu. Ne eivät sisällä mitään arkaluontoista.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js).*)'],
+  // Sama koskee /textures/-hakemistoa (maapallon NASA-kuva, public domain):
+  // ilman poikkeusta jokainen tekstuurihaku kiertäisi turhaan istunto-
+  // tarkistuksen läpi ja palauttaisi 307:n kirjautumattomille.
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|textures/|sw.js).*)',
+  ],
 }
