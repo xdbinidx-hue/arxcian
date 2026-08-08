@@ -5,6 +5,7 @@ import { getSentiment } from './trading/sentiment'
 import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
+import { getCityWeather } from './weather'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -65,8 +66,19 @@ const tradingJobs: CronJob[] = [
   },
 ]
 
+const globeJobs: CronJob[] = [
+  {
+    id: 'globe-weather',
+    description: 'Maapallo: kaupunkien sää',
+    run: async () => {
+      const result = await getCityWeather()
+      return { key: 'weather:cities', items: result.data.length }
+    },
+  },
+]
+
 /** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
-export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs]
+export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs]
 
 export function jobsFor(schedule: string | null): readonly CronJob[] {
   if (!schedule) return JOBS

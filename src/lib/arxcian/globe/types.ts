@@ -4,7 +4,7 @@
  * kerroksen sisällöstä.
  */
 
-export type LayerId = 'world' | 'markets'
+export type LayerId = 'world' | 'markets' | 'weather'
 
 export type PointTone = 'up' | 'down' | 'warn' | 'neutral'
 

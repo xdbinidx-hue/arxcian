@@ -1,4 +1,5 @@
 import { fetchAndCache } from './cache'
+import { GLOBE_CITIES } from './globe/cities'
 
 // Oletussijainti Helsinki, koska Albin ja Arbnor toimivat pääkaupunkiseudulla.
 // Ei kysyttävissä käyttäjältä nyt — jos joku muu sijainti on tarpeen, se on
@@ -77,6 +78,54 @@ async function fetchFromOpenMeteo(): Promise<WeatherData> {
 
 export async function getWeather() {
   return fetchAndCache({ key: CACHE_KEY, ttl: TTL_SECONDS }, fetchFromOpenMeteo)
+}
+
+/* ---------------------------------------------------------------
+   Maapallon Weather-kerros: usean kaupungin nykysää yhdellä kutsulla.
+   --------------------------------------------------------------- */
+
+export type CityWeather = {
+  name: string
+  lat: number
+  lon: number
+  temperature: number
+  weatherCode: number
+  isDay: boolean
+}
+
+const CITIES_CACHE_KEY = 'weather:cities'
+
+/** Vastaus on TAULUKKO kun sijainteja on useita, ja samassa järjestyksessä kuin syöte. */
+type OpenMeteoCity = {
+  current: { temperature_2m: number; weather_code: number; is_day: number }
+}
+
+async function fetchCityWeather(): Promise<CityWeather[]> {
+  const lats = GLOBE_CITIES.map(c => c.lat).join(',')
+  const lons = GLOBE_CITIES.map(c => c.lon).join(',')
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+    `&current=temperature_2m,weather_code,is_day&timezone=UTC`
+
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`)
+  const data = (await res.json()) as OpenMeteoCity[]
+
+  // Sijainnit luetaan omasta listasta eikä vastauksesta: Open-Meteo pyöristää
+  // koordinaatit hilaansa (esim. 24,9384 → 24,9452), jolloin piste ei osuisi
+  // tarkalleen haluttuun kohtaan pallolla.
+  return GLOBE_CITIES.map((city, i) => ({
+    name: city.name,
+    lat: city.lat,
+    lon: city.lon,
+    temperature: data[i]?.current.temperature_2m ?? 0,
+    weatherCode: data[i]?.current.weather_code ?? 0,
+    isDay: data[i]?.current.is_day === 1,
+  })).filter((_, i) => data[i] !== undefined)
+}
+
+export async function getCityWeather() {
+  return fetchAndCache({ key: CITIES_CACHE_KEY, ttl: TTL_SECONDS }, fetchCityWeather)
 }
 
 /** WMO-säätunnuksen suomenkielinen kuvaus ja ikonimerkki (Open-Meteon weather_code). */

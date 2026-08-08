@@ -8,7 +8,7 @@ import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
 import { UpcomingEvents } from '@/components/arxcian/hub/UpcomingEvents'
 import { DailyFocus } from '@/components/arxcian/hub/DailyFocus'
 import { Globe } from '@/components/arxcian/globe/Globe'
-import { worldLayer, marketsLayer } from '@/lib/arxcian/globe/layers'
+import { worldLayer, marketsLayer, weatherLayer } from '@/lib/arxcian/globe/layers'
 import { GoalsProgress } from '@/components/arxcian/hub/GoalsProgress'
 import { QuickActions } from '@/components/arxcian/hub/QuickActions'
 
@@ -43,7 +43,7 @@ export default async function ArxcianHub() {
 
   // Kerrokset kootaan palvelimella olemassa olevasta välimuistista — maapallo
   // ei koskaan hae dataa itse.
-  const layers = [worldLayer(), await marketsLayer()]
+  const layers = await Promise.all([worldLayer(), marketsLayer(), weatherLayer()])
 
   return (
     <div className="mx-auto max-w-[1600px]">

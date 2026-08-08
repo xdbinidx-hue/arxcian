@@ -1,5 +1,6 @@
 import { getQuotes } from '@/lib/arxcian/trading/quotes'
 import { WATCHLIST } from '@/lib/arxcian/trading/symbols'
+import { getCityWeather, describeWeatherCode } from '@/lib/arxcian/weather'
 import { SYMBOL_VENUE, VENUES, type VenueId } from './venues'
 import type { GlobeLayer, GlobePoint, PointTone } from './types'
 
@@ -77,5 +78,55 @@ export async function marketsLayer(): Promise<GlobeLayer> {
       `Valuuttaparit on sijoitettu vastavaluutan kotikeskukseen — valuuttakauppa on ` +
       `OTC-markkina eikä sillä ole yhtä pörssiä. ${cryptoCount} kryptoa jätetty pois: ` +
       `ne käyvät kauppaa ympäri vuorokauden ilman sijaintia.`,
+  }
+}
+
+/** Säätunnukset jotka ansaitsevat huomiovärin: ukkonen, rankkasade, raju lumi. */
+const SEVERE_CODES = new Set([65, 75, 82, 95, 96, 99])
+
+/**
+ * Weather-kerros: nykysää kaupungeittain.
+ *
+ * Kaikki kaupungit haetaan yhdellä Open-Meteo-kutsulla, ja tulos kulkee saman
+ * fetchAndCache-apurin läpi kuin muukin ulkoinen data.
+ */
+export async function weatherLayer(): Promise<GlobeLayer> {
+  // getCityWeather heittää jos haku epäonnistuu EIKÄ välimuistissa ole mitään.
+  // Hub-sivu ei saa kaatua siihen, joten kerros palautetaan tyhjänä ja syy
+  // näytetään käyttäjälle.
+  let cached: Awaited<ReturnType<typeof getCityWeather>>
+  try {
+    cached = await getCityWeather()
+  } catch (e) {
+    console.error('[globe] sään haku epäonnistui', e)
+    return {
+      id: 'weather',
+      label: 'Sää',
+      points: [],
+      source: { name: 'Open-Meteo', fetchedAt: null },
+      caveat: 'Säätietoja ei saatu haettua. Seuraava ajastettu haku yrittää uudelleen.',
+    }
+  }
+
+  const points: GlobePoint[] = cached.data.map(city => {
+    const { label } = describeWeatherCode(city.weatherCode)
+    return {
+      id: `weather-${city.name}`,
+      lat: city.lat,
+      lng: city.lon,
+      label: city.name,
+      // Kaikki pisteet samankokoisia: lämpötila ei ole määrä, joten koon
+      // sitominen siihen antaisi harhaanjohtavan vaikutelman.
+      weight: 0.5,
+      tone: SEVERE_CODES.has(city.weatherCode) ? 'warn' : 'neutral',
+      meta: `${Math.round(city.temperature)} °C · ${label}`,
+    }
+  })
+
+  return {
+    id: 'weather',
+    label: 'Sää',
+    points,
+    source: { name: 'Open-Meteo', fetchedAt: cached.fetchedAt },
   }
 }
