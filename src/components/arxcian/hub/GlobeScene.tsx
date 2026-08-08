@@ -83,9 +83,9 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     renderer.domElement.style.cursor = 'grab'
     renderer.domElement.style.touchAction = 'none'
 
-    // Kaikki pyörivä samassa ryhmässä, jotta markkerit seuraavat maapalloa.
     const world = new THREE.Group()
     world.rotation.z = (-23.4 * Math.PI) / 180 // maapallon akselikallistuma
+    world.rotation.x = 0.3 // pohjoinen pallonpuolisko kallistuu katsojaa kohti
     scene.add(world)
 
     const earthGeometry = new THREE.SphereGeometry(1, 64, 64)
@@ -95,7 +95,37 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     // MeshBasicMaterial ei reagoi valoon — kaupunkivalot hehkuvat itsestään,
     // mikä on juuri haluttu "yön puoli" -vaikutelma.
     const earthMaterial = new THREE.MeshBasicMaterial({ map: texture })
+
+    // Kaupunkivalojen tuike. Injektoidaan valmiiseen shaderiin onBeforeCompilella
+    // eikä omalla ShaderMaterialilla, jotta three:n värinhallinta (sRGB-tekstuuri
+    // → lineaarinen → ulostulo) säilyy oikeana.
+    //
+    // Tekstuuri jaetaan ruudukkoon ja jokainen solu saa oman vaiheensa, jolloin
+    // valot kirkastuvat ja himmenevät VUOROTELLEN eri puolilla palloa — yhtenä
+    // globaalina sykkeenä se näyttäisi pelkältä kirkkaussäädöltä.
+    const twinkleUniforms = { uTime: { value: 0 } }
+    earthMaterial.onBeforeCompile = shader => {
+      shader.uniforms.uTime = twinkleUniforms.uTime
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+           // Pehmeä paikkariippuvainen vaihe (ei ruudukkoa, joka näkyisi saumoina):
+           // eri alueet saavuttavat huippunsa eri aikaan, joten valot kirkastuvat
+           // ja himmenevät vuorotellen. Perustaso 1.18 kirkastaa kaupunkivaloja
+           // hieman NASA-tekstuurin omaa tasoa enemmän, jotta ilme on elävämpi.
+           float phase = sin(vMapUv.x * 47.0) * cos(vMapUv.y * 31.0);
+           float twinkle = 1.18 + 0.20 * sin(uTime * 1.1 + phase * 6.2831);
+           diffuseColor.rgb *= twinkle;`,
+        )
+    }
+
     const earth = new THREE.Mesh(earthGeometry, earthMaterial)
+    // Kiinteä asento: pituuspiiri −25° kohti kameraa, jolloin sekä Yhdysvaltain
+    // itärannikko (−74°) että Eurooppa (+25°) jäävät symmetrisesti näkyviin.
+    // Kaava: kulma = −90° − keskitettävä pituuspiiri.
+    earth.rotation.y = (-65 * Math.PI) / 180
     world.add(earth)
 
     const atmosphereGeometry = new THREE.SphereGeometry(1.13, 64, 64)
@@ -181,14 +211,29 @@ export default function GlobeScene({ className = '' }: { className?: string }) {
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerUp)
 
+    // Maapallo ei pyöri itsestään, jotta Eurooppa ja Yhdysvallat pysyvät
+    // näkyvissä. "Elävyys" tulee kaupunkivalojen tuikkeesta ja hitaasti
+    // liikkuvista kiertoradoista. Raahaamalla palloa voi silti kääntää.
+    const clock = new THREE.Clock()
     let frame = 0
     const animate = () => {
-      if (dragStartX === null && !reduceMotion) earth.rotation.y += 0.0009
+      const t = clock.getElapsedTime()
+
+      // Tuike ja ilmakehän hengitys ovat hidasta kirkkauden vaihtelua (~0,2 Hz),
+      // eivät liikettä ruudulla, joten ne jäävät päälle myös
+      // prefers-reduced-motion -tilassa: liikerajoitus koskee liikettä, ja
+      // hitaat häivytykset ovat nimenomaan suositeltu vaihtoehto sille.
+      // Taajuus on kaukana välkyntärajasta (3 Hz).
+      twinkleUniforms.uTime.value = t
+      atmosphereMaterial.uniforms.strength.value = 2.6 + 0.35 * Math.sin(t * 0.55)
+
+      // Kiertoratojen pyöriminen on oikeaa liikettä — se pysäytetään.
       if (!reduceMotion) {
         rings[0].rotation.z += 0.0006
         rings[1].rotation.z -= 0.0004
         rings[2].rotation.z += 0.0003
       }
+
       renderer.render(scene, camera)
       frame = requestAnimationFrame(animate)
     }
