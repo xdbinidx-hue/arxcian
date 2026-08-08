@@ -70,8 +70,12 @@ self.addEventListener('fetch', event => {
   // Rajapintakutsut menevät aina verkkoon
   if (url.pathname.startsWith('/api/')) return
 
+  // /textures/ on mukana koska maapallon NASA-tekstuuri on 232 kB — ilman
+  // välimuistia se ladattaisiin uudelleen joka käynnistyksellä mobiilidatalla.
   const isImmutable =
-    url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icons/')
+    url.pathname.startsWith('/_next/static/') ||
+    url.pathname.startsWith('/icons/') ||
+    url.pathname.startsWith('/textures/')
 
   if (isImmutable) {
     event.respondWith(cacheFirst(request))

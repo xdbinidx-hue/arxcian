@@ -41,24 +41,13 @@ export default async function ArxcianHub() {
   const { hour, date } = helsinki(new Date())
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <header className="ax-rise grid items-center gap-4 pb-6 pt-2 lg:grid-cols-[1fr_320px] lg:gap-8">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ax-faint">{date}</p>
-          <h1 className="mt-1.5 text-2xl font-light tracking-tight text-ax-text sm:text-3xl">
-            {greeting(hour)}, <span className="font-medium">{name}</span>
-          </h1>
-          <DailyFocus />
-        </div>
-
-        <div className="relative mx-auto w-52 sm:w-60 lg:w-[320px]">
-          {/* Pehmeä ilmakehän hehku pallon takana */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-full bg-ax-accent/15 blur-[70px]"
-          />
-          <Globe className="relative" />
-        </div>
+    <div className="mx-auto max-w-[1600px]">
+      <header className="ax-rise pb-5 pt-2">
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ax-faint">{date}</p>
+        <h1 className="mt-1.5 text-2xl font-light tracking-tight text-ax-text sm:text-3xl">
+          {greeting(hour)}, <span className="font-medium">{name}</span>
+        </h1>
+        <DailyFocus />
       </header>
 
       {/* Neljä pääosiota */}
@@ -80,14 +69,32 @@ export default async function ArxcianHub() {
         ))}
       </nav>
 
-      {/* Pikanäkymä */}
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <NewsDigest delay={0.16} />
-        <UpcomingEvents delay={0.2} />
-        <MarketSnapshot delay={0.24} />
-        <GoalsProgress delay={0.28} />
-        <AlertsSummary delay={0.32} />
-        <QuickActions delay={0.36} />
+      {/*
+        Komentokeskus: maapallo keskellä, paneelit molemmin puolin.
+        DOM-järjestys on maapallo → vasen → oikea, jotta kapealla näytöllä
+        pallo tulee ensin; leveällä se asetetaan nimenomaisesti keskisarakkeeseen.
+      */}
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(420px,560px)_minmax(0,1fr)] xl:items-start">
+        <div className="relative xl:col-start-2 xl:row-start-1">
+          {/* Ilmakehän hehku pallon takana */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-[12%] rounded-full bg-ax-accent/20 blur-[100px]"
+          />
+          <Globe className="relative mx-auto w-full max-w-[560px]" />
+        </div>
+
+        <div className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">
+          <NewsDigest delay={0.16} />
+          <UpcomingEvents delay={0.2} />
+          <GoalsProgress delay={0.24} />
+        </div>
+
+        <div className="grid content-start gap-3 xl:col-start-3 xl:row-start-1">
+          <MarketSnapshot delay={0.28} />
+          <AlertsSummary delay={0.32} />
+          <QuickActions delay={0.36} />
+        </div>
       </div>
     </div>
   )
