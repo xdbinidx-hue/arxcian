@@ -49,6 +49,54 @@ export function GlobeHud({
 
   return (
     <>
+      {/*
+        HUD-renkaat maapallon ympärille. SVG eikä WebGL: viivat pysyvät
+        terävinä millä tahansa tarkkuudella eivätkä kuluta piirtokutsuja.
+        Säteet on suhteutettu pallon näkyvään reunaan (r ≈ 0,69 · puolikkaasta),
+        joten renkaat asettuvat sen ulkopuolelle.
+      */}
+      <svg
+        viewBox="0 0 100 100"
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 h-full w-full text-ax-accent"
+      >
+        <circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" strokeWidth="0.12" opacity="0.35" />
+        <circle
+          cx="50"
+          cy="50"
+          r="42"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="0.1"
+          opacity="0.22"
+          strokeDasharray="1.2 2.4"
+        />
+        <circle
+          cx="50"
+          cy="50"
+          r="47"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="0.08"
+          opacity="0.14"
+          strokeDasharray="0.4 3.2"
+        />
+        {/* Kulmamerkit neljännesten kohdalle */}
+        {[0, 90, 180, 270].map(deg => (
+          <line
+            key={deg}
+            x1="50"
+            y1="8"
+            x2="50"
+            y2="11.5"
+            stroke="currentColor"
+            strokeWidth="0.16"
+            opacity="0.45"
+            transform={`rotate(${deg} 50 50)`}
+          />
+        ))}
+      </svg>
+
       {/* Kerrosvalitsin */}
       <div className="pointer-events-auto absolute left-0 top-0 flex flex-wrap gap-1.5">
         {layers.map(layer => (

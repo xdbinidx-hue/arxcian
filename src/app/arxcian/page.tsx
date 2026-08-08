@@ -79,14 +79,14 @@ export default async function ArxcianHub() {
         DOM-järjestys on maapallo → vasen → oikea, jotta kapealla näytöllä
         pallo tulee ensin; leveällä se asetetaan nimenomaisesti keskisarakkeeseen.
       */}
-      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(420px,560px)_minmax(0,1fr)] xl:items-start">
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(520px,780px)_minmax(0,1fr)] xl:items-start">
         <div className="relative xl:col-start-2 xl:row-start-1">
           {/* Ilmakehän hehku pallon takana */}
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-[12%] rounded-full bg-ax-accent/20 blur-[100px]"
           />
-          <Globe layers={layers} className="relative mx-auto w-full max-w-[560px]" />
+          <Globe layers={layers} className="relative mx-auto w-full max-w-[780px]" />
         </div>
 
         <div className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">

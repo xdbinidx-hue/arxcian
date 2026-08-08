@@ -23,6 +23,47 @@ import type { GlobeLayer, GlobePoint, PointTone } from '@/lib/arxcian/globe/type
 /** Keskitettävä pituuspiiri: Keski-Eurooppa. */
 const CENTER_LNG = 12
 
+/**
+ * Leveys- ja pituuspiirien ristikko pallon pinnalle — se erottaa
+ * "teknologisen" ilmeen pelkästä valokuvamaisesta pallosta.
+ *
+ * Rakennetaan viivapareina yhteen puskuriin: yksi piirtokutsu koko
+ * ristikolle sen sijaan että jokainen piiri olisi oma objektinsa.
+ */
+function buildGraticule(radius: number, step: number, segments: number): THREE.BufferGeometry {
+  const points: number[] = []
+  const rad = Math.PI / 180
+
+  // Leveyspiirit. Navat jätetään väliin, koska siellä piirit kutistuvat
+  // pisteiksi eivätkä tuo mitään.
+  for (let lat = -75; lat <= 75; lat += step) {
+    const y = radius * Math.sin(lat * rad)
+    const r = radius * Math.cos(lat * rad)
+    for (let i = 0; i < segments; i++) {
+      const a1 = (i / segments) * Math.PI * 2
+      const a2 = ((i + 1) / segments) * Math.PI * 2
+      points.push(r * Math.cos(a1), y, r * Math.sin(a1), r * Math.cos(a2), y, r * Math.sin(a2))
+    }
+  }
+
+  // Pituuspiirit navalta navalle.
+  for (let lng = 0; lng < 360; lng += step) {
+    const t = lng * rad
+    for (let i = 0; i < segments / 2; i++) {
+      const p1 = (i / (segments / 2)) * Math.PI - Math.PI / 2
+      const p2 = ((i + 1) / (segments / 2)) * Math.PI - Math.PI / 2
+      points.push(
+        radius * Math.cos(p1) * Math.cos(t), radius * Math.sin(p1), radius * Math.cos(p1) * Math.sin(t),
+        radius * Math.cos(p2) * Math.cos(t), radius * Math.sin(p2), radius * Math.cos(p2) * Math.sin(t),
+      )
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
+  return geometry
+}
+
 const TONE_COLORS: Record<PointTone, number> = {
   up: 0x3ddc97,
   down: 0xff5c72,
@@ -355,6 +396,18 @@ export default function GlobeScene({
     const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial)
     earth.add(clouds)
 
+    // Ristikko maapallon lapsena, jotta se kiertyy pinnan mukana. Syvyystesti
+    // piilottaa takapuoliskon viivat pallon taakse, joten läpi ei näy.
+    const graticuleGeometry = buildGraticule(1.004, 15, 96)
+    const graticuleMaterial = new THREE.LineBasicMaterial({
+      color: 0x5aa6ff,
+      transparent: true,
+      opacity: 0.26,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+    earth.add(new THREE.LineSegments(graticuleGeometry, graticuleMaterial))
+
     // Datapisteet maapallon lapsina, jotta ne kiertyvät sen mukana.
     const pointGroup = new THREE.Group()
     earth.add(pointGroup)
@@ -589,6 +642,8 @@ export default function GlobeScene({
       cloudGeometry.dispose()
       cloudMaterial.dispose()
       cloudTexture.dispose()
+      graticuleGeometry.dispose()
+      graticuleMaterial.dispose()
       quadGeometry.dispose()
       nebulaMaterial.dispose()
       blitMaterial.dispose()
