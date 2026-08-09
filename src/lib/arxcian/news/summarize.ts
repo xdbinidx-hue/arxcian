@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { MODEL_NEWS_SUMMARY } from '@/lib/arxcian/models'
 import type { RawItem } from './types'
-
-const MODEL = 'claude-haiku-4-5'
 
 // Yksi kutsu tiivistää enintään tämän verran artikkeleita kerralla, jotta
 // yksittäinen pyyntö ei kasva liian isoksi kun uutta sisältöä on paljon
@@ -56,7 +55,7 @@ function buildUserPrompt(items: RawItem[]): string {
 
 async function summarizeBatch(items: RawItem[]): Promise<Summarized[]> {
   const response = await getClient().messages.create({
-    model: MODEL,
+    model: MODEL_NEWS_SUMMARY,
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildUserPrompt(items) }],

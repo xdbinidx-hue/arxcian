@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { kv } from '@vercel/kv'
 import { currentUser } from '@/lib/session'
+import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
 
 /**
  * Vapaamuotoinen tekstigenerointi. Käyttäjä: RJ-Mobin Etelä-näkymä, joka
@@ -13,7 +14,6 @@ import { currentUser } from '@/lib/session'
  * Vaatimus on siis "istunto olemassa", ei "henkilökohtainen käyttäjä".
  */
 
-const MODEL = 'claude-sonnet-4-6'
 const MAX_TOKENS = 1000
 
 const RATE_LIMIT = 20
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const response = await getClient().messages.create({
-      model: MODEL,
+      model: MODEL_ASSISTANT,
       max_tokens: MAX_TOKENS,
       messages: [{ role: 'user', content: prompt }],
     })
