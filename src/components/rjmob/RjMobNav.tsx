@@ -17,18 +17,21 @@ const ITEMS = [
   {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
   {label:'Myyntiseuranta', href:'/rj-mob/etela'},
   {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
-  {label:'Laskuri', href:'/rj-mob/laskuri'},
+  {label:'Laskuri', href:'/arxcian/rj-mob/laskuri'},
   {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
 ]
 
-export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChange }: {
+export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChange, stickyTop = 0 }: {
   activePage?: string
   files?: FileOption[]
   selectedFile?: string
   onFileChange?: (id: string) => void
+  /** Kiinnityskorkeus. arxcianin kehyksen sisällä 48, koska ylänauha on siellä.
+   *  Väliaikainen: poistuu kun kaikki sivut ovat siirtyneet kehyksen sisään. */
+  stickyTop?: number
 }) {
   return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
+    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:stickyTop, zIndex:10, gap:0}}>
       <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
       {ITEMS.map(item => {
         const on = item.href === activePage

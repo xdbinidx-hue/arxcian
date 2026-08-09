@@ -90,8 +90,8 @@ export default function LaskuriPage() {
   const fsecKuukausitulo = fsecPassiiviKpl * 1.5
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/laskuri" />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/laskuri" stickyTop={48} />
       <div style={{maxWidth:1000, margin:'0 auto', padding:'20px 16px'}}>
         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 

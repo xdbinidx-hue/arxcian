@@ -5,7 +5,6 @@ const nextConfig = {
       // RJ-Mobin sivuja siirretään vaiheittain /rj-mob/*-rakenteeseen.
       // permanent: false (307) toistaiseksi, kunnes rakenne on vakiintunut
       // — 308:aa ei voi enää perua selainten/hakukoneiden välimuistista.
-      { source: '/laskuri', destination: '/rj-mob/laskuri', permanent: false },
       { source: '/tuotto', destination: '/rj-mob/tuotto', permanent: false },
       { source: '/trendit', destination: '/rj-mob/trendit', permanent: false },
       { source: '/runrate', destination: '/rj-mob/runrate', permanent: false },
