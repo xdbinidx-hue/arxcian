@@ -71,6 +71,33 @@ const TONE_COLORS: Record<PointTone, number> = {
   neutral: 0x9fe8ff,
 }
 
+/**
+ * Vesimaski päivätekstuurin väristä — jaettu planeetan ja pilvien shaderin
+ * kesken, jotta ne eivät voi ajautua eri linjoille.
+ *
+ * Kaksi signaalia, koska kumpikaan yksin ei riitä:
+ *  A) sininen hallitsee → syvä meri
+ *  B) syaani, eli sekä vihreä että sininen ylittävät punaisen → matalikot,
+ *     joissa vesi on turkoosia (Bahama, Persianlahti). Pelkkä A luokittelisi
+ *     ne maaksi, koska niissä vihreä on sinistä suurempi.
+ *
+ * Molemmat normalisoidaan kirkkaudella: absoluuttinen ero kutistuu tummissa
+ * sävyissä, jolloin kiinteä raja jättäisi syvimmät valtameret puolittain
+ * läpinäkymättömiksi. Lumi ja jää ovat lähes harmaita, joten kumpikaan
+ * signaali ei nouse eivätkä ne katoa.
+ *
+ * Vertailu tehdään sRGB-arvoilla eikä lineaarisilla: gammapurku madaltaisi
+ * eron meren ja tumman metsän välillä.
+ */
+const WATER_MASK_GLSL = `
+  float waterMask(vec3 srgb) {
+    float denom = max(srgb.r, max(srgb.g, srgb.b)) + 0.06;
+    float blueDominant = (srgb.b - max(srgb.r, srgb.g)) / denom;
+    float cyan = (min(srgb.g, srgb.b) - srgb.r) / denom;
+    return smoothstep(0.10, 0.30, max(blueDominant, cyan));
+  }
+`
+
 const EARTH_VERTEX = `
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -88,19 +115,25 @@ const EARTH_VERTEX = `
 const EARTH_FRAGMENT = `
   uniform sampler2D dayMap;
   uniform sampler2D nightMap;
+  uniform sampler2D bgMap;
+  uniform vec2 uResolution;
   uniform vec3 lightDir;
   uniform float uTime;
   varying vec2 vUv;
   varying vec3 vNormal;
 
   vec3 toLinear(vec3 c) { return pow(c, vec3(2.2)); }
+  ${WATER_MASK_GLSL}
 
   void main() {
     vec3 n = normalize(vNormal);
     float lambert = dot(n, normalize(lightDir));
 
-    vec3 day = toLinear(texture2D(dayMap, vUv).rgb);
+    vec3 daySrgb = texture2D(dayMap, vUv).rgb;
+    vec3 day = toLinear(daySrgb);
     vec3 night = toLinear(texture2D(nightMap, vUv).rgb);
+
+    float land = 1.0 - waterMask(daySrgb);
 
     // Kaupunkivalojen tuike: paikkariippuvainen vaihe saa eri alueet
     // huippuunsa eri aikaan, joten valot kirkastuvat ja himmenevät
@@ -115,11 +148,17 @@ const EARTH_FRAGMENT = `
     vec3 dark = night * twinkle * 2.4;
     vec3 color = mix(dark, lit, dayAmount);
 
-    // Reunavalo korostaa ilmakehän rajaa myös itse planeetassa.
+    // Reunavalo korostaa ilmakehän rajaa myös itse planeetassa. Vain maalla:
+    // merialueilla se piirtäisi hehkuvan sirpin sinne missä ei näy mitään.
     float rim = pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 3.0);
     color += vec3(0.10, 0.34, 0.62) * rim * 0.5;
 
-    gl_FragColor = vec4(color, 1.0);
+    // Meret sulautetaan taustaan. Taustasumu luetaan ruutukoordinaateilla
+    // samasta tekstuurista jolla se piirretään, joten materiaali pysyy
+    // läpinäkymättömänä: ei läpinäkyvyyslajittelua, ja syvyyspuskuri piilottaa
+    // edelleen pallon takapuolen ristikkoviivat.
+    vec3 bg = texture2D(bgMap, gl_FragCoord.xy / uResolution).rgb;
+    gl_FragColor = vec4(mix(bg, color, land), 1.0);
   }
 `
 
@@ -128,15 +167,28 @@ const EARTH_FRAGMENT = `
 // yön puolella, mikä näyttäisi väärältä kaupunkivalojen päällä.
 const CLOUD_FRAGMENT = `
   uniform sampler2D cloudMap;
+  uniform sampler2D dayMap;
   uniform vec3 lightDir;
+  uniform float uCloudOffset;
   varying vec2 vUv;
   varying vec3 vNormal;
+  ${WATER_MASK_GLSL}
 
   void main() {
     float cloud = texture2D(cloudMap, vUv).r;
     float lambert = dot(normalize(vNormal), normalize(lightDir));
     float dayAmount = smoothstep(-0.25, 0.40, lambert);
-    gl_FragColor = vec4(vec3(1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9);
+
+    // Sama vesimaski kuin planeetan shaderissa: pilvi valtameren päällä
+    // leijuisi tyhjässä, koska sen alla ei enää ole pintaa. Pilvikerros
+    // ajautuu pinnan yli omaa tahtiaan, joten päivätekstuuri luetaan
+    // vastaavasti siirrettynä — muuten maski kiertyisi pilvien mukana ja
+    // pilvet katkeaisivat väärästä kohdasta. Ekvirektangulaarisessa
+    // projektiossa y-kierto on tasan u-koordinaatin siirto.
+    vec2 landUv = vec2(fract(vUv.x + uCloudOffset), vUv.y);
+    float land = 1.0 - waterMask(texture2D(dayMap, landUv).rgb);
+
+    gl_FragColor = vec4(vec3(1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9 * land);
   }
 `
 
@@ -377,6 +429,10 @@ export default function GlobeScene({
       uniforms: {
         dayMap: { value: dayTexture },
         nightMap: { value: nightTexture },
+        // Taustasumun tekstuuri asetetaan renderNebulassa, joka luo kohteen
+        // uudelleen aina kun canvasin koko muuttuu.
+        bgMap: { value: null as THREE.Texture | null },
+        uResolution: { value: new THREE.Vector2(1, 1) },
         // Valo vasemmalta ja hieman takaa: vain vasen reuna hohtaa sirppinä ja
         // Eurooppa jää keskelle yön puolelle kaupunkivaloineen.
         lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
@@ -396,7 +452,9 @@ export default function GlobeScene({
       fragmentShader: CLOUD_FRAGMENT,
       uniforms: {
         cloudMap: { value: cloudTexture },
+        dayMap: { value: dayTexture },
         lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
+        uCloudOffset: { value: 0 },
       },
       transparent: true,
       depthWrite: false,
@@ -410,7 +468,9 @@ export default function GlobeScene({
     const graticuleMaterial = new THREE.LineBasicMaterial({
       color: 0x5aa6ff,
       transparent: true,
-      opacity: 0.26,
+      // Hieman vahvempi kuin ennen: kun meret sulautuvat taustaan, ristikko
+      // kantaa yksin pallon muodon merialueilla.
+      opacity: 0.34,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     })
@@ -479,6 +539,9 @@ export default function GlobeScene({
         magFilter: THREE.LinearFilter,
       })
       blitMaterial.uniforms.map.value = bgTarget.texture
+      // Maapallon shader lukee samaa tekstuuria sulauttaakseen meret taustaan.
+      earthMaterial.uniforms.bgMap.value = bgTarget.texture
+      earthMaterial.uniforms.uResolution.value.set(size.x, size.y)
       renderer.setRenderTarget(bgTarget)
       renderer.render(nebulaScene, bgCamera)
       renderer.setRenderTarget(null)
@@ -620,7 +683,10 @@ export default function GlobeScene({
       }
 
       // Pilvien ajautuminen on oikeaa liikettä — se pysäytetään.
-      if (!reduceMotion) clouds.rotation.y += 0.00009
+      if (!reduceMotion) {
+        clouds.rotation.y += 0.00009
+        cloudMaterial.uniforms.uCloudOffset.value = clouds.rotation.y / (Math.PI * 2)
+      }
 
       // Tausta omana vaiheenaan ennen pääkohtausta, jolloin syvyyspuskuri ei
       // sekaannu eikä piirtojärjestys riipu läpinäkyvyyslajittelusta.
