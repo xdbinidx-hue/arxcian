@@ -24,6 +24,14 @@ import type { GlobeLayer, GlobePoint, PointTone } from '@/lib/arxcian/globe/type
 const CENTER_LNG = 12
 
 /**
+ * Kuinka läpinäkymättömiä mantereet ovat. 1 = kiinteä pinta, 0 = koko pallo
+ * sulautuu taustaan. Meret ovat aina täysin taustaa; tämä säätää sen, kuinka
+ * paljon maa-alueiden läpi näkyy. Yksi luku, jota kääntämällä ilmettä voi
+ * hienosäätää ilman shaderiin koskemista.
+ */
+const LAND_OPACITY = 0.62
+
+/**
  * Leveys- ja pituuspiirien ristikko pallon pinnalle — se erottaa
  * "teknologisen" ilmeen pelkästä valokuvamaisesta pallosta.
  *
@@ -119,6 +127,7 @@ const EARTH_FRAGMENT = `
   uniform vec2 uResolution;
   uniform vec3 lightDir;
   uniform float uTime;
+  uniform float uLandOpacity;
   varying vec2 vUv;
   varying vec3 vNormal;
 
@@ -158,7 +167,7 @@ const EARTH_FRAGMENT = `
     // läpinäkymättömänä: ei läpinäkyvyyslajittelua, ja syvyyspuskuri piilottaa
     // edelleen pallon takapuolen ristikkoviivat.
     vec3 bg = texture2D(bgMap, gl_FragCoord.xy / uResolution).rgb;
-    gl_FragColor = vec4(mix(bg, color, land), 1.0);
+    gl_FragColor = vec4(mix(bg, color, land * uLandOpacity), 1.0);
   }
 `
 
@@ -170,6 +179,7 @@ const CLOUD_FRAGMENT = `
   uniform sampler2D dayMap;
   uniform vec3 lightDir;
   uniform float uCloudOffset;
+  uniform float uLandOpacity;
   varying vec2 vUv;
   varying vec3 vNormal;
   ${WATER_MASK_GLSL}
@@ -188,7 +198,9 @@ const CLOUD_FRAGMENT = `
     vec2 landUv = vec2(fract(vUv.x + uCloudOffset), vUv.y);
     float land = 1.0 - waterMask(texture2D(dayMap, landUv).rgb);
 
-    gl_FragColor = vec4(vec3(1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9 * land);
+    // Sama läpinäkyvyys kuin maalla: muuten pilvet jäisivät kuvan
+    // läpinäkymättömimmäksi kerrokseksi sen pinnan päälle, jonka läpi näkee.
+    gl_FragColor = vec4(vec3(1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9 * land * uLandOpacity);
   }
 `
 
@@ -437,6 +449,7 @@ export default function GlobeScene({
         // Eurooppa jää keskelle yön puolelle kaupunkivaloineen.
         lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
         uTime: { value: 0 },
+        uLandOpacity: { value: LAND_OPACITY },
       },
     })
 
@@ -455,6 +468,7 @@ export default function GlobeScene({
         dayMap: { value: dayTexture },
         lightDir: { value: new THREE.Vector3(-0.9, 0.25, -0.35).normalize() },
         uCloudOffset: { value: 0 },
+        uLandOpacity: { value: LAND_OPACITY },
       },
       transparent: true,
       depthWrite: false,
