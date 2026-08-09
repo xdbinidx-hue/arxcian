@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'RJ-Mob Command Center',
+  title: 'arxcian',
   description: 'RJ-Mob johtamisjärjestelmä',
 }
 

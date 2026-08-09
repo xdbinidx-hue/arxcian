@@ -1,4 +1,4 @@
-# rjmob-portal
+# arxcian
 
 Yksi Next.js-sovellus, kaksi brändiä:
 
