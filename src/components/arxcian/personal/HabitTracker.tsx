@@ -73,7 +73,7 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
   const today = todayISO()
 
   return (
-    <div className="rounded-2xl border border-ax-line bg-ax-panel/70">
+    <div className="ax-glass rounded-2xl">
       <header className="border-b border-ax-line px-4 py-2.5">
         <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-ax-dim">Rutiinit</h2>
       </header>

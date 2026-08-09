@@ -20,8 +20,19 @@ import type { GlobeData, GlobePoint, PointTone } from '@/lib/arxcian/globe/types
  * ei tiedä mitään yksittäisen kerroksen sisällöstä.
  */
 
-/** Keskitettävä pituuspiiri: Keski-Eurooppa. */
-const CENTER_LNG = 12
+/**
+ * Maapallon asento. Arvot on ratkaistu numeerisesti, ei silmämääräisesti:
+ * ehtona oli että Keski-Eurooppa (50°N, 12°E) osuu tarkalleen ruudun keskelle
+ * kun akselikallistuma on −18°. Käsin arvattuna Eurooppa valui ylävasemmalle,
+ * koska Z-kierto vie osan X-kallistuksesta sivusuuntaiseksi siirroksi.
+ *
+ * CENTER_LNG ei siksi ole 12 vaan 34,5 — se on se pituuspiiri joka kierron
+ * jälkeen päätyy keskelle. Sivuvaikutus: New York jää juuri ja juuri näkyviin
+ * reunalle.
+ */
+const CENTER_LNG = 34.5
+const WORLD_TILT_X = 0.935
+const WORLD_TILT_Z = (-18 * Math.PI) / 180
 
 /**
  * Kuinka läpinäkymättömiä mantereet ovat. 1 = kiinteä pinta, 0 = koko pallo
@@ -72,11 +83,16 @@ function buildGraticule(radius: number, step: number, segments: number): THREE.B
   return geometry
 }
 
-const TONE_COLORS: Record<PointTone, number> = {
-  up: 0x3ddc97,
-  down: 0xff5c72,
-  warn: 0xf5b544,
-  neutral: 0x9fe8ff,
+/**
+ * Pisteiden värit teeman muuttujina. Merkit piirretään SVG:nä eikä WebGL-
+ * palloina, joten värit voidaan lukea suoraan samasta paikasta kuin muu
+ * käyttöliittymä — ei rinnakkaista heksalistaa joka ajautuisi erilleen.
+ */
+const TONE_VAR: Record<PointTone, string> = {
+  up: '--ax-up',
+  down: '--ax-down',
+  warn: '--ax-warn',
+  neutral: '--ax-accent',
 }
 
 /**
@@ -321,16 +337,26 @@ type SceneRefs = {
   calloutSvg: SVGSVGElement
 }
 
-/** Yksi kutsuviiva: piste kartalla, siitä lähtevä viiva ja arvo viivan päässä. */
-type Callout = {
-  mesh: THREE.Mesh
-  line: SVGLineElement
-  text: SVGTextElement
+/**
+ * Yksi kartan merkki. Ankkuri on tyhjä Object3D maapallon lapsena — se kiertyy
+ * pinnan mukana ja antaa projisoitavan sijainnin, mutta ei piirrä mitään.
+ * Kaikki näkyvä on SVG:tä canvasin päällä.
+ */
+type Marker = {
+  point: GlobePoint
+  anchor: THREE.Object3D
+  dot: SVGCircleElement
+  /** Kutsuviiva ja lämpötila — vain pisteillä joilla on callout. */
+  line: SVGLineElement | null
+  text: SVGTextElement | null
   /** Tekstin leveys pikseleinä, mitattuna kerran luonnin yhteydessä. */
   width: number
+  /** Viimeisin ruutusijainti, klikkauksen osumatestiä varten. Null = ei näy. */
+  sx: number | null
+  sy: number | null
 }
 
-/* --- Kutsuviivojen asettelu, kaikki pikseleinä --- */
+/* --- Merkkien ja kutsuviivojen asettelu, kaikki pikseleinä --- */
 
 /** Kuinka kaukana canvasin reunasta tekstipylväät ovat. */
 const CALLOUT_MARGIN = 6
@@ -341,6 +367,8 @@ const CALLOUT_TOP = 0.13
 const CALLOUT_BOTTOM = 0.87
 /** Rako viivan pään ja tekstin välissä. */
 const CALLOUT_GAP = 4
+/** Kuinka läheltä merkkiä klikkaus vielä osuu. */
+const HIT_RADIUS = 18
 
 /**
  * Kameran etäisyys kun zoom = 0 (kaukana) ja zoom = 1 (lähellä).
@@ -368,8 +396,13 @@ export default function GlobeScene({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const refs = useRef<SceneRefs | null>(null)
-  const calloutsRef = useRef<Callout[]>([])
+  const markersRef = useRef<Marker[]>([])
+  const selectedIdRef = useRef(selectedId)
   const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId
+  }, [selectedId])
 
   // Zoom ja tarkennuskulma luetaan refeistä animaatiosilmukassa, jottei
   // kohtausta tarvitse rakentaa uudelleen kun propsit muuttuvat.
@@ -432,11 +465,8 @@ export default function GlobeScene({
     container.appendChild(calloutSvg)
 
     const world = new THREE.Group()
-    world.rotation.z = (-18 * Math.PI) / 180 // maapallon akselikallistuma
-    // Pohjoinen pallonpuolisko kallistuu katsojaa kohti. Kun kamera on lähellä,
-    // pelkkä pituuspiirin keskitys ei riitä: ilman tätä Eurooppa (~50°N) jäisi
-    // kuvan yläreunaan. Kallistus nostaa sen keskelle.
-    world.rotation.x = 0.52
+    world.rotation.z = WORLD_TILT_Z
+    world.rotation.x = WORLD_TILT_X
     scene.add(world)
 
     const loader = new THREE.TextureLoader()
@@ -503,9 +533,10 @@ export default function GlobeScene({
     const graticuleMaterial = new THREE.LineBasicMaterial({
       color: 0x5aa6ff,
       transparent: true,
-      // Hieman vahvempi kuin ennen: kun meret sulautuvat taustaan, ristikko
-      // kantaa yksin pallon muodon merialueilla.
-      opacity: 0.34,
+      // Juuri ja juuri erottuva: ristikon tehtävä on antaa pallolle muoto,
+      // ei olla oma kuvionsa. Additiivinen sekoitus kirkastaa viivat
+      // päällekkäin mennessään, joten pieni arvo riittää.
+      opacity: 0.12,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     })
@@ -601,8 +632,6 @@ export default function GlobeScene({
     observer.observe(container)
 
     // --- Raahaus ja klikkaus ---
-    const raycaster = new THREE.Raycaster()
-    const pointer = new THREE.Vector2()
     let dragStartX: number | null = null
     let dragStartY = 0
     let dragStartRotation = 0
@@ -665,15 +694,25 @@ export default function GlobeScene({
       renderer.domElement.style.cursor = 'grab'
       if (!wasDragging || dragged) return
 
-      // Klikkaus: osumatesti datapisteisiin.
+      // Klikkaus: osumatesti ruutuavaruudessa. Merkit ovat SVG:tä eivätkä
+      // enää 3D-palloja, joten raycasterille ei ole mitään mihin osua —
+      // ja lähin-piste-haku sallii myös suuremman osumasäteen kuin pieni
+      // pallo, jolloin kosketuksella osuu ilman tarkkuustyötä.
       const rect = renderer.domElement.getBoundingClientRect()
-      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
-      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
-      raycaster.setFromCamera(pointer, camera)
-      const hits = raycaster.intersectObjects(pointGroup.children, false)
-      // Piste luetaan meshin userDatasta, jolloin klikkauskäsittelijä ei
-      // tarvitse viittausta kerrokseen eikä vanhene sulkeuman mukana.
-      onSelectRef.current(hits.length > 0 ? (hits[0].object.userData.point as GlobePoint) : null)
+      const px = ((e.clientX - rect.left) / rect.width) * cssSize
+      const py = ((e.clientY - rect.top) / rect.height) * cssSize
+
+      let nearest: Marker | null = null
+      let nearestDistance = HIT_RADIUS
+      for (const marker of markersRef.current) {
+        if (marker.sx === null || marker.sy === null) continue
+        const d = Math.hypot(marker.sx - px, marker.sy - py)
+        if (d < nearestDistance) {
+          nearestDistance = d
+          nearest = marker
+        }
+      }
+      onSelectRef.current(nearest?.point ?? null)
     }
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
@@ -681,17 +720,17 @@ export default function GlobeScene({
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerUp)
 
-    /* --- Kutsuviivojen asettelu ---
-       Pisteen sijainti projisoidaan ruudulle joka ruudussa, koska pallo
-       kääntyy. Nimilaput eivät kuitenkaan seuraa pistettä vapaasti: ne
-       pinotaan canvasin vasempaan ja oikeaan reunaan, koska 14 kaupunkia
-       vapaasti sijoiteltuna menisi päällekkäin — Eurooppa yksin tuo seitsemän
-       lappua muutaman asteen sisään toisistaan. */
+    /* --- Merkkien ja kutsuviivojen asettelu ---
+       Sijainti projisoidaan ruudulle joka ruudussa, koska pallo kääntyy.
+       Nimilaput eivät kuitenkaan seuraa pistettä vapaasti: ne pinotaan
+       canvasin vasempaan ja oikeaan reunaan, koska 14 kaupunkia vapaasti
+       sijoiteltuna menisi päällekkäin — Eurooppa yksin tuo seitsemän lappua
+       muutaman asteen sisään toisistaan. */
     const worldPos = new THREE.Vector3()
     const toCamera = new THREE.Vector3()
     const normal = new THREE.Vector3()
 
-    type Slot = { callout: Callout; sx: number; sy: number; y: number }
+    type Slot = { marker: Marker; sx: number; sy: number; y: number }
     const left: Slot[] = []
     const right: Slot[] = []
 
@@ -722,48 +761,66 @@ export default function GlobeScene({
       }
 
       for (const s of slots) {
-        const { callout } = s
+        const { line, text, width } = s.marker
+        if (!line || !text) continue
         const textX = isLeft ? CALLOUT_MARGIN : cssSize - CALLOUT_MARGIN
         const lineX = isLeft
-          ? CALLOUT_MARGIN + callout.width + CALLOUT_GAP
-          : cssSize - CALLOUT_MARGIN - callout.width - CALLOUT_GAP
+          ? CALLOUT_MARGIN + width + CALLOUT_GAP
+          : cssSize - CALLOUT_MARGIN - width - CALLOUT_GAP
 
-        callout.text.setAttribute('x', String(textX))
-        callout.text.setAttribute('y', String(s.y))
-        callout.text.setAttribute('text-anchor', isLeft ? 'start' : 'end')
-        callout.line.setAttribute('x1', String(s.sx))
-        callout.line.setAttribute('y1', String(s.sy))
-        callout.line.setAttribute('x2', String(lineX))
-        callout.line.setAttribute('y2', String(s.y))
-        callout.text.style.opacity = '1'
-        callout.line.style.opacity = '1'
+        text.setAttribute('x', String(textX))
+        text.setAttribute('y', String(s.y))
+        text.setAttribute('text-anchor', isLeft ? 'start' : 'end')
+        line.setAttribute('x1', String(s.sx))
+        line.setAttribute('y1', String(s.sy))
+        line.setAttribute('x2', String(lineX))
+        line.setAttribute('y2', String(s.y))
       }
     }
 
-    const layoutCallouts = () => {
+    const updateMarkers = (t: number) => {
       if (cssSize === 0) return
       left.length = 0
       right.length = 0
 
-      for (const callout of calloutsRef.current) {
-        callout.mesh.getWorldPosition(worldPos)
+      for (const marker of markersRef.current) {
+        marker.anchor.getWorldPosition(worldPos)
         // Pallon keskipiste on originissa, joten pisteen paikka on myös sen
-        // pintanormaali. Takapuolen pisteet piilotetaan: muuten viiva
-        // osoittaisi kohtaan jota ei näy.
+        // pintanormaali. Takapuolen pisteet häivytetään: viiva ei saa osoittaa
+        // kohtaan jota ei näy. Häivytys eikä katkaisu, jottei merkki pomppaa
+        // esiin reunan yli kääntyessään.
         normal.copy(worldPos).normalize()
         toCamera.copy(camera.position).sub(worldPos).normalize()
         const facing = normal.dot(toCamera)
+        const fade = Math.min(1, Math.max(0, (facing - 0.04) / 0.18))
 
-        if (facing < 0.08) {
-          callout.line.style.opacity = '0'
-          callout.text.style.opacity = '0'
+        marker.dot.style.opacity = String(fade)
+        if (marker.line) marker.line.style.opacity = String(fade * 0.55)
+        if (marker.text) marker.text.style.opacity = String(fade)
+
+        if (fade <= 0) {
+          marker.sx = null
+          marker.sy = null
           continue
         }
 
         worldPos.project(camera)
         const sx = (worldPos.x * 0.5 + 0.5) * cssSize
         const sy = (-worldPos.y * 0.5 + 0.5) * cssSize
-        ;(sx < cssSize / 2 ? left : right).push({ callout, sx, sy, y: sy })
+        marker.sx = sx
+        marker.sy = sy
+
+        // Valittu merkki sykkii, jotta sen erottaa muista.
+        const base = marker.point.kind === 'markets' ? 4 : 2
+        const selected = marker.point.id === selectedIdRef.current
+        marker.dot.setAttribute('cx', String(sx))
+        marker.dot.setAttribute('cy', String(sy))
+        marker.dot.setAttribute(
+          'r',
+          String(selected ? base * (1.6 + 0.2 * Math.sin(t * 3)) : base),
+        )
+
+        if (marker.line) (sx < cssSize / 2 ? left : right).push({ marker, sx, sy, y: sy })
       }
 
       placeColumn(left, true)
@@ -781,12 +838,6 @@ export default function GlobeScene({
       // hitaat häivytykset ovat nimenomaan suositeltu vaihtoehto sille.
       earthMaterial.uniforms.uTime.value = t
       atmosphereMaterial.uniforms.strength.value = 1.9 + 0.22 * Math.sin(t * 0.55)
-
-      // Valittu piste sykkii, jotta sen erottaa muista.
-      for (const p of pointGroup.children) {
-        const base = (p.userData.baseScale as number) ?? 1
-        p.scale.setScalar(p.userData.selected ? base * (1.35 + 0.15 * Math.sin(t * 3)) : base)
-      }
 
       // Kamera liukuu kohti zoom-tasoa. reduceMotion-tilassa hypätään suoraan.
       const targetZ = CAMERA_Z_FAR + (CAMERA_Z_NEAR - CAMERA_Z_FAR) * zoomRef.current
@@ -822,8 +873,8 @@ export default function GlobeScene({
       renderer.render(scene, camera)
 
       // Vasta renderöinnin jälkeen: kameran matriisit ovat silloin ajan tasalla
-      // tämän ruudun osalta, joten viivat eivät jää ruutua jälkeen pallosta.
-      layoutCallouts()
+      // tämän ruudun osalta, joten merkit eivät jää ruutua jälkeen pallosta.
+      updateMarkers(t)
 
       frame = requestAnimationFrame(animate)
     }
@@ -837,10 +888,9 @@ export default function GlobeScene({
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
       renderer.domElement.removeEventListener('pointerleave', onPointerUp)
-      for (const child of pointGroup.children as THREE.Mesh[]) {
-        child.geometry.dispose()
-        ;(child.material as THREE.Material).dispose()
-      }
+      // pointGroupin lapset ovat tyhjiä Object3D:eitä — ei geometriaa eikä
+      // materiaalia vapautettavaksi.
+      pointGroup.clear()
       earthGeometry.dispose()
       earthMaterial.dispose()
       dayTexture.dispose()
@@ -859,7 +909,7 @@ export default function GlobeScene({
       renderer.dispose()
       renderer.domElement.remove()
       calloutSvg.remove()
-      calloutsRef.current = []
+      markersRef.current = []
       refs.current = null
     }
   }, [])
@@ -873,62 +923,65 @@ export default function GlobeScene({
     const current = refs.current
     if (!current) return
     const { pointGroup, calloutSvg } = current
+    const ns = 'http://www.w3.org/2000/svg'
 
-    for (const child of [...pointGroup.children] as THREE.Mesh[]) {
-      pointGroup.remove(child)
-      child.geometry.dispose()
-      ;(child.material as THREE.Material).dispose()
-    }
+    pointGroup.clear()
     calloutSvg.replaceChildren()
-    calloutsRef.current = []
+    markersRef.current = []
 
     for (const point of data.points) {
-      const radius = 0.012 + 0.016 * (point.weight ?? 0.5)
-      const geometry = new THREE.SphereGeometry(radius, 16, 16)
-      const material = new THREE.MeshBasicMaterial({
-        color: TONE_COLORS[point.tone ?? 'neutral'],
-      })
-      const mesh = new THREE.Mesh(geometry, material)
-      // Markkinapaikat hieman korkeammalle: useampi kaupunki on sekä pörssi-
-      // että sääpiste (Lontoo, New York, Tokio), ja samalla korkeudella
-      // pallot välkkyisivät toistensa läpi.
-      const altitude = point.kind === 'markets' ? 1.04 : 1.015
-      const pos = latLngToVec3(point.lat, point.lng, altitude)
-      mesh.position.set(pos.x, pos.y, pos.z)
-      mesh.userData.point = point
-      mesh.userData.baseScale = 1
-      mesh.userData.selected = point.id === selectedId
-      pointGroup.add(mesh)
+      // Ankkuri on tyhjä Object3D: se kiertyy pallon mukana ja antaa
+      // projisoitavan sijainnin, mutta ei piirrä eikä maksa piirtokutsua.
+      const anchor = new THREE.Object3D()
+      const pos = latLngToVec3(point.lat, point.lng, 1.01)
+      anchor.position.set(pos.x, pos.y, pos.z)
+      pointGroup.add(anchor)
 
-      if (!point.callout) continue
+      const color = `rgb(var(${TONE_VAR[point.tone ?? 'neutral']}))`
+      const dot = document.createElementNS(ns, 'circle')
+      if (point.kind === 'markets') {
+        // Markkinapaikat rinkulana: se erottuu sääpisteestä ilman että
+        // kartalle tulee lisää umpinaisia värilaikkuja.
+        dot.setAttribute('r', '4')
+        dot.style.cssText = `fill:none;stroke:${color};stroke-width:1;opacity:0`
+      } else {
+        dot.setAttribute('r', '2')
+        dot.style.cssText = `fill:${color};opacity:0`
+      }
+      calloutSvg.appendChild(dot)
 
-      const ns = 'http://www.w3.org/2000/svg'
-      const line = document.createElementNS(ns, 'line')
-      line.style.cssText =
-        'stroke:rgb(var(--ax-line));stroke-width:1;opacity:0;transition:opacity 200ms'
-      calloutSvg.appendChild(line)
+      let line: SVGLineElement | null = null
+      let text: SVGTextElement | null = null
+      let width = 0
 
-      const text = document.createElementNS(ns, 'text')
-      text.setAttribute('dominant-baseline', 'middle')
-      // paint-order piirtää ääriviivan ennen täyttöä, jolloin siitä tulee
-      // taustanvärinen sädekehä eikä tekstin päälle levittyvä reunus. Ilman
-      // sitä lämpötila katoaisi kaupunkivalojen päälle osuessaan.
-      text.style.cssText =
-        'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;' +
-        `letter-spacing:0.02em;fill:rgb(var(--ax-${point.tone === 'warn' ? 'warn' : 'dim'}));` +
-        'paint-order:stroke;stroke:rgb(var(--ax-bg));stroke-width:3px;stroke-linejoin:round;' +
-        'opacity:0;transition:opacity 200ms'
-      text.textContent = `${point.label} ${point.callout}`
-      calloutSvg.appendChild(text)
+      if (point.callout) {
+        line = document.createElementNS(ns, 'line')
+        line.style.cssText = 'stroke:rgb(var(--ax-line));stroke-width:0.75;opacity:0'
+        calloutSvg.appendChild(line)
 
-      // Leveys mitataan kerran: viivan pää täytyy tietää ennen kuin se
-      // voidaan piirtää tekstin viereen. getComputedTextLength on
-      // asettelukysely, joten sitä ei tehdä joka ruudussa. Jos fontti ei ole
-      // vielä latautunut, arvio monospace-leveydellä 0,6 em.
-      const width = text.getComputedTextLength() || (text.textContent?.length ?? 0) * 7.2
-      calloutsRef.current.push({ mesh, line, text, width })
+        text = document.createElementNS(ns, 'text')
+        text.setAttribute('dominant-baseline', 'middle')
+        // paint-order piirtää ääriviivan ennen täyttöä, jolloin siitä tulee
+        // taustanvärinen sädekehä eikä tekstin päälle levittyvä reunus. Ilman
+        // sitä lämpötila katoaisi kaupunkivalojen päälle osuessaan.
+        text.style.cssText =
+          'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;' +
+          `letter-spacing:0.02em;fill:rgb(var(--ax-${point.tone === 'warn' ? 'warn' : 'faint'}));` +
+          'paint-order:stroke;stroke:rgb(var(--ax-bg)/0.85);stroke-width:3px;' +
+          'stroke-linejoin:round;opacity:0'
+        text.textContent = `${point.label} ${point.callout}`
+        calloutSvg.appendChild(text)
+
+        // Leveys mitataan kerran: viivan pää täytyy tietää ennen kuin se
+        // voidaan piirtää tekstin viereen. getComputedTextLength on
+        // asettelukysely, joten sitä ei tehdä joka ruudussa. Jos fontti ei ole
+        // vielä latautunut, arvio monospace-leveydellä 0,6 em.
+        width = text.getComputedTextLength() || (text.textContent?.length ?? 0) * 6.6
+      }
+
+      markersRef.current.push({ point, anchor, dot, line, text, width, sx: null, sy: null })
     }
-  }, [data, selectedId])
+  }, [data])
 
   return (
     <div

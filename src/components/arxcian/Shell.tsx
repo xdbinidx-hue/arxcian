@@ -31,7 +31,7 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
   return (
     <div className="min-h-dvh">
       {/* Ylänauha */}
-      <header className="fixed inset-x-0 top-0 z-40 h-12 border-b border-ax-line bg-ax-bg/85 backdrop-blur">
+      <header className="fixed inset-x-0 top-0 z-40 h-12 ax-glass-divide border-b bg-ax-bg/60 backdrop-blur-2xl">
         <div className="flex h-full items-center gap-4 px-3 sm:px-4">
           <Link href={HUB_HREF} className="flex shrink-0 items-center gap-2">
             <span className="ax-pulse h-1.5 w-1.5 rounded-full bg-ax-accent" />
@@ -54,7 +54,7 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
       {/* Vasen palkki, desktop */}
       <nav
         aria-label="Osiot"
-        className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col items-center gap-1 border-r border-ax-line bg-ax-bg pt-14 lg:flex"
+        className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col items-center gap-1 ax-glass-divide border-r bg-ax-bg/50 pt-14 backdrop-blur-2xl lg:flex"
       >
         {items.map(item => (
           <Link
@@ -87,7 +87,7 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
       {/* Alapalkki, mobiili */}
       <nav
         aria-label="Osiot"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ax-line bg-ax-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 ax-glass-divide border-t bg-ax-bg/70 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl lg:hidden"
       >
         {items.map(item => (
           <Link

@@ -51,7 +51,7 @@ export default async function UutisetPage() {
       </div>
 
       {!hasAnyArticles && (
-        <p className="mb-4 rounded-2xl border border-ax-line bg-ax-panel/70 p-4 text-[13px] text-ax-faint">
+        <p className="mb-4 ax-glass rounded-2xl p-4 text-[13px] text-ax-faint">
           Ei vielä uutisia — ensimmäinen haku ajetaan seuraavassa ajastetussa ajossa (08/12/16/20), tai käynnistä se
           käsin osoitteesta <code className="text-ax-dim">/api/arxcian/cron</code>.
         </p>

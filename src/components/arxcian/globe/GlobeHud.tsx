@@ -32,7 +32,7 @@ type Props = {
 }
 
 const ZOOM_BUTTON =
-  'pointer-events-auto flex h-7 w-7 items-center justify-center rounded-lg border border-ax-line bg-ax-panel/70 text-[13px] leading-none text-ax-faint transition-colors hover:text-ax-text disabled:opacity-30 disabled:hover:text-ax-faint'
+  'pointer-events-auto flex h-7 w-7 items-center justify-center ax-glass rounded-lg text-[13px] leading-none text-ax-faint transition-colors hover:text-ax-text disabled:opacity-30 disabled:hover:text-ax-faint'
 
 export function GlobeHud({
   sources,
@@ -57,15 +57,15 @@ export function GlobeHud({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full text-ax-accent"
       >
-        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.11" opacity="0.3" />
+        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.09" opacity="0.14" />
         <circle
           cx="50"
           cy="50"
           r="48.6"
           fill="none"
           stroke="currentColor"
-          strokeWidth="0.09"
-          opacity="0.18"
+          strokeWidth="0.08"
+          opacity="0.08"
           strokeDasharray="1.2 2.4"
         />
         {/* Kulmamerkit neljännesten kohdalle */}
@@ -77,8 +77,8 @@ export function GlobeHud({
             x2="50"
             y2="3.4"
             stroke="currentColor"
-            strokeWidth="0.16"
-            opacity="0.4"
+            strokeWidth="0.14"
+            opacity="0.2"
             transform={`rotate(${deg} 50 50)`}
           />
         ))}
@@ -115,7 +115,7 @@ export function GlobeHud({
 
       {/* Valitun pisteen kortti */}
       {selected && (
-        <div className="pointer-events-auto absolute bottom-0 left-0 right-0 mx-auto max-w-sm rounded-2xl border border-ax-line bg-ax-panel/90 p-3 shadow-[0_0_32px_-6px_rgb(var(--ax-accent)/0.32)] backdrop-blur">
+        <div className="pointer-events-auto absolute bottom-0 left-0 right-0 mx-auto max-w-sm ax-glass rounded-2xl p-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[13px] font-medium text-ax-text">{selected.label}</p>

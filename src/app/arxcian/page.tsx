@@ -61,7 +61,7 @@ export default async function ArxcianHub() {
           <Link
             key={section.id}
             href={section.href}
-            className="ax-rise group rounded-2xl border border-ax-line bg-ax-panel/70 p-4 transition-colors hover:border-ax-line-strong hover:bg-ax-panel-hi"
+            className="ax-rise ax-glass ax-glass-hover group rounded-2xl p-4 transition-colors"
             style={{ animationDelay: `${0.04 * i}s` }}
           >
             <SectionIcon

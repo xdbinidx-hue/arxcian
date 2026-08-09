@@ -96,9 +96,9 @@ export function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="Komentopaletti"
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-ax-line-strong bg-ax-panel shadow-2xl"
+        className="w-full max-w-lg overflow-hidden ax-glass rounded-xl shadow-2xl"
       >
-        <div className="flex items-center gap-3 border-b border-ax-line px-4">
+        <div className="flex items-center gap-3 ax-glass-divide border-b px-4">
           <IconSearch className="h-4 w-4 shrink-0 text-ax-faint" />
           <input
             ref={inputRef}

@@ -18,7 +18,7 @@ export function QuickActions({ delay }: { delay?: number }) {
           <Link
             key={label}
             href={href}
-            className="group flex flex-col items-center gap-1.5 rounded-xl border border-ax-line bg-ax-panel-hi/50 px-2 py-3 text-center transition-colors hover:border-ax-line-strong hover:bg-ax-panel-hi"
+            className="group flex flex-col items-center gap-1.5 ax-glass ax-glass-hover rounded-xl px-2 py-3 text-center transition-colors"
           >
             <Icon className="h-4.5 w-4.5 text-ax-accent transition-transform group-hover:scale-110" />
             <span className="text-[10px] leading-tight text-ax-faint">{label}</span>
