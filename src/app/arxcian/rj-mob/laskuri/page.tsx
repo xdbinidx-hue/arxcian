@@ -93,7 +93,10 @@ export default function LaskuriPage() {
     <div>
       <RjMobNav activePage="/arxcian/rj-mob/laskuri" />
       <div style={{maxWidth:1000, margin:'0 auto', padding:'20px 16px'}}>
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
+        {/* minmax(0,1fr) eikä 1fr: ruudukon sarake ei oletuksena kutistu
+            sisältönsä minimileveyttä pienemmäksi, jolloin oikea palsta
+            työnsi sivun 150px yli näytön puhelimessa. */}
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap:20}}>
 
           <div>
             <div style={{fontSize:11, fontWeight:600, letterSpacing:'1px', textTransform:'uppercase', color:'#888', marginBottom:10}}>Myymälän suoritustiedot</div>
