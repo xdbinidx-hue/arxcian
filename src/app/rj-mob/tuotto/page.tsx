@@ -89,13 +89,13 @@ function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
     <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
       <a href="/" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
       {[
-        {label:'Tuottoseuranta', href:'/tuotto'},
-        {label:'Trendit', href:'/trendit'},
-        {label:'Kassamyynti', href:'/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
-        {label:'Laskuri', href:'/laskuri'},
-        {label:'Työvuorot', href:'/tyovuorot'},
+        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
+        {label:'Trendit', href:'/rj-mob/trendit'},
+        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
+        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
+        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
+        {label:'Laskuri', href:'/rj-mob/laskuri'},
+        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
       ].map(item => (
         <a key={item.href} href={item.href}
           style={{
@@ -313,7 +313,7 @@ export default function TuottoPage() {
 
   return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
-      <TopBar activePage="/tuotto" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
+      <TopBar activePage="/rj-mob/tuotto" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
       <div style={{maxWidth:1400,margin:'0 auto',padding:'16px'}}>
 
         <div style={{display:'flex',gap:8,marginBottom:16}}>

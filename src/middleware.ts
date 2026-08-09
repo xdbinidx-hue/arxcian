@@ -8,7 +8,7 @@ const ARXCIAN_PREFIX = '/arxcian'
 const ARXCIAN_API_PREFIX = '/api/arxcian'
 
 /** RJ-Mobin etusivu, jonne vieras ohjataan. */
-const GUEST_HOME = '/tuotto'
+const GUEST_HOME = '/rj-mob/tuotto'
 
 function isPublic(pathname: string) {
   return (

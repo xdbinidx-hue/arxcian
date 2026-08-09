@@ -86,13 +86,13 @@ function TopBar({ activePage }: { activePage: string }) {
     <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
       <a href="/" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
       {[
-        {label:'Tuottoseuranta', href:'/tuotto'},
-        {label:'Trendit', href:'/trendit'},
-        {label:'Kassamyynti', href:'/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
-        {label:'Laskuri', href:'/laskuri'},
-        {label:'Työvuorot', href:'/tyovuorot'},
+        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
+        {label:'Trendit', href:'/rj-mob/trendit'},
+        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
+        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
+        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
+        {label:'Laskuri', href:'/rj-mob/laskuri'},
+        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
       ].map(item => (
         <a key={item.href} href={item.href}
           style={{
@@ -306,14 +306,14 @@ export default function TrendPage() {
 
   if (loading) return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
-      <TopBar activePage="/trendit" />
+      <TopBar activePage="/rj-mob/trendit" />
       <div style={{textAlign:'center',padding:60,color:'#888',fontSize:14}}>Ladataan kuukausidataa...</div>
     </div>
   )
 
   return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
-      <TopBar activePage="/trendit" />
+      <TopBar activePage="/rj-mob/trendit" />
       <div style={{maxWidth:1000,margin:'0 auto',padding:'16px'}}>
         {error && <div style={{background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:10,padding:12,marginBottom:12,fontSize:13,color:'#A32D2D'}}><strong>Virhe:</strong> {error}</div>}
 

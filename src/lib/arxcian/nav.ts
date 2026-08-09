@@ -15,7 +15,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'rjmob',
     label: 'RJ-Mob',
-    href: '/tuotto',
+    href: '/rj-mob/tuotto',
     description: 'Myynti, kannattavuus ja kassavirta',
     external: true,
   },

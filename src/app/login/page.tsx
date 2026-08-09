@@ -19,7 +19,7 @@ export default function LoginPage() {
       body: JSON.stringify({ username: isGuest ? 'guest' : user, password: isGuest ? '0626' : pass }),
     })
     const data = await res.json()
-    if (res.ok) { router.push('/tuotto'); router.refresh() }
+    if (res.ok) { router.push('/rj-mob/tuotto'); router.refresh() }
     else setError(data.error ?? 'Väärä salasana')
     setLoading(false)
   }

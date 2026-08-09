@@ -13,7 +13,7 @@ export default function Home() {
           <div style={{fontSize:15, color:'rgba(255,255,255,0.55)', maxWidth:420, lineHeight:1.7, marginBottom:48}}>
             Reaaliaikainen johtamisjärjestelmä — myynti, kannattavuus ja kassavirta yhdessä näkymässä.
           </div>
-          <a href="/tuotto" style={{
+          <a href="/rj-mob/tuotto" style={{
             padding:'16px 48px',
             background:'white',
             borderRadius:14,

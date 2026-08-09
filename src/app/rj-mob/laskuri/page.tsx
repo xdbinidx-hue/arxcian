@@ -30,20 +30,20 @@ function TopBar() {
     <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
       <a href="/" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
       {[
-        {label:'Tuottoseuranta', href:'/tuotto'},
-        {label:'Trendit', href:'/trendit'},
-        {label:'Kassamyynti', href:'/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/tavoitteet'},
-        {label:'Laskuri', href:'/laskuri'},
-        {label:'Työvuorot', href:'/tyovuorot'},
+        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
+        {label:'Trendit', href:'/rj-mob/trendit'},
+        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
+        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
+        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
+        {label:'Laskuri', href:'/rj-mob/laskuri'},
+        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
       ].map(item => (
         <a key={item.href} href={item.href} style={{
-          fontSize:13, fontWeight: item.href === '/laskuri' ? 500 : 400,
-          color: item.href === '/laskuri' ? '#185FA5' : '#666',
+          fontSize:13, fontWeight: item.href === '/rj-mob/laskuri' ? 500 : 400,
+          color: item.href === '/rj-mob/laskuri' ? '#185FA5' : '#666',
           textDecoration:'none', padding:'0 14px', height:48,
           display:'flex', alignItems:'center',
-          borderBottom: item.href === '/laskuri' ? '2px solid #185FA5' : '2px solid transparent',
+          borderBottom: item.href === '/rj-mob/laskuri' ? '2px solid #185FA5' : '2px solid transparent',
           whiteSpace:'nowrap'
         }}>{item.label}</a>
       ))}
