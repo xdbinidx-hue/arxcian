@@ -4,11 +4,15 @@
  * RJ-Mobin osionavigaatio. Sama palkki kaikilla RJ-Mobin sivuilla — aiemmin
  * jokainen sivu määritteli oman identtisen TopBar-kopionsa.
  *
+ * Tyyli seuraa arxcianin ylänauhaa, mutta tausta on umpitumma eikä lasimainen:
+ * palkki istuu RJ-Mobin valkoisen pinnan päällä, joten backdrop-blur sumentaisi
+ * valkoista eikä tummaa taustaa ja lasiefekti katoaisi.
+ *
  * Tiedostovalitsin näkyy vain niillä sivuilla jotka antavat `files`-listan
  * ja `onFileChange`-käsittelijän (tuotto, myyntiseuranta, run rate, tavoitteet).
  *
- * Palkki vierii itse vaakasuunnassa kapealla näytöllä. Ilman `overflowX` se
- * venytti koko sivun 835 pikselin levyiseksi puhelimessa, jolloin myös
+ * Palkki vierii itse vaakasuunnassa kapealla näytöllä. Ilman `overflow-x-auto`
+ * se venytti koko sivun 835 pikselin levyiseksi puhelimessa, jolloin myös
  * arxcianin ylänauha ja osiopalkki raahautuivat mukana.
  */
 
@@ -32,26 +36,36 @@ export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChan
   onFileChange?: (id: string) => void
 }) {
   return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:48, zIndex:10, gap:0, overflowX:'auto', overflowY:'hidden'}}>
-      <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
+    <div className="sticky top-12 z-20 flex h-12 items-center overflow-x-auto overflow-y-hidden border-b border-ax-line bg-ax-bg px-4">
+      {/* Ei linkki: arxcianin ylänauha ja osiopalkki vievät jo hubiin. */}
+      <span className="mr-6 shrink-0 text-[13px] font-medium tracking-[0.14em] text-ax-text">
+        RJ-Mob
+      </span>
       {ITEMS.map(item => {
         const on = item.href === activePage
         return (
-          <a key={item.href} href={item.href} style={{
-            fontSize:13, fontWeight: on ? 500 : 400,
-            color: on ? '#185FA5' : '#666',
-            textDecoration:'none', padding:'0 14px', height:48,
-            display:'flex', alignItems:'center',
-            borderBottom: on ? '2px solid #185FA5' : '2px solid transparent',
-            whiteSpace:'nowrap'
-          }}>{item.label}</a>
+          <a
+            key={item.href}
+            href={item.href}
+            aria-current={on ? 'page' : undefined}
+            className={`flex h-12 shrink-0 items-center whitespace-nowrap border-b-2 px-3.5 text-[13px] transition-colors ${
+              on
+                ? 'border-ax-accent text-ax-accent'
+                : 'border-transparent text-ax-faint hover:text-ax-text'
+            }`}
+          >
+            {item.label}
+          </a>
         )
       })}
       {files.length > 0 && onFileChange && (
-        <select value={selectedFile} onChange={e => onFileChange(e.target.value)}
-          style={{marginLeft:8, fontSize:12, border:'0.5px solid #ddd', borderRadius:8, padding:'4px 10px', background:'white', cursor:'pointer', color:'#333'}}>
+        <select
+          value={selectedFile}
+          onChange={e => onFileChange(e.target.value)}
+          className="ml-2 shrink-0 cursor-pointer rounded-lg border border-ax-line bg-ax-panel px-2.5 py-1 text-xs text-ax-text"
+        >
           {files.map(f => (
-            <option key={f.id} value={f.id}>
+            <option key={f.id} value={f.id} className="bg-ax-panel text-ax-text">
               {f.name.replace('Myyntiseuranta ','').replace(' 2026','')}
             </option>
           ))}
