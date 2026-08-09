@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 // Nämä ovat kaikki polut joiden data voi muuttua kun Myyntiseurannat- tai Maksukuitit-kansiossa
 // tapahtuu muutos: itse API-reitit (joiden JSON-vastaus on cachettu, ks. src/lib/apiCache.ts)
 // sekä sivut jotka näyttävät tätä dataa.
-const REVALIDATE_PATHS = ['/api/files', '/api/receipts', '/api/sheets', '/api/targets', '/rj-mob/trendit', '/rj-mob/tuotto', '/rj-mob/etela', '/rj-mob/tavoitteet']
+const REVALIDATE_PATHS = ['/api/files', '/api/receipts', '/api/sheets', '/api/targets', '/arxcian/rj-mob/trendit', '/arxcian/rj-mob/tuotto', '/arxcian/rj-mob/etela', '/arxcian/rj-mob/tavoitteet']
 
 // Google Drive lähettää tämän POST-pyynnön aina kun watch-kanavan (ks. ../register/route.ts)
 // tarkkailema Drive-tila muuttuu. Google ei lähetä pyynnön mukana varsinaista dataa siitä mikä

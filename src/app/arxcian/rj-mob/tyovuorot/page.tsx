@@ -101,8 +101,8 @@ export default function TyovuorotPage() {
   const th = { padding:'6px 5px', fontSize:10, fontWeight:600, color:'#555', textAlign:'center' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6' }
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/tyovuorot" />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/tyovuorot" />
       <div style={{maxWidth:1500, margin:'0 auto', padding:'16px'}}>
 
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>

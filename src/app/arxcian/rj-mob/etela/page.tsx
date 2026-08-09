@@ -156,8 +156,8 @@ Generoi viesti:`
   }
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/etela" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/etela" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
 
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 

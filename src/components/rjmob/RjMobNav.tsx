@@ -6,32 +6,33 @@
  *
  * Tiedostovalitsin näkyy vain niillä sivuilla jotka antavat `files`-listan
  * ja `onFileChange`-käsittelijän (tuotto, myyntiseuranta, run rate, tavoitteet).
+ *
+ * Palkki vierii itse vaakasuunnassa kapealla näytöllä. Ilman `overflowX` se
+ * venytti koko sivun 835 pikselin levyiseksi puhelimessa, jolloin myös
+ * arxcianin ylänauha ja osiopalkki raahautuivat mukana.
  */
 
 /** Riittää kaikille sivujen omille DriveFile-tyypeille: vain nämä kentät luetaan. */
 type FileOption = { id: string; name: string }
 
 const ITEMS = [
-  {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
-  {label:'Trendit', href:'/rj-mob/trendit'},
-  {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
-  {label:'Myyntiseuranta', href:'/rj-mob/etela'},
-  {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
+  {label:'Tuottoseuranta', href:'/arxcian/rj-mob/tuotto'},
+  {label:'Trendit', href:'/arxcian/rj-mob/trendit'},
+  {label:'Kassamyynti', href:'/arxcian/rj-mob/kassamyynti'},
+  {label:'Myyntiseuranta', href:'/arxcian/rj-mob/etela'},
+  {label:'Tavoitteet ja Run Rate', href:'/arxcian/rj-mob/tavoitteet'},
   {label:'Laskuri', href:'/arxcian/rj-mob/laskuri'},
-  {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
+  {label:'Työvuorot', href:'/arxcian/rj-mob/tyovuorot'},
 ]
 
-export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChange, stickyTop = 0 }: {
+export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChange }: {
   activePage?: string
   files?: FileOption[]
   selectedFile?: string
   onFileChange?: (id: string) => void
-  /** Kiinnityskorkeus. arxcianin kehyksen sisällä 48, koska ylänauha on siellä.
-   *  Väliaikainen: poistuu kun kaikki sivut ovat siirtyneet kehyksen sisään. */
-  stickyTop?: number
 }) {
   return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:stickyTop, zIndex:10, gap:0}}>
+    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:48, zIndex:10, gap:0, overflowX:'auto', overflowY:'hidden'}}>
       <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
       {ITEMS.map(item => {
         const on = item.href === activePage

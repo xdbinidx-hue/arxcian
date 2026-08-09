@@ -269,8 +269,8 @@ export default function TuottoPage() {
   const tdR = {...td, textAlign:'right' as const}
 
   return (
-    <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/tuotto" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/tuotto" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
       <div style={{maxWidth:1400,margin:'0 auto',padding:'16px'}}>
 
         <div style={{display:'flex',gap:8,marginBottom:16}}>

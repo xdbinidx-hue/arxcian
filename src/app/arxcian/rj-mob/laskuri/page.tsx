@@ -91,7 +91,7 @@ export default function LaskuriPage() {
 
   return (
     <div>
-      <RjMobNav activePage="/arxcian/rj-mob/laskuri" stickyTop={48} />
+      <RjMobNav activePage="/arxcian/rj-mob/laskuri" />
       <div style={{maxWidth:1000, margin:'0 auto', padding:'20px 16px'}}>
         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 

@@ -206,8 +206,8 @@ export default function RunRatePage() {
   }
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/runrate" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/runrate" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 
         {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Lasketaan run ratea...</div>}

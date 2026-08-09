@@ -156,8 +156,8 @@ export default function TavoitteetPage() {
   )
 
   return (
-    <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/tavoitteet" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/tavoitteet" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
       <div style={{maxWidth:1200, margin:'0 auto', padding:'16px'}}>
 
         {error && <div style={{background:'#FCEBEB', border:'0.5px solid #F09595', borderRadius:10, padding:12, marginBottom:12, fontSize:13, color:'#A32D2D'}}><strong>Virhe:</strong> {error}</div>}

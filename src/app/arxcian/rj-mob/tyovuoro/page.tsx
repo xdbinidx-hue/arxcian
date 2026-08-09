@@ -97,8 +97,8 @@ export default function TyovuoroPage() {
   const inputStyle = {width:52, padding:'5px 4px', fontSize:12, textAlign:'center' as const, border:'0.5px solid #ddd', borderRadius:6}
 
   return (
-    <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
-      <RjMobNav activePage="/rj-mob/tyovuoro" />
+    <div>
+      <RjMobNav activePage="/arxcian/rj-mob/tyovuoro" />
       <div style={{maxWidth:900,margin:'0 auto',padding:'16px'}}>
 
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
