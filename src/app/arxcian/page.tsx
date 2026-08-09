@@ -8,7 +8,7 @@ import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
 import { UpcomingEvents } from '@/components/arxcian/hub/UpcomingEvents'
 import { DailyFocus } from '@/components/arxcian/hub/DailyFocus'
 import { Globe } from '@/components/arxcian/globe/Globe'
-import { worldLayer, marketsLayer, weatherLayer } from '@/lib/arxcian/globe/layers'
+import { hubData } from '@/lib/arxcian/globe/data'
 import { GoalsProgress } from '@/components/arxcian/hub/GoalsProgress'
 import { QuickActions } from '@/components/arxcian/hub/QuickActions'
 
@@ -41,9 +41,9 @@ export default async function ArxcianHub() {
   const name = user ? user[0].toUpperCase() + user.slice(1) : ''
   const { hour, date } = helsinki(new Date())
 
-  // Kerrokset kootaan palvelimella olemassa olevasta välimuistista — maapallo
-  // ei koskaan hae dataa itse.
-  const layers = await Promise.all([worldLayer(), marketsLayer(), weatherLayer()])
+  // Maapallon data kootaan palvelimella olemassa olevasta välimuistista —
+  // maapallo ei koskaan hae dataa itse.
+  const globe = await hubData()
 
   return (
     <div className="mx-auto max-w-[1600px]">
@@ -84,7 +84,7 @@ export default async function ArxcianHub() {
           {/* Ei erillistä hehkukerrosta pallon takana — ilmakehän hohto tulee
               kohtauksen omasta shaderista, jolloin valo osuu siluettiin eikä
               jää leijumaan pallon ympärille sumeana kehänä. */}
-          <Globe layers={layers} className="relative mx-auto w-full max-w-[780px]" />
+          <Globe data={globe} className="relative mx-auto w-full max-w-[780px]" />
         </div>
 
         <div className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">

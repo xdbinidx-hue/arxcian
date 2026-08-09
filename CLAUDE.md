@@ -126,15 +126,21 @@ nykyiseen/tulevaan rakenteeseen:
 | Calendar | Personal → Google Calendar (olemassa) |
 | Goals & Habits | Personal → tavoitteet/rutiinit (olemassa) |
 | Intelligence Feed | Uutiset (olemassa) |
-| Interactive World | Hubin 3D-maapallo kerroksineen — World ja Markets toteutettu, Weather seuraavana |
+| Interactive World | Hubin 3D-maapallo — markkinapaikat ja kaupunkien sää samassa näkymässä |
 | Files | Drive-integraatio, palvelutilillä RJ-Mobin jaettu Drive (suunniteltu) |
 | AI (chat, planner, automations) | Kirjoitusoikeuksin toimiva AI-avustaja (suunniteltu, iso arkkitehtuuripäätös → Opus 5) |
 | Knowledge Vault, Projects, Finance, People CRM, Voice Center, Automation Builder, Mission Control | Ei vielä suunniteltu — käsitellään yksi kerrallaan kun ajankohtaista |
 
-Maapallon kerroksista **Intel, Network ja Travel on rajattu pois** (päätös
-9.8.2026): niille ei ole datalähdettä, eikä kerroksia rakenneta keksityn datan
-varaan. GlobalNews on yhä auki — RSS-artikkeleissa ei ole sijaintikenttää, joten
-se vaatisi AI-geokoodauksen jossa sijainti on pääteltu eikä artikkelin metadataa.
+**Maapallolla ei ole kerrosvalitsinta** (päätös 9.8.2026): erilliset World-,
+Markets- ja Weather-näkymät on yhdistetty yhdeksi kartaksi, jossa kaikki pisteet
+ovat esillä samaan aikaan. Piste kertoo itse ryhmänsä (`kind`), ja sääpisteille
+piirretään kutsuviiva kartan reunaan lämpötilan kanssa. Uutta dataa lisätessä
+lisätään pisteitä, ei kerroksia.
+
+**Intel, Network ja Travel on rajattu pois** (sama päätös): niille ei ole
+datalähdettä, eikä karttaa rakenneta keksityn datan varaan. GlobalNews on yhä
+auki — RSS-artikkeleissa ei ole sijaintikenttää, joten se vaatisi
+AI-geokoodauksen jossa sijainti on pääteltu eikä artikkelin metadataa.
 
 Edetään näidenkin kanssa "Työtapa"-osion periaatteella: vaihe kerrallaan, ei
 kaikkea kerralla.

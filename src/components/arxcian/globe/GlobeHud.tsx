@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import type { GlobeLayer, GlobePoint } from '@/lib/arxcian/globe/types'
+import type { GlobePoint, GlobeSource } from '@/lib/arxcian/globe/types'
 
 /**
  * Maapallon HUD. Tehty DOM-elementteinä canvasin päälle eikä WebGL-tekstinä:
@@ -22,9 +22,8 @@ function fmtTime(ms: number | null): string {
 }
 
 type Props = {
-  layers: GlobeLayer[]
-  activeId: string
-  onSelectLayer: (id: string) => void
+  sources: GlobeSource[]
+  caveats: string[]
   selected: GlobePoint | null
   onClearSelection: () => void
   zoom: number
@@ -36,17 +35,14 @@ const ZOOM_BUTTON =
   'pointer-events-auto flex h-7 w-7 items-center justify-center rounded-lg border border-ax-line bg-ax-panel/70 text-[13px] leading-none text-ax-faint transition-colors hover:text-ax-text disabled:opacity-30 disabled:hover:text-ax-faint'
 
 export function GlobeHud({
-  layers,
-  activeId,
-  onSelectLayer,
+  sources,
+  caveats,
   selected,
   onClearSelection,
   zoom,
   onZoomIn,
   onZoomOut,
 }: Props) {
-  const active = layers.find(l => l.id === activeId) ?? layers[0]
-
   return (
     <>
       {/*
@@ -88,32 +84,16 @@ export function GlobeHud({
         ))}
       </svg>
 
-      {/* Kerrosvalitsin */}
-      <div className="pointer-events-auto absolute left-0 top-0 flex flex-wrap gap-1.5">
-        {layers.map(layer => (
-          <button
-            key={layer.id}
-            onClick={() => onSelectLayer(layer.id)}
-            aria-pressed={layer.id === activeId}
-            className={`rounded-lg border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
-              layer.id === activeId
-                ? 'border-ax-accent/50 bg-ax-accent/10 text-ax-accent'
-                : 'border-ax-line bg-ax-panel/70 text-ax-faint hover:text-ax-text'
-            }`}
-          >
-            {layer.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Lähdetieto — aina näkyvissä, jottei vanhentunutta dataa luulla tuoreeksi */}
+      {/* Lähdetiedot — aina näkyvissä, jottei vanhentunutta dataa luulla
+          tuoreeksi. Kaikki lähteet listataan, koska näkymässä on nyt useamman
+          lähteen dataa yhtä aikaa. */}
       <div className="absolute right-0 top-0 text-right">
-        <p className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">
-          {active.source.name}
-        </p>
-        {active.source.fetchedAt !== null && (
-          <p className="font-mono text-[10px] text-ax-faint/70">{fmtTime(active.source.fetchedAt)}</p>
-        )}
+        {sources.map(source => (
+          <p key={source.name} className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">
+            {source.name}{' '}
+            <span className="text-ax-faint/70">{fmtTime(source.fetchedAt)}</span>
+          </p>
+        ))}
       </div>
 
       {/* Zoom. Rullaa ei kaapata: maapallo on iso keskellä vieritettävää sivua,
@@ -164,11 +144,15 @@ export function GlobeHud({
         </div>
       )}
 
-      {/* Kerroksen varauma, kun kerros jättää osan datasta pois kartalta */}
-      {!selected && active.caveat && (
-        <p className="absolute bottom-0 left-0 right-0 mx-auto max-w-md text-center text-[10px] leading-relaxed text-ax-faint/70">
-          {active.caveat}
-        </p>
+      {/* Varaumat, kun jokin lähde jättää osan datasta pois kartalta */}
+      {!selected && caveats.length > 0 && (
+        <div className="absolute bottom-0 left-0 right-0 mx-auto max-w-md space-y-1 text-center">
+          {caveats.map(caveat => (
+            <p key={caveat} className="text-[10px] leading-relaxed text-ax-faint/70">
+              {caveat}
+            </p>
+          ))}
+        </div>
       )}
     </>
   )

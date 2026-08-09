@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { latLngToVec3, faceLongitude } from '@/lib/arxcian/globe/geo'
-import type { GlobeLayer, GlobePoint, PointTone } from '@/lib/arxcian/globe/types'
+import type { GlobeData, GlobePoint, PointTone } from '@/lib/arxcian/globe/types'
 
 /**
  * Fotorealistinen maapallo hubin keskiöön.
@@ -227,9 +227,9 @@ const ATMOSPHERE_FRAGMENT = `
 /* ---------------------------------------------------------------
    Avaruustausta.
 
-   Sumu ja tähdet lasketaan proseduraalisesti kohinasta — valmista
-   taustakuvaa ei ladata, joten se ei maksa tavuakaan siirtoa ja on
-   tarkka millä tahansa resoluutiolla.
+   Sumu lasketaan proseduraalisesti kohinasta — valmista taustakuvaa ei
+   ladata, joten se ei maksa tavuakaan siirtoa ja on tarkka millä tahansa
+   resoluutiolla. Tähtiä ei piirretä.
 
    Tausta on staattinen, joten se renderöidään KERRAN tekstuuriksi.
    Kohinan laskeminen joka ruudulla olisi tuhlausta: viisi oktaavia
@@ -276,16 +276,6 @@ const NEBULA_FRAGMENT = `
     return v;
   }
 
-  // Pyöreä tähti solun keskellä: solu arvotaan hashilla ja etäisyys
-  // keskipisteestä pehmentää reunan, jolloin tähdistä ei tule neliöitä.
-  float stars(vec2 uv, float density, float threshold, float size) {
-    vec2 p = uv * density;
-    vec2 cell = floor(p);
-    if (hash(cell) < threshold) return 0.0;
-    float d = length(fract(p) - 0.5);
-    return smoothstep(size, 0.0, d) * (0.45 + 0.75 * hash(cell + 7.3));
-  }
-
   void main() {
     vec2 uv = vUv;
 
@@ -300,9 +290,6 @@ const NEBULA_FRAGMENT = `
     col += vec3(0.052, 0.125, 0.310) * pow(smoothstep(0.30, 0.82, n1), 1.5);
     col += vec3(0.036, 0.092, 0.235) * pow(smoothstep(0.40, 0.88, n2), 2.2);
     col += vec3(0.060, 0.135, 0.275) * pow(smoothstep(0.56, 0.94, n3), 2.8);
-
-    col += vec3(0.82, 0.89, 1.00) * stars(uv, 210.0, 0.9945, 0.30);
-    col += vec3(0.90, 0.95, 1.00) * stars(uv, 78.0, 0.9975, 0.24) * 1.15;
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -331,7 +318,29 @@ type SceneRefs = {
   renderer: THREE.WebGLRenderer
   earth: THREE.Mesh
   pointGroup: THREE.Group
+  calloutSvg: SVGSVGElement
 }
+
+/** Yksi kutsuviiva: piste kartalla, siitä lähtevä viiva ja arvo viivan päässä. */
+type Callout = {
+  mesh: THREE.Mesh
+  line: SVGLineElement
+  text: SVGTextElement
+  /** Tekstin leveys pikseleinä, mitattuna kerran luonnin yhteydessä. */
+  width: number
+}
+
+/* --- Kutsuviivojen asettelu, kaikki pikseleinä --- */
+
+/** Kuinka kaukana canvasin reunasta tekstipylväät ovat. */
+const CALLOUT_MARGIN = 6
+/** Pystysuora vähimmäisväli kahden nimilapun välillä. */
+const CALLOUT_SPACING = 19
+/** Nimilaput pidetään pois ylä- ja alakulmista, joissa on muuta HUDia. */
+const CALLOUT_TOP = 0.13
+const CALLOUT_BOTTOM = 0.87
+/** Rako viivan pään ja tekstin välissä. */
+const CALLOUT_GAP = 4
 
 /**
  * Kameran etäisyys kun zoom = 0 (kaukana) ja zoom = 1 (lähellä).
@@ -342,7 +351,7 @@ const CAMERA_Z_FAR = 3.45
 const CAMERA_Z_NEAR = 2.35
 
 type Props = {
-  layer: GlobeLayer
+  data: GlobeData
   selectedId: string | null
   onSelectPoint: (point: GlobePoint | null) => void
   /** 0 = kaukana, 1 = lähellä */
@@ -351,7 +360,7 @@ type Props = {
 }
 
 export default function GlobeScene({
-  layer,
+  data,
   selectedId,
   onSelectPoint,
   zoom,
@@ -359,6 +368,7 @@ export default function GlobeScene({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const refs = useRef<SceneRefs | null>(null)
+  const calloutsRef = useRef<Callout[]>([])
   const [ready, setReady] = useState(false)
 
   // Zoom ja tarkennuskulma luetaan refeistä animaatiosilmukassa, jottei
@@ -384,9 +394,9 @@ export default function GlobeScene({
 
   // Valinta kääntää maapallon niin että piste tulee kameraa kohti.
   useEffect(() => {
-    const point = layer.points.find(p => p.id === selectedId)
+    const point = data.points.find(p => p.id === selectedId)
     focusRef.current = point ? faceLongitude(point.lng) : null
-  }, [selectedId, layer])
+  }, [selectedId, data])
 
   // --- Kohtaus rakennetaan kerran ---
   useEffect(() => {
@@ -409,6 +419,17 @@ export default function GlobeScene({
     renderer.domElement.style.height = '100%'
     renderer.domElement.style.cursor = 'grab'
     renderer.domElement.style.touchAction = 'none'
+
+    // Kutsuviivat ja lämpötilat piirretään SVG:nä canvasin päälle, ei WebGL-
+    // tekstinä: teksti pysyy tarkkana, ääkköset toimivat ilman fonttiatlasta ja
+    // tyylit tulevat teemasta. viewBox asetetaan canvasin pikselikokoon, jolloin
+    // yksi yksikkö on yksi pikseli — fonttikoko pysyy samana näytön koosta
+    // riippumatta eikä kutistu puhelimella lukukelvottomaksi.
+    const calloutSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    calloutSvg.setAttribute('aria-hidden', 'true')
+    calloutSvg.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible'
+    container.appendChild(calloutSvg)
 
     const world = new THREE.Group()
     world.rotation.z = (-18 * Math.PI) / 180 // maapallon akselikallistuma
@@ -561,15 +582,18 @@ export default function GlobeScene({
       renderer.setRenderTarget(null)
     }
 
-    refs.current = { scene, camera, renderer, earth, pointGroup }
+    refs.current = { scene, camera, renderer, earth, pointGroup, calloutSvg }
 
     // --- Koko ---
+    let cssSize = 0
     const resize = () => {
       const size = container.clientWidth
       if (size === 0) return
+      cssSize = size
       renderer.setSize(size, size, false)
       camera.aspect = 1
       camera.updateProjectionMatrix()
+      calloutSvg.setAttribute('viewBox', `0 0 ${size} ${size}`)
       renderNebula()
     }
     resize()
@@ -657,6 +681,95 @@ export default function GlobeScene({
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerUp)
 
+    /* --- Kutsuviivojen asettelu ---
+       Pisteen sijainti projisoidaan ruudulle joka ruudussa, koska pallo
+       kääntyy. Nimilaput eivät kuitenkaan seuraa pistettä vapaasti: ne
+       pinotaan canvasin vasempaan ja oikeaan reunaan, koska 14 kaupunkia
+       vapaasti sijoiteltuna menisi päällekkäin — Eurooppa yksin tuo seitsemän
+       lappua muutaman asteen sisään toisistaan. */
+    const worldPos = new THREE.Vector3()
+    const toCamera = new THREE.Vector3()
+    const normal = new THREE.Vector3()
+
+    type Slot = { callout: Callout; sx: number; sy: number; y: number }
+    const left: Slot[] = []
+    const right: Slot[] = []
+
+    const placeColumn = (slots: Slot[], isLeft: boolean) => {
+      if (slots.length === 0) return
+      slots.sort((a, b) => a.sy - b.sy)
+
+      const top = cssSize * CALLOUT_TOP
+      const bottom = cssSize * CALLOUT_BOTTOM
+
+      // Ylhäältä alas: kukin lappu omalle korkeudelleen, mutta vähintään
+      // CALLOUT_SPACING edellisen alapuolelle.
+      let prev = -Infinity
+      for (const s of slots) {
+        s.y = Math.max(s.sy, prev + CALLOUT_SPACING, top)
+        prev = s.y
+      }
+
+      // Jos pino valui alareunan yli, se siirretään ylös alhaalta lukien —
+      // pelkkä koko pinon siirto voisi työntää ylimmät ulos yläreunasta.
+      const overflow = slots[slots.length - 1].y - bottom
+      if (overflow > 0) {
+        let next = Infinity
+        for (let i = slots.length - 1; i >= 0; i--) {
+          slots[i].y = Math.max(top, Math.min(slots[i].y - overflow, next - CALLOUT_SPACING))
+          next = slots[i].y
+        }
+      }
+
+      for (const s of slots) {
+        const { callout } = s
+        const textX = isLeft ? CALLOUT_MARGIN : cssSize - CALLOUT_MARGIN
+        const lineX = isLeft
+          ? CALLOUT_MARGIN + callout.width + CALLOUT_GAP
+          : cssSize - CALLOUT_MARGIN - callout.width - CALLOUT_GAP
+
+        callout.text.setAttribute('x', String(textX))
+        callout.text.setAttribute('y', String(s.y))
+        callout.text.setAttribute('text-anchor', isLeft ? 'start' : 'end')
+        callout.line.setAttribute('x1', String(s.sx))
+        callout.line.setAttribute('y1', String(s.sy))
+        callout.line.setAttribute('x2', String(lineX))
+        callout.line.setAttribute('y2', String(s.y))
+        callout.text.style.opacity = '1'
+        callout.line.style.opacity = '1'
+      }
+    }
+
+    const layoutCallouts = () => {
+      if (cssSize === 0) return
+      left.length = 0
+      right.length = 0
+
+      for (const callout of calloutsRef.current) {
+        callout.mesh.getWorldPosition(worldPos)
+        // Pallon keskipiste on originissa, joten pisteen paikka on myös sen
+        // pintanormaali. Takapuolen pisteet piilotetaan: muuten viiva
+        // osoittaisi kohtaan jota ei näy.
+        normal.copy(worldPos).normalize()
+        toCamera.copy(camera.position).sub(worldPos).normalize()
+        const facing = normal.dot(toCamera)
+
+        if (facing < 0.08) {
+          callout.line.style.opacity = '0'
+          callout.text.style.opacity = '0'
+          continue
+        }
+
+        worldPos.project(camera)
+        const sx = (worldPos.x * 0.5 + 0.5) * cssSize
+        const sy = (-worldPos.y * 0.5 + 0.5) * cssSize
+        ;(sx < cssSize / 2 ? left : right).push({ callout, sx, sy, y: sy })
+      }
+
+      placeColumn(left, true)
+      placeColumn(right, false)
+    }
+
     const clock = new THREE.Clock()
     let frame = 0
     const animate = () => {
@@ -707,6 +820,11 @@ export default function GlobeScene({
       renderer.clear()
       renderer.render(blitScene, bgCamera)
       renderer.render(scene, camera)
+
+      // Vasta renderöinnin jälkeen: kameran matriisit ovat silloin ajan tasalla
+      // tämän ruudun osalta, joten viivat eivät jää ruutua jälkeen pallosta.
+      layoutCallouts()
+
       frame = requestAnimationFrame(animate)
     }
     renderer.autoClear = false
@@ -740,6 +858,8 @@ export default function GlobeScene({
       atmosphereMaterial.dispose()
       renderer.dispose()
       renderer.domElement.remove()
+      calloutSvg.remove()
+      calloutsRef.current = []
       refs.current = null
     }
   }, [])
@@ -752,36 +872,70 @@ export default function GlobeScene({
   useEffect(() => {
     const current = refs.current
     if (!current) return
-    const { pointGroup } = current
+    const { pointGroup, calloutSvg } = current
 
     for (const child of [...pointGroup.children] as THREE.Mesh[]) {
       pointGroup.remove(child)
       child.geometry.dispose()
       ;(child.material as THREE.Material).dispose()
     }
+    calloutSvg.replaceChildren()
+    calloutsRef.current = []
 
-    for (const point of layer.points) {
+    for (const point of data.points) {
       const radius = 0.012 + 0.016 * (point.weight ?? 0.5)
       const geometry = new THREE.SphereGeometry(radius, 16, 16)
       const material = new THREE.MeshBasicMaterial({
         color: TONE_COLORS[point.tone ?? 'neutral'],
       })
       const mesh = new THREE.Mesh(geometry, material)
-      const pos = latLngToVec3(point.lat, point.lng, 1.015)
+      // Markkinapaikat hieman korkeammalle: useampi kaupunki on sekä pörssi-
+      // että sääpiste (Lontoo, New York, Tokio), ja samalla korkeudella
+      // pallot välkkyisivät toistensa läpi.
+      const altitude = point.kind === 'markets' ? 1.04 : 1.015
+      const pos = latLngToVec3(point.lat, point.lng, altitude)
       mesh.position.set(pos.x, pos.y, pos.z)
       mesh.userData.point = point
       mesh.userData.baseScale = 1
       mesh.userData.selected = point.id === selectedId
       pointGroup.add(mesh)
+
+      if (!point.callout) continue
+
+      const ns = 'http://www.w3.org/2000/svg'
+      const line = document.createElementNS(ns, 'line')
+      line.style.cssText =
+        'stroke:rgb(var(--ax-line));stroke-width:1;opacity:0;transition:opacity 200ms'
+      calloutSvg.appendChild(line)
+
+      const text = document.createElementNS(ns, 'text')
+      text.setAttribute('dominant-baseline', 'middle')
+      // paint-order piirtää ääriviivan ennen täyttöä, jolloin siitä tulee
+      // taustanvärinen sädekehä eikä tekstin päälle levittyvä reunus. Ilman
+      // sitä lämpötila katoaisi kaupunkivalojen päälle osuessaan.
+      text.style.cssText =
+        'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;' +
+        `letter-spacing:0.02em;fill:rgb(var(--ax-${point.tone === 'warn' ? 'warn' : 'dim'}));` +
+        'paint-order:stroke;stroke:rgb(var(--ax-bg));stroke-width:3px;stroke-linejoin:round;' +
+        'opacity:0;transition:opacity 200ms'
+      text.textContent = `${point.label} ${point.callout}`
+      calloutSvg.appendChild(text)
+
+      // Leveys mitataan kerran: viivan pää täytyy tietää ennen kuin se
+      // voidaan piirtää tekstin viereen. getComputedTextLength on
+      // asettelukysely, joten sitä ei tehdä joka ruudussa. Jos fontti ei ole
+      // vielä latautunut, arvio monospace-leveydellä 0,6 em.
+      const width = text.getComputedTextLength() || (text.textContent?.length ?? 0) * 7.2
+      calloutsRef.current.push({ mesh, line, text, width })
     }
-  }, [layer, selectedId])
+  }, [data, selectedId])
 
   return (
     <div
       ref={containerRef}
-      aria-label={`Maapallo, kerros: ${layer.label}`}
+      aria-label="Maapallo: markkinapaikat ja kaupunkien sää"
       role="img"
-      className={`aspect-square transition-opacity duration-1000 ${ready ? 'opacity-100' : 'opacity-0'}`}
+      className={`relative aspect-square transition-opacity duration-1000 ${ready ? 'opacity-100' : 'opacity-0'}`}
     />
   )
 }

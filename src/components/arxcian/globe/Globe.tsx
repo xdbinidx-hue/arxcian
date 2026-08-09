@@ -3,10 +3,10 @@
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import { GlobeHud } from './GlobeHud'
-import type { GlobeLayer, GlobePoint } from '@/lib/arxcian/globe/types'
+import type { GlobeData, GlobePoint } from '@/lib/arxcian/globe/types'
 
 /**
- * Maapallon kääre: pitää kerros- ja valintatilan sekä yhdistää WebGL-kohtauksen
+ * Maapallon kääre: pitää valinta- ja zoom-tilan sekä yhdistää WebGL-kohtauksen
  * ja DOM-pohjaisen HUDin.
  *
  * Varsinainen three.js-toteutus ladataan dynaamisesti ja vasta selaimessa
@@ -22,24 +22,16 @@ const GlobeScene = dynamic(() => import('./GlobeScene'), {
 
 const ZOOM_STEP = 0.25
 
-export function Globe({ layers, className = '' }: { layers: GlobeLayer[]; className?: string }) {
-  const [activeId, setActiveId] = useState<string>(layers[0]?.id ?? 'world')
+export function Globe({ data, className = '' }: { data: GlobeData; className?: string }) {
   const [selected, setSelected] = useState<GlobePoint | null>(null)
   const [zoom, setZoom] = useState(0)
-
-  const active = layers.find(l => l.id === activeId) ?? layers[0]
-
-  const selectLayer = (id: string) => {
-    setActiveId(id)
-    setSelected(null) // valinta ei kuulu toiseen kerrokseen
-  }
 
   const nudgeZoom = (delta: number) => setZoom(z => Math.min(1, Math.max(0, z + delta)))
 
   return (
     <div className={`relative ${className}`}>
       <GlobeScene
-        layer={active}
+        data={data}
         selectedId={selected?.id ?? null}
         onSelectPoint={setSelected}
         zoom={zoom}
@@ -50,9 +42,8 @@ export function Globe({ layers, className = '' }: { layers: GlobeLayer[]; classN
           Yksittäiset painikkeet palauttavat pointer-eventsin itselleen. */}
       <div className="pointer-events-none absolute inset-0 p-3 sm:p-4">
         <GlobeHud
-          layers={layers}
-          activeId={active.id}
-          onSelectLayer={selectLayer}
+          sources={data.sources}
+          caveats={data.caveats}
           selected={selected}
           onClearSelection={() => setSelected(null)}
           zoom={zoom}

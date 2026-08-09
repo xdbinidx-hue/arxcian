@@ -2,17 +2,7 @@ import { getQuotes } from '@/lib/arxcian/trading/quotes'
 import { WATCHLIST } from '@/lib/arxcian/trading/symbols'
 import { getCityWeather, describeWeatherCode } from '@/lib/arxcian/weather'
 import { SYMBOL_VENUE, VENUES, type VenueId } from './venues'
-import type { GlobeLayer, GlobePoint, PointTone } from './types'
-
-/** Perusnäkymä ilman datapisteitä. */
-export function worldLayer(): GlobeLayer {
-  return {
-    id: 'world',
-    label: 'Maailma',
-    points: [],
-    source: { name: 'staattinen', fetchedAt: null },
-  }
-}
+import type { GlobeData, GlobePoint, GlobeSource, PointTone } from './types'
 
 function toneFor(changePercent: number): PointTone {
   if (changePercent > 0.05) return 'up'
@@ -24,13 +14,15 @@ function fmtPercent(n: number): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2).replace('.', ',')} %`
 }
 
+type Part = { points: GlobePoint[]; source: GlobeSource; caveat?: string }
+
 /**
- * Markets-kerros: watchlistin instrumentit ryhmiteltynä kaupankäyntipaikkoihin.
+ * Markkinapisteet: watchlistin instrumentit ryhmiteltynä kaupankäyntipaikkoihin.
  *
- * Luetaan välimuistista kuten muutkin näkymät — maapallo ei koskaan odota
+ * Luetaan välimuistista kuten muukin ulkoinen data — maapallo ei koskaan odota
  * Yahoo Financen vastausta.
  */
-export async function marketsLayer(): Promise<GlobeLayer> {
+async function marketPoints(): Promise<Part> {
   const cached = await getQuotes()
   const quotes = cached?.data.quotes ?? {}
 
@@ -55,6 +47,7 @@ export async function marketsLayer(): Promise<GlobeLayer> {
     const venue = VENUES[venueId]
     return {
       id: venueId,
+      kind: 'markets',
       lat: venue.lat,
       lng: venue.lng,
       label: venue.label,
@@ -70,8 +63,6 @@ export async function marketsLayer(): Promise<GlobeLayer> {
   const cryptoCount = WATCHLIST.filter(s => !SYMBOL_VENUE[s.quoteSymbol]).length
 
   return {
-    id: 'markets',
-    label: 'Markkinat',
     points,
     source: { name: 'Yahoo Finance', fetchedAt: cached?.data.fetchedAt ?? null },
     caveat:
@@ -85,14 +76,14 @@ export async function marketsLayer(): Promise<GlobeLayer> {
 const SEVERE_CODES = new Set([65, 75, 82, 95, 96, 99])
 
 /**
- * Weather-kerros: nykysää kaupungeittain.
+ * Sääpisteet: nykysää kaupungeittain.
  *
  * Kaikki kaupungit haetaan yhdellä Open-Meteo-kutsulla, ja tulos kulkee saman
  * fetchAndCache-apurin läpi kuin muukin ulkoinen data.
  */
-export async function weatherLayer(): Promise<GlobeLayer> {
+async function weatherPoints(): Promise<Part> {
   // getCityWeather heittää jos haku epäonnistuu EIKÄ välimuistissa ole mitään.
-  // Hub-sivu ei saa kaatua siihen, joten kerros palautetaan tyhjänä ja syy
+  // Hub-sivu ei saa kaatua siihen, joten pisteet palautetaan tyhjinä ja syy
   // näytetään käyttäjälle.
   let cached: Awaited<ReturnType<typeof getCityWeather>>
   try {
@@ -100,8 +91,6 @@ export async function weatherLayer(): Promise<GlobeLayer> {
   } catch (e) {
     console.error('[globe] sään haku epäonnistui', e)
     return {
-      id: 'weather',
-      label: 'Sää',
       points: [],
       source: { name: 'Open-Meteo', fetchedAt: null },
       caveat: 'Säätietoja ei saatu haettua. Seuraava ajastettu haku yrittää uudelleen.',
@@ -110,8 +99,10 @@ export async function weatherLayer(): Promise<GlobeLayer> {
 
   const points: GlobePoint[] = cached.data.map(city => {
     const { label } = describeWeatherCode(city.weatherCode)
+    const celsius = Math.round(city.temperature)
     return {
       id: `weather-${city.name}`,
+      kind: 'weather',
       lat: city.lat,
       lng: city.lon,
       label: city.name,
@@ -119,14 +110,27 @@ export async function weatherLayer(): Promise<GlobeLayer> {
       // sitominen siihen antaisi harhaanjohtavan vaikutelman.
       weight: 0.5,
       tone: SEVERE_CODES.has(city.weatherCode) ? 'warn' : 'neutral',
-      meta: `${Math.round(city.temperature)} °C · ${label}`,
+      meta: `${celsius} °C · ${label}`,
+      // Kutsuviivan päähän piirretään pelkkä lämpötila. Kaupungin nimi tulee
+      // viivan toisesta päästä, joten sitä ei toisteta.
+      callout: `${celsius}°`,
     }
   })
 
+  return { points, source: { name: 'Open-Meteo', fetchedAt: cached.fetchedAt } }
+}
+
+/**
+ * Koko maapallon data yhtenä näkymänä: markkinapaikat ja kaupunkien sää
+ * samalla kartalla. Molemmat haut rinnakkain — kumpikin lukee omasta
+ * välimuististaan eikä toisen hitaus viivytä toista.
+ */
+export async function hubData(): Promise<GlobeData> {
+  const parts = await Promise.all([marketPoints(), weatherPoints()])
+
   return {
-    id: 'weather',
-    label: 'Sää',
-    points,
-    source: { name: 'Open-Meteo', fetchedAt: cached.fetchedAt },
+    points: parts.flatMap(p => p.points),
+    sources: parts.map(p => p.source),
+    caveats: parts.flatMap(p => (p.caveat ? [p.caveat] : [])),
   }
 }
