@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { kv } from '@vercel/kv'
 import { currentUser } from '@/lib/session'
+import { checkRateLimit } from '@/lib/arxcian/rateLimit'
 import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
 
 /**
@@ -15,9 +15,7 @@ import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
  */
 
 const MAX_TOKENS = 1000
-
 const RATE_LIMIT = 20
-const RATE_LIMIT_WINDOW = 60 * 60 // 1 tunti sekunteina
 
 let client: Anthropic | null = null
 function getClient() {
@@ -25,35 +23,11 @@ function getClient() {
   return client
 }
 
-/**
- * Kiinteä tuntikello: avain sisältää nykyisen tunnin numeron, jolloin laskuri
- * vaihtuu automaattisesti tunnin vaihtuessa eikä liu'u edellisestä kutsusta.
- * TTL asetetaan vain ensimmäisellä kutsulla (kun incr palauttaa 1) — muuten
- * jokainen kutsu venyttäisi vanhenemisaikaa eikä laskuri koskaan nollautuisi.
- *
- * Redis-virheet eivät saa estää käyttöä: samaa periaatetta noudattaa
- * lib/arxcian/cache.ts, jossa Redisin poissaolo ohittaa välimuistin sen
- * sijaan että kaataisi sivun.
- */
-async function checkRateLimit(userId: string): Promise<boolean> {
-  const hour = Math.floor(Date.now() / (RATE_LIMIT_WINDOW * 1000))
-  const key = `ratelimit:ai:${userId}:${hour}`
-
-  try {
-    const count = await kv.incr(key)
-    if (count === 1) await kv.expire(key, RATE_LIMIT_WINDOW)
-    return count <= RATE_LIMIT
-  } catch (e) {
-    console.error('[api/ai] pyyntörajoituksen tarkistus epäonnistui', e)
-    return true
-  }
-}
-
 export async function POST(req: NextRequest) {
   const user = await currentUser()
   if (!user) return NextResponse.json({ error: 'Kirjautuminen vaaditaan' }, { status: 401 })
 
-  if (!(await checkRateLimit(user))) {
+  if (!(await checkRateLimit('ai', user, RATE_LIMIT))) {
     return NextResponse.json(
       { error: 'Liikaa pyyntöjä, yritä myöhemmin uudelleen' },
       { status: 429 },
