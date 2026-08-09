@@ -8,10 +8,9 @@ import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
  * Vapaamuotoinen tekstigenerointi. Käyttäjä: RJ-Mobin Etelä-näkymä, joka
  * generoi tiimin lukemista WhatsApp-viestin.
  *
- * Istuntotarkistus on `currentUser` eikä `currentOwner`: reitti on RJ-Mobin
- * puolella, jonne myös vieraalla on pääsy. `currentOwner` sulkisi vieraan
- * ulos ja rikkoisi Etelä-näkymän niiltä, jotka käyttävät sitä vierastilillä.
- * Vaatimus on siis "istunto olemassa", ei "henkilökohtainen käyttäjä".
+ * Istuntotarkistus on `currentUser`: vaatimus on "istunto olemassa", ei
+ * tietty käyttäjä — reitti on RJ-Mobin puolella eikä sisällä
+ * henkilökohtaista dataa.
  */
 
 const MAX_TOKENS = 1000

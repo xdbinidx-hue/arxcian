@@ -98,7 +98,7 @@ export async function authorizeCron(req: Request): Promise<{ ok: true; via: 'cro
   if (secret && header === `Bearer ${secret}`) return { ok: true, via: 'cron' }
 
   const user = await currentUser()
-  if (user && user !== 'guest') return { ok: true, via: 'user' }
+  if (user) return { ok: true, via: 'user' }
 
   return { ok: false }
 }

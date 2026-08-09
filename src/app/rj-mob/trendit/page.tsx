@@ -84,7 +84,7 @@ function findStoreKey(stores: Record<string, unknown> | undefined, canonical: st
 function TopBar({ activePage }: { activePage: string }) {
   return (
     <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
-      <a href="/" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
+      <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
       {[
         {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
         {label:'Trendit', href:'/rj-mob/trendit'},

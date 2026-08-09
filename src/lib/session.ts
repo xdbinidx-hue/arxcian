@@ -1,9 +1,9 @@
 import { getIronSession, type SessionOptions } from 'iron-session'
 import { cookies } from 'next/headers'
 
-/** arxcianin varsinaiset käyttäjät. RJ-Mobin vieraskäyttäjä on erikseen 'guest'. */
+/** arxcianin ja RJ-Mobin ainoat käyttäjät. */
 export type UserId = 'albin' | 'arbnor'
-export type SessionUser = UserId | 'guest'
+export type SessionUser = UserId
 
 /** Sisällön näkyvyys: henkilökohtainen (omistajan tunnus) tai molemmille jaettu. */
 export type Owner = UserId | 'shared'
@@ -19,16 +19,9 @@ export type SessionData = {
   oauthState?: string
 }
 
-/** Vieraskäyttäjän käyttökerrat. Omassa pitkäikäisessä evästeessään, jotta
- *  laskuri säilyy vaikka tunnin istunto ehtii vanheta. */
-export type GuestData = { uses?: number }
-
 export const SESSION_COOKIE = 'arxcian_session'
-export const GUEST_COOKIE = 'arxcian_guest'
 
 export const USER_SESSION_DAYS = 30
-export const GUEST_SESSION_HOURS = 1
-export const GUEST_MAX_USES = 5
 
 const DAY = 24 * 60 * 60
 
@@ -59,15 +52,6 @@ export function sessionOptions(): SessionOptions {
   }
 }
 
-export function guestOptions(): SessionOptions {
-  return {
-    password: password(),
-    cookieName: GUEST_COOKIE,
-    ttl: 365 * DAY,
-    cookieOptions: cookieOptions(365 * DAY),
-  }
-}
-
 /** Kirjautunut käyttäjä istuntodatasta, tai null jos puuttuu tai vanhentunut. */
 export function sessionUser(data: SessionData | null | undefined): SessionUser | null {
   if (!data?.user) return null
@@ -85,15 +69,14 @@ export async function currentUser(): Promise<SessionUser | null> {
   return sessionUser(await getSession())
 }
 
-/** arxcianin osiot ovat henkilökohtaisia — vieras ei pääse niihin. */
+/** Kirjautunut käyttäjä UserId-tyyppisenä. Sama arvo kuin currentUser — SessionUser on nyt UserId:n alias. */
 export async function currentOwner(): Promise<UserId | null> {
-  const user = await currentUser()
-  return user && user !== 'guest' ? user : null
+  return currentUser()
 }
 
 /** Näkeekö käyttäjä tämän omistajan sisällön. */
 export function canView(owner: Owner, user: SessionUser | null): boolean {
-  if (!user || user === 'guest') return false
+  if (!user) return false
   return owner === 'shared' || owner === user
 }
 

@@ -38,7 +38,7 @@ Noudata olemassa olevan koodin tyyliä:
 | Muuttuja | Käyttö |
 |---|---|
 | `SESSION_SECRET` | iron-session salausavain, väh. 32 merkkiä |
-| `ALBIN_PIN`, `ARBNOR_PIN`, `GUEST_PIN` | kirjautumistunnusluvut |
+| `ALBIN_PIN`, `ARBNOR_PIN` | kirjautumistunnusluvut |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Sheets / Drive (palvelutili, RJ-Mob) |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Calendar (käyttäjän oma tili, arxcian) |
 | `ANTHROPIC_API_KEY` | AI-tiivistelmät |
@@ -48,7 +48,7 @@ Kaksi eri Google-tunnistautumista tarkoituksella: RJ-Mob lukee jaettuja taulukoi
 
 ## Käyttäjät ja näkyvyys
 
-Kaksi käyttäjää: `albin` ja `arbnor`. Lisäksi RJ-Mobin `guest` (1 h istunto, max 5 kirjautumista) — **guest ei pääse arxcianin osioihin lainkaan**.
+Kaksi käyttäjää: `albin` ja `arbnor`. Vierastili on poistettu kokonaan — kaikki sisältö vaatii kirjautumisen.
 
 Istunto on iron-sessionilla salattu eväste (`arxcian_session`), ei väärennettävissä selaimesta. Kaikki apurit: [src/lib/session.ts](src/lib/session.ts).
 

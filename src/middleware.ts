@@ -3,12 +3,7 @@ import type { NextRequest } from 'next/server'
 import { getIronSession } from 'iron-session'
 import { sessionOptions, sessionUser, type SessionData } from '@/lib/session'
 
-/** arxcianin osiot ovat henkilökohtaisia: vieraskäyttäjä ei pääse niihin. */
-const ARXCIAN_PREFIX = '/arxcian'
 const ARXCIAN_API_PREFIX = '/api/arxcian'
-
-/** RJ-Mobin etusivu, jonne vieras ohjataan. */
-const GUEST_HOME = '/rj-mob/tuotto'
 
 function isPublic(pathname: string) {
   return (
@@ -35,17 +30,11 @@ export async function middleware(request: NextRequest) {
   const session = await getIronSession<SessionData>(request, res, sessionOptions())
   const user = sessionUser(session)
 
-  const isArxcian = pathname.startsWith(ARXCIAN_PREFIX) || pathname.startsWith(ARXCIAN_API_PREFIX)
   const isApi = pathname.startsWith('/api/')
 
   if (!user) {
     if (isApi) return NextResponse.json({ error: 'Kirjautuminen vaaditaan' }, { status: 401 })
     return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  if (user === 'guest' && isArxcian) {
-    if (isApi) return NextResponse.json({ error: 'Ei oikeutta' }, { status: 403 })
-    return NextResponse.redirect(new URL(GUEST_HOME, request.url))
   }
 
   return res
