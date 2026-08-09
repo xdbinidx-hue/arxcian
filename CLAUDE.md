@@ -2,10 +2,12 @@
 
 Yksi Next.js-sovellus, kaksi brändiä:
 
-- **RJ-Mob** — nykyinen bisnesportaali (`/tuotto`, `/trendit`, `/tavoitteet`, `/tyovuorot`, …). Pysyy ennallaan.
-- **arxcian** (aina pienellä) — henkilökohtainen hub-kokonaisuus RJ-Mobin rinnalla. Kaikki uusi arxcian-sisältö menee polkuun `/arxcian/*` ja API `/api/arxcian/*`.
+- **arxcian** (aina pienellä) — pääbrändi ja koko sovelluksen kehys. Kaikki sivut ovat polussa `/arxcian/*`, API `/api/arxcian/*`.
+- **RJ-Mob** — bisnesportaali, nykyään **yksi arxcianin osio** muiden rinnalla polussa `/arxcian/rj-mob/*` (tuotto, trendit, kassamyynti, etela, tavoitteet, runrate, laskuri, tyovuoro, tyovuorot). Ei enää erillinen sivusto.
 
-Osiot arxcianin alla: RJ-Mob, Trading, Uutiset, Personal.
+Osiot arxcianin alla: RJ-Mob, Trading, Uutiset, Personal. Yksi määrittely: [nav.ts](src/lib/arxcian/nav.ts).
+
+RJ-Mobin sivut saavat arxcianin tumman kehyksen (Shell), mutta niiden **data pysyy tarkoituksella valkoisena** — taulukot ja seurannat on tarkoitettu luettaviksi, ei tunnelmallisiksi. Valkoisen pinnan antaa [rj-mob/layout.tsx](src/app/arxcian/rj-mob/layout.tsx), osionavigaation jaettu [RjMobNav](src/components/rjmob/RjMobNav.tsx).
 
 ## Mallin valinta
 
