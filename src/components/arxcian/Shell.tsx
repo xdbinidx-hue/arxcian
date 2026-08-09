@@ -31,7 +31,10 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
   return (
     <div className="min-h-dvh">
       {/* Ylänauha */}
-      <header className="fixed inset-x-0 top-0 z-40 h-12 ax-glass-divide border-b bg-ax-bg/60 backdrop-blur-2xl">
+      {/* viewportFit:'cover' ulottaa sisällön lovien alle, joten yläreunaan on
+          varattava turva-alue erikseen — muuten otsikko jää iPhonen Dynamic
+          Islandin taakse. Alapalkissa on vastaava env(safe-area-inset-bottom). */}
+      <header className="fixed inset-x-0 top-0 z-40 h-[calc(3rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] ax-glass-divide border-b bg-ax-bg/60 backdrop-blur-2xl">
         <div className="flex h-full items-center gap-4 px-3 sm:px-4">
           <Link href={HUB_HREF} className="flex shrink-0 items-center gap-2">
             <span className="ax-pulse h-1.5 w-1.5 rounded-full bg-ax-accent" />
@@ -54,7 +57,7 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
       {/* Vasen palkki, desktop */}
       <nav
         aria-label="Osiot"
-        className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col items-center gap-1 ax-glass-divide border-r bg-ax-bg/50 pt-14 backdrop-blur-2xl lg:flex"
+        className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col items-center gap-1 ax-glass-divide border-r bg-ax-bg/50 pt-[calc(3.5rem+env(safe-area-inset-top))] backdrop-blur-2xl lg:flex"
       >
         {items.map(item => (
           <Link
@@ -82,7 +85,7 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
       </nav>
 
       {/* Sisältö */}
-      <main className="px-3 pb-24 pt-16 sm:px-5 lg:pb-10 lg:pl-[4.75rem]">{children}</main>
+      <main className="px-3 pb-24 pt-[calc(4rem+env(safe-area-inset-top))] sm:px-5 lg:pb-10 lg:pl-[4.75rem]">{children}</main>
 
       {/* Alapalkki, mobiili */}
       <nav

@@ -36,7 +36,7 @@ export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChan
   onFileChange?: (id: string) => void
 }) {
   return (
-    <div className="sticky top-12 z-20 flex h-12 items-center overflow-x-auto overflow-y-hidden border-b border-ax-line bg-ax-bg px-4">
+    <div className="sticky top-[calc(3rem+env(safe-area-inset-top))] z-20 flex h-12 items-center overflow-x-auto overflow-y-hidden border-b border-ax-line bg-ax-bg px-4">
       {/* Ei linkki: arxcianin ylänauha ja osiopalkki vievät jo hubiin. */}
       <span className="mr-6 shrink-0 text-[13px] font-medium tracking-[0.14em] text-ax-text">
         RJ-Mob
