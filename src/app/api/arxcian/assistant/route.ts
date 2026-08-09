@@ -23,10 +23,12 @@ const MAX_TOOL_ROUNDS = 4
 const SYSTEM_PROMPT = `Olet arxcianin avustaja. Vastaa suomeksi, ytimekkäästi.
 
 Käytä AINA työkaluja datan hakuun — älä koskaan arvaa lukuja, uutisia tai kursseja muistista.
+Käytä web-hakua kun kysymys koskee jotain mitä muut työkalut eivät kata — yleistieto tai
+ajankohtaiset asiat arxcianin oman uutiskoosteen ja datan ulkopuolelta.
 Jos saatavilla oleva data ei riitä kysymykseen vastaamiseen, sano se suoraan sen sijaan että keksit.
 Älä käytä emojeja vastauksissa.`
 
-const TOOLS: Anthropic.Tool[] = [
+const TOOLS = [
   {
     name: 'get_latest_news',
     description:
@@ -65,7 +67,12 @@ const TOOLS: Anthropic.Tool[] = [
     description: 'Hakee kaikki asetetut hintahälytykset ja niiden tilan (lauennut/ei).',
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
-]
+  {
+    type: 'web_search_20260209',
+    name: 'web_search',
+    max_uses: 3,
+  },
+] satisfies Anthropic.Messages.ToolUnion[]
 
 let client: Anthropic | null = null
 function getClient() {
@@ -141,6 +148,15 @@ async function runAssistant(prompt: string): Promise<string | null> {
       tools: TOOLS,
       messages,
     })
+
+    if (response.stop_reason === 'pause_turn') {
+      // web_search on server-side työkalu: sen sisäinen hakusilmukka rajoittuu
+      // oletuksena kymmeneen kierrokseen palvelimella. Jos raja tulee vastaan,
+      // jatketaan lähettämällä assistant-viesti takaisin sellaisenaan — palvelin
+      // jatkaa hausta siitä mihin jäi.
+      messages.push({ role: 'assistant', content: response.content })
+      continue
+    }
 
     if (response.stop_reason !== 'tool_use') return textOf(response)
 
