@@ -1,38 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { DayInfo, StoreName, STORES, STORE_COLORS, ROSTER_COLUMNS, getAbsenceLabel, generateAugust2026 } from '@/lib/shiftSchedule'
+import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 const MONTH = '2026-08'
 const WEEKDAY_SHORT = ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la']
-
-function TopBar({ activePage }: { activePage: string }) {
-  return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
-      <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
-      {[
-        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
-        {label:'Trendit', href:'/rj-mob/trendit'},
-        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
-        {label:'Laskuri', href:'/rj-mob/laskuri'},
-        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
-      ].map(item => (
-        <a key={item.href} href={item.href}
-          style={{
-            fontSize:13, fontWeight: activePage === item.href ? 500 : 400,
-            color: activePage === item.href ? '#185FA5' : '#666',
-            textDecoration:'none', padding:'0 14px', height:48,
-            display:'flex', alignItems:'center',
-            borderBottom: activePage === item.href ? '2px solid #185FA5' : '2px solid transparent',
-            whiteSpace:'nowrap'
-          }}>
-          {item.label}
-        </a>
-      ))}
-    </div>
-  )
-}
 
 function fmtTime(t: string): string {
   return t.endsWith(':00') ? t.slice(0, -3) : t.replace(':', '.')
@@ -130,7 +102,7 @@ export default function TyovuorotPage() {
 
   return (
     <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <TopBar activePage="/rj-mob/tyovuorot" />
+      <RjMobNav activePage="/rj-mob/tyovuorot" />
       <div style={{maxWidth:1500, margin:'0 auto', padding:'16px'}}>
 
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>

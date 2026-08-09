@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 interface SellerRunRate {
   nimi: string
@@ -93,50 +94,6 @@ function laskeTyopaivat(vuosi: number, kuukausi: number, loppuPaiva?: number): n
 
 function fmt(n: number, dec = 0) {
   return n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
-}
-
-function TopBar({ activePage, files = [], selectedFile = '', onFileChange }: {
-  activePage: string
-  files?: {id:string, name:string}[]
-  selectedFile?: string
-  onFileChange?: (id: string) => void
-}) {
-  return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
-      <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
-      {[
-        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
-        {label:'Trendit', href:'/rj-mob/trendit'},
-        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
-        {label:'Laskuri', href:'/rj-mob/laskuri'},
-        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
-      ].map(item => (
-        <a key={item.href} href={item.href}
-          style={{
-            fontSize:13, fontWeight: activePage === item.href ? 500 : 400,
-            color: activePage === item.href ? '#185FA5' : '#666',
-            textDecoration:'none', padding:'0 14px', height:48,
-            display:'flex', alignItems:'center',
-            borderBottom: activePage === item.href ? '2px solid #185FA5' : '2px solid transparent',
-            whiteSpace:'nowrap'
-          }}>
-          {item.label}
-        </a>
-      ))}
-      {files.length > 0 && onFileChange && (
-        <select value={selectedFile} onChange={e => onFileChange(e.target.value)}
-          style={{marginLeft:8, fontSize:12, border:'0.5px solid #ddd', borderRadius:8, padding:'4px 10px', background:'white', cursor:'pointer', color:'#333'}}>
-          {files.map(f => (
-            <option key={f.id} value={f.id}>
-              {f.name.replace('Myyntiseuranta ','').replace(' 2026','')}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  )
 }
 
 export default function RunRatePage() {
@@ -250,7 +207,7 @@ export default function RunRatePage() {
 
   return (
     <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <TopBar activePage="/rj-mob/runrate" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
+      <RjMobNav activePage="/rj-mob/runrate" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 
         {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Lasketaan run ratea...</div>}

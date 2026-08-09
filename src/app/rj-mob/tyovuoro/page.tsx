@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 const STORAGE_KEY = 'rjmob_tyovuorot_v1'
 const ROSTER_KEY = 'rjmob_tyovuoro_roster_v1'
@@ -41,35 +42,6 @@ function weekLabel(monday: Date): string {
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
   return `Viikko ${getISOWeek(monday)} — ${fmtDate(monday)}–${fmtDate(sunday)}${sunday.getFullYear()}`
-}
-
-function TopBar({ activePage }: { activePage: string }) {
-  return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
-      <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
-      {[
-        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
-        {label:'Trendit', href:'/rj-mob/trendit'},
-        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
-        {label:'Laskuri', href:'/rj-mob/laskuri'},
-        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
-      ].map(item => (
-        <a key={item.href} href={item.href}
-          style={{
-            fontSize:13, fontWeight: activePage === item.href ? 500 : 400,
-            color: activePage === item.href ? '#185FA5' : '#666',
-            textDecoration:'none', padding:'0 14px', height:48,
-            display:'flex', alignItems:'center',
-            borderBottom: activePage === item.href ? '2px solid #185FA5' : '2px solid transparent',
-            whiteSpace:'nowrap'
-          }}>
-          {item.label}
-        </a>
-      ))}
-    </div>
-  )
 }
 
 export default function TyovuoroPage() {
@@ -126,7 +98,7 @@ export default function TyovuoroPage() {
 
   return (
     <div style={{minHeight:'100vh',background:'#f8f8f6',fontFamily:'system-ui,sans-serif'}}>
-      <TopBar activePage="/rj-mob/tyovuoro" />
+      <RjMobNav activePage="/rj-mob/tyovuoro" />
       <div style={{maxWidth:900,margin:'0 auto',padding:'16px'}}>
 
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>

@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 function fmt(n: number, dec = 0) {
   return n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -21,32 +22,6 @@ function Slider({ label, value, min, max, step = 1, unit = '', onChange }: {
       <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#aaa', marginTop:2}}>
         <span>{min} {unit}</span><span>{max} {unit}</span>
       </div>
-    </div>
-  )
-}
-
-function TopBar() {
-  return (
-    <div style={{background:'white', borderBottom:'0.5px solid #eee', padding:'0 16px', display:'flex', alignItems:'center', height:48, position:'sticky', top:0, zIndex:10, gap:0}}>
-      <a href="/arxcian" style={{fontWeight:700, fontSize:15, color:'#111', marginRight:24, whiteSpace:'nowrap', textDecoration:'none'}}>RJ-Mob</a>
-      {[
-        {label:'Tuottoseuranta', href:'/rj-mob/tuotto'},
-        {label:'Trendit', href:'/rj-mob/trendit'},
-        {label:'Kassamyynti', href:'/rj-mob/kassamyynti'},
-        {label:'Myyntiseuranta', href:'/rj-mob/etela'},
-        {label:'Tavoitteet ja Run Rate', href:'/rj-mob/tavoitteet'},
-        {label:'Laskuri', href:'/rj-mob/laskuri'},
-        {label:'Työvuorot', href:'/rj-mob/tyovuorot'},
-      ].map(item => (
-        <a key={item.href} href={item.href} style={{
-          fontSize:13, fontWeight: item.href === '/rj-mob/laskuri' ? 500 : 400,
-          color: item.href === '/rj-mob/laskuri' ? '#185FA5' : '#666',
-          textDecoration:'none', padding:'0 14px', height:48,
-          display:'flex', alignItems:'center',
-          borderBottom: item.href === '/rj-mob/laskuri' ? '2px solid #185FA5' : '2px solid transparent',
-          whiteSpace:'nowrap'
-        }}>{item.label}</a>
-      ))}
     </div>
   )
 }
@@ -116,7 +91,7 @@ export default function LaskuriPage() {
 
   return (
     <div style={{minHeight:'100vh', background:'#f8f8f6', fontFamily:'system-ui,sans-serif'}}>
-      <TopBar />
+      <RjMobNav activePage="/rj-mob/laskuri" />
       <div style={{maxWidth:1000, margin:'0 auto', padding:'20px 16px'}}>
         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 
