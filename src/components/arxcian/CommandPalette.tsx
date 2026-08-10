@@ -146,19 +146,56 @@ function matchWakeWord(words: string[]): number | null {
   return bestWindow
 }
 
-/** Kuuntelun tila pienenä pisteenä. Näkyy myös kun paletti on kiinni — juuri silloin kuuntelu on merkityksellistä. */
-function MicStatus({ isListening, micSupported }: { isListening: boolean; micSupported: boolean }) {
-  if (!micSupported) return null
+/**
+ * Kuuntelun tila ja katkaisin. Näkyy myös kun paletti on kiinni — juuri
+ * silloin kuuntelu on merkityksellistä.
+ *
+ * Tämä on nappi eikä koriste kahdesta syystä: Safari (sekä Macilla että
+ * iOS:llä) käynnistää puheentunnistuksen vain käyttäjän eleestä, ja evätty
+ * mikrofonilupa tarvitsee tavan yrittää uudelleen ilman sivun uudelleen-
+ * latausta. Klikkaus antaa sivulle myös käyttäjäaktivoinnin, jota selain
+ * vaatii vastauksen toistamiseen ääneen.
+ *
+ * Viimeksi kuultu lause näytetään muutaman sekunnin ajan: ilman sitä
+ * herätesanan ohi menevä tunnistus näyttää täsmälleen samalta kuin rikki
+ * oleva mikrofoni.
+ */
+function MicStatus({
+  isListening,
+  micAvailable,
+  micAllowed,
+  lastHeard,
+  onToggle,
+}: {
+  isListening: boolean
+  micAvailable: boolean
+  micAllowed: boolean
+  lastHeard: string | null
+  onToggle: () => void
+}) {
+  if (!micAvailable) return null
+
+  const label = !micAllowed ? 'salli mikrofoni' : isListening ? 'kuuntelee' : 'mikrofoni'
+
   return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none fixed bottom-16 right-3 z-40 flex items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 lg:bottom-3"
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={isListening ? 'Lopeta kuuntelu' : 'Aloita kuuntelu'}
+      className="fixed bottom-16 right-3 z-40 flex max-w-[70vw] items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi lg:bottom-3"
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${isListening ? 'ax-pulse bg-ax-up' : 'bg-ax-faint'}`} />
-      <span className="font-mono text-[9px] uppercase tracking-wider text-ax-faint">
-        {isListening ? 'kuuntelee' : 'mikrofoni'}
-      </span>
-    </div>
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+          !micAllowed ? 'bg-ax-warn' : isListening ? 'ax-pulse bg-ax-up' : 'bg-ax-faint'
+        }`}
+      />
+      <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-ax-faint">{label}</span>
+      {lastHeard && (
+        <span className="truncate text-[9px] text-ax-dim" title={lastHeard}>
+          kuulin: {lastHeard}
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -171,7 +208,15 @@ export function CommandPalette() {
   const [answer, setAnswer] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isListening, setIsListening] = useState(false)
-  const [micSupported, setMicSupported] = useState(false)
+  /** Selain tukee puheentunnistusta. */
+  const [micAvailable, setMicAvailable] = useState(false)
+  /** ...ja mikrofonilupa on voimassa. Erillään tuesta, jotta evätyn luvan
+   *  jälkeen merkki jää näkyviin ja tarjoaa uuden yrityksen. */
+  const [micAllowed, setMicAllowed] = useState(false)
+  /** Viimeksi kuultu lause, näytetään hetken merkissä. */
+  const [lastHeard, setLastHeard] = useState<string | null>(null)
+  /** Selain esti äänen automaattisen toiston — tarjotaan nappi. */
+  const [speechBlocked, setSpeechBlocked] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -196,7 +241,14 @@ export function CommandPalette() {
     modeRef.current = mode
   }, [mode])
 
-  const micSupportedRef = useRef(false)
+  const micAllowedRef = useRef(false)
+
+  // Kuultu lause katoaa itsestään, jottei merkki jää roikkumaan vanhaan.
+  useEffect(() => {
+    if (!lastHeard) return
+    const timer = setTimeout(() => setLastHeard(null), 6000)
+    return () => clearTimeout(timer)
+  }, [lastHeard])
 
   /**
    * Lukee assistentin vastauksen ääneen (Google Cloud TTS, brittienglantia
@@ -211,7 +263,10 @@ export function CommandPalette() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        setSpeechBlocked(true)
+        return
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
@@ -219,15 +274,21 @@ export function CommandPalette() {
       audio.addEventListener('ended', () => URL.revokeObjectURL(url))
       audio.addEventListener('error', () => URL.revokeObjectURL(url))
       await audio.play()
+      setSpeechBlocked(false)
     } catch {
-      // Ääni on lisäarvo, ei kriittinen — tekstivastaus on jo näkyvissä.
-      // Epäonnistunut puhesynteesi ei saa rikkoa käyttöliittymää.
+      // Yleisin syy ei ole verkko vaan selaimen automaattisen toiston esto:
+      // puheella kysyttäessä sivulla ei ole käyttäjän elettä, jolloin play()
+      // hylätään. Ääni on lisäarvo, joten käyttöliittymä ei saa rikkoutua —
+      // mutta epäonnistuminen ei myöskään saa jäädä näkymättömäksi, joten
+      // tarjotaan nappi jolla vastauksen saa kuuluviin.
+      setSpeechBlocked(true)
     }
   }, [])
 
   const askAssistant = useCallback(async (prompt: string) => {
     setMode('asking')
     setQuery('')
+    setSpeechBlocked(false)
     audioRef.current?.pause()
     try {
       const res = await fetch('/api/arxcian/assistant', {
@@ -304,9 +365,9 @@ export function CommandPalette() {
       // jälkeen) vaikka continuous on true — käynnistetään uudelleen jos
       // mikään ei estä sitä. Pieni viive ettei uudelleenkäynnistys osu
       // täsmälleen samaan hetkeen kuin selaimen oma sulkeminen.
-      if (document.visibilityState === 'visible' && modeRef.current === 'search' && micSupportedRef.current) {
+      if (document.visibilityState === 'visible' && modeRef.current === 'search' && micAllowedRef.current) {
         setTimeout(() => {
-          if (document.visibilityState === 'visible' && modeRef.current === 'search' && micSupportedRef.current) {
+          if (document.visibilityState === 'visible' && modeRef.current === 'search' && micAllowedRef.current) {
             try {
               recognition.start()
             } catch {
@@ -319,11 +380,12 @@ export function CommandPalette() {
 
     recognition.onerror = event => {
       if (event.error === 'not-allowed') {
-        // Käyttäjä kielsi mikrofonin — ei yritetä enää. Asetetaan myös ref
-        // suoraan tässä, ettei onend ehdi käynnistää uudelleen ennen kuin
-        // Reactin tila on ehtinyt päivittyä.
-        micSupportedRef.current = false
-        setMicSupported(false)
+        // Käyttäjä kielsi mikrofonin — ei yritetä automaattisesti uudelleen.
+        // Asetetaan myös ref suoraan tässä, ettei onend ehdi käynnistää
+        // uudelleen ennen kuin Reactin tila on ehtinyt päivittyä. Merkki jää
+        // näkyviin, jotta luvan voi antaa napista ilman sivun uudelleenlatausta.
+        micAllowedRef.current = false
+        setMicAllowed(false)
       }
       // Muut virheet (esim. 'no-speech'): ei erikoiskäsittelyä, onend hoitaa
       // uudelleenkäynnistyksen normaalisti.
@@ -335,6 +397,11 @@ export function CommandPalette() {
         if (event.results[i].isFinal) finalTranscript = event.results[i][0].transcript
       }
       if (!finalTranscript) return
+
+      // Näytetään mitä kuultiin, myös silloin kun herätesana ei täsmää:
+      // muuten ohi mennyt tunnistus ja rikki oleva mikrofoni näyttävät
+      // käyttäjälle täsmälleen samalta.
+      setLastHeard(finalTranscript)
 
       // Sumea vertailu tarkan indexOf:n sijaan: suomen puheentunnistus ei
       // kirjoita "arxcian":ia koskaan täysin oikein (havaittu mm. "arksian",
@@ -353,8 +420,9 @@ export function CommandPalette() {
     }
 
     recognitionRef.current = recognition
-    micSupportedRef.current = true
-    setMicSupported(true)
+    micAllowedRef.current = true
+    setMicAvailable(true)
+    setMicAllowed(true)
 
     try {
       recognition.start()
@@ -378,7 +446,7 @@ export function CommandPalette() {
   // paletti ei ole kysymys- tai vastausnäkymässä.
   useEffect(() => {
     const recognition = recognitionRef.current
-    if (!recognition || !micSupported) return
+    if (!recognition || !micAllowed) return
     if (mode === 'search') {
       if (document.visibilityState === 'visible') {
         try {
@@ -390,14 +458,14 @@ export function CommandPalette() {
     } else {
       recognition.stop()
     }
-  }, [mode, micSupported])
+  }, [mode, micAllowed])
 
   // Välilehden näkyvyys: taustalla ei kuunnella, takaisin tullessa jatketaan
   // jos paletti on yhä haku-tilassa.
   useEffect(() => {
     const onVisibilityChange = () => {
       const recognition = recognitionRef.current
-      if (!recognition || !micSupportedRef.current) return
+      if (!recognition || !micAllowedRef.current) return
       if (document.visibilityState === 'hidden') {
         recognition.stop()
       } else if (modeRef.current === 'search') {
@@ -411,6 +479,31 @@ export function CommandPalette() {
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
+
+  /**
+   * Kuuntelun käsin käynnistys ja pysäytys. Safari käynnistää tunnistuksen
+   * vain käyttäjän eleestä, ja evätty lupa vaatii uuden yrityksen — kumpaakaan
+   * ei voi hoitaa automaattisella käynnistyksellä.
+   */
+  const toggleListening = () => {
+    const recognition = recognitionRef.current
+    if (!recognition) return
+
+    if (isListening) {
+      micAllowedRef.current = false
+      setMicAllowed(false)
+      recognition.stop()
+      return
+    }
+
+    micAllowedRef.current = true
+    setMicAllowed(true)
+    try {
+      recognition.start()
+    } catch {
+      // Jo käynnissä — onstart on jo asettanut tilan.
+    }
+  }
 
   const go = (href: string) => {
     setOpen(false)
@@ -450,7 +543,13 @@ export function CommandPalette() {
 
   return (
     <>
-      <MicStatus isListening={isListening} micSupported={micSupported} />
+      <MicStatus
+        isListening={isListening}
+        micAvailable={micAvailable}
+        micAllowed={micAllowed}
+        lastHeard={lastHeard}
+        onToggle={toggleListening}
+      />
 
       {open && (
         <div
@@ -527,8 +626,17 @@ export function CommandPalette() {
             )}
 
             {mode === 'answered' && (
-              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap p-4 text-[13px] leading-relaxed text-ax-text">
-                {answer}
+              <div className="max-h-72 overflow-y-auto p-4">
+                <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-ax-text">{answer}</div>
+                {speechBlocked && answer && (
+                  <button
+                    type="button"
+                    onClick={() => void speakAnswer(answer)}
+                    className="mt-3 rounded-md border border-ax-line px-2.5 py-1 text-[11px] text-ax-accent transition-colors hover:bg-ax-accent/10"
+                  >
+                    Toista ääneen
+                  </button>
+                )}
               </div>
             )}
 
