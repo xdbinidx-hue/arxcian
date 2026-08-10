@@ -27,9 +27,46 @@ function getAuth() {
   })
 }
 
+/**
+ * Poistaa markdown-merkinnän ennen puhesynteesiä.
+ *
+ * Assistentin ohje kieltää korostukset, mutta malli tuottaa niitä silti
+ * ajoittain — ja Chirp3-HD ääntää ne kuuluvasti, jolloin vastaus alkaa
+ * "tähti tähti Teknologia tähti tähti". Siivous tehdään täällä eikä
+ * kutsujassa, jotta jokainen puhereitti saa saman kohtelun ohjeen
+ * pettäessä.
+ *
+ * Yhden alaviivan korostusta ei pureta tarkoituksella: se osuisi myös
+ * tavallisiin snake_case-nimiin ja typistäisi ne väärin.
+ */
+export function speakableText(text: string): string {
+  return (
+    text
+      // [teksti](osoite) → teksti
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      // **lihavointi** ja __lihavointi__ → sisältö
+      .replace(/(\*\*|__)(.*?)\1/g, '$2')
+      // *kursiivi* → sisältö, mutta vain kun tähdet rajaavat sanaa
+      .replace(/\*(?=\S)([^*]*?)(?<=\S)\*/g, '$1')
+      // `koodi` → koodi
+      .replace(/`+([^`]*)`+/g, '$1')
+      // otsikot ja lainaukset rivin alussa
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/^\s{0,3}>\s?/gm, '')
+      // vaakaviivat omalla rivillään, ennen luettelomerkkejä ettei "---"
+      // typisty pelkäksi viivaksi
+      .replace(/^\s*([-*_]\s*){3,}$/gm, '')
+      // luettelomerkit rivin alussa
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
+}
+
 /** Muuntaa tekstin puheeksi ja palauttaa MP3-tavut. */
 export async function synthesizeSpeech(text: string): Promise<Buffer> {
-  const trimmed = text.length > MAX_INPUT_CHARS ? text.slice(0, MAX_INPUT_CHARS) : text
+  const spoken = speakableText(text)
+  const trimmed = spoken.length > MAX_INPUT_CHARS ? spoken.slice(0, MAX_INPUT_CHARS) : spoken
 
   const tts = google.texttospeech({ version: 'v1', auth: getAuth() })
   const res = await tts.text.synthesize({
