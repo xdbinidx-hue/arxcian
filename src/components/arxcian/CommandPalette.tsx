@@ -27,6 +27,23 @@ const COMMANDS: Command[] = [
 /** Paletin näkymä: haku, kysymys lähdössä, vastaus odottaa, tai virhe. */
 type Mode = 'search' | 'asking' | 'answered' | 'error'
 
+/**
+ * Viimeksi kuultu lause ja se, mitä sille tapahtui. Pelkkä teksti ei riitä:
+ * kuultu mutta ohi mennyt komento näyttäisi täsmälleen samalta kuin läpi
+ * mennyt, eikä käyttäjä näkisi kaatuiko herätesana vai puuttuiko kysymys.
+ */
+type Heard = {
+  text: string
+  status: 'ok' | 'no-wake' | 'no-question'
+}
+
+/** Merkin selite kullekin lopputulokselle. */
+const HEARD_PREFIX: Record<Heard['status'], string> = {
+  ok: 'kuulin',
+  'no-wake': 'ei herätesanaa',
+  'no-question': 'sano kysymys perään',
+}
+
 /* ---------------------------------------------------------------
    Web Speech API -tyypit. Ei standardi eikä TypeScriptin lib.dom:ssa
    (Chrome/Safari-vain, webkit-etuliitteinen versio yhä laajimmin tuettu),
@@ -91,11 +108,52 @@ const WAKE_WORD = 'arxcian'
 
 /**
  * Kuinka monta muokkausta (lisäys/poisto/korvaus) sallitaan ehdokkaan ja
- * "arxcian":n välillä. 3 kattaa havaitut suomenkieliset väärinkuulemat
- * ("arksian" 2, "arction" 3, "arksi" 3) ilman että kynnys on niin löysä
- * että se alkaisi osua täysin muihin lyhyisiin sanoihin.
+ * herätesanan **äänneasun** välillä. Vertailu tehdään taitettuun muotoon
+ * (ks. foldPhonetic), joten kynnys ei kulu enää x:n ja c:n korjaamiseen:
+ * havaitut väärinkuulemat ovat taitettuina "arksian" 0, "arksi" 2,
+ * "arction" 3. Löysempi kynnys alkaisi osua tavallisiin lyhyisiin sanoihin.
  */
 const WAKE_WORD_MAX_DISTANCE = 3
+
+/**
+ * Kuinka monta täytesanaa siedetään herätesanan edellä. Tunnistin liittää
+ * lauseen alkuun usein oman kuulemansa aloituksen ("hei arxcian", "no
+ * arxcian"), ja ilman tätä koko komento putoaisi pelkän täytesanan takia.
+ */
+const WAKE_WORD_MAX_LEAD = 2
+
+/**
+ * Taittaa sanan karkeaan suomalaiseen äänneasuun vertailua varten.
+ *
+ * Tämä on koko sumean tunnistuksen ydin: suomen puheentunnistin ei tuota
+ * koskaan kirjaimia x, c, z, q tai w, joten kirjaimellista "arxcian":ia
+ * vastaan verrattaessa pelkkä x:n ja c:n korjaaminen maksaa aina kaksi
+ * muokkausta kolmesta — kynnykseen jää yhden kirjaimen pelivara ja komento
+ * putoaa. Taitto vie molemmat puolet samaan asuun: sekä "arxcian" että
+ * tunnistimen "Ark Sian" päätyvät muotoon "arksian".
+ *
+ * c → s (ei k) siksi, että "arxcian":n c on i:n edellä ja ääntyy s:nä.
+ * Kaksoiskirjaimet typistetään, koska tunnistin arpoo niiden pituuden.
+ */
+function foldPhonetic(word: string): string {
+  return (
+    word
+      .toLowerCase()
+      .replace(/[äå]/g, 'a')
+      .replace(/ö/g, 'o')
+      // Välimerkit vasta ääkkösten jälkeen, muuten ä katoaisi kokonaan.
+      .replace(/[^a-z0-9]/g, '')
+      .replace(/x/g, 'ks')
+      .replace(/c/g, 's')
+      .replace(/z/g, 's')
+      .replace(/q/g, 'k')
+      .replace(/w/g, 'v')
+      .replace(/(.)\1+/g, '$1')
+  )
+}
+
+/** "arxcian" → "arksian". Lasketaan kerran, ei jokaisella tunnistuksella. */
+const WAKE_FOLDED = foldPhonetic(WAKE_WORD)
 
 /** Tavallinen Levenshtein-etäisyys, ei ulkoista riippuvuutta yhden käyttöpaikan vuoksi. */
 function levenshtein(a: string, b: string): number {
@@ -120,30 +178,39 @@ function levenshtein(a: string, b: string): number {
 }
 
 /**
- * Etsii herätesanan sanalistan alusta sumealla vertailulla — suomen
- * puheentunnistus ei kirjoita "arxcian":ia koskaan täysin oikein. Kokeillaan
- * 1–3 ensimmäisen sanan yhdistelmiä yhteenliitettynä, koska väärinkuultu
- * sana voi jakautua kahdeksi ("arksi on"). Palauttaa parhaiten (pienin
- * etäisyys) täsmäävän ehdokkaan sanamäärän, jotta kutsuja tietää tarkalleen
- * kuinka monta sanaa jää herätesanan alle — tai null jos mikään ei täsmää.
+ * Etsii herätesanan lauseen alusta sumealla vertailulla — suomen
+ * puheentunnistus ei kirjoita "arxcian":ia koskaan täysin oikein.
+ *
+ * Kaksi vapausastetta, koska ne eivät ole toisensa poissulkevia: väärin
+ * kuultu herätesana voi jakautua useaksi sanaksi ("arksi on"), ja sen edellä
+ * voi olla tunnistimen keksimä täytesana ("hei arxcian"). Siksi käydään läpi
+ * aloituskohdat 0…WAKE_WORD_MAX_LEAD ja kunkin kohdalta 1–3 sanan ikkunat.
+ *
+ * Palauttaa indeksin josta kysymys alkaa — eli montako sanaa alusta kuluu
+ * täytesanoihin ja herätesanaan yhteensä — tai null jos mikään ei täsmää.
  */
 function matchWakeWord(words: string[]): number | null {
-  let bestWindow: number | null = null
+  let bestEnd: number | null = null
   let bestDistance = Infinity
 
-  for (let windowSize = 1; windowSize <= 3 && windowSize <= words.length; windowSize++) {
-    const candidate = words
-      .slice(0, windowSize)
-      .join('')
-      .toLowerCase()
-      .replace(/ä/g, 'a')
-    const distance = levenshtein(candidate, WAKE_WORD)
-    if (distance <= WAKE_WORD_MAX_DISTANCE && distance < bestDistance) {
-      bestDistance = distance
-      bestWindow = windowSize
+  for (let start = 0; start <= WAKE_WORD_MAX_LEAD && start < words.length; start++) {
+    for (let size = 1; size <= 3 && start + size <= words.length; size++) {
+      const candidate = foldPhonetic(words.slice(start, start + size).join(''))
+
+      // Herätesanan a on alussa tai heti yhden konsonantin jälkeen
+      // ("marxian"), ja sanassa on r tai k. Ilman r/k-ehtoa kynnyksen sisään
+      // mahtuisi tavallisia suomen sanoja — "asian" on taitettuna vain kahden
+      // muokkauksen päässä — ja paletti avautuisi kesken tavallisen puheen.
+      if (!/^.?a/.test(candidate) || !/[rk]/.test(candidate)) continue
+
+      const distance = levenshtein(candidate, WAKE_FOLDED)
+      if (distance <= WAKE_WORD_MAX_DISTANCE && distance < bestDistance) {
+        bestDistance = distance
+        bestEnd = start + size
+      }
     }
   }
-  return bestWindow
+  return bestEnd
 }
 
 /**
@@ -156,23 +223,23 @@ function matchWakeWord(words: string[]): number | null {
  * latausta. Klikkaus antaa sivulle myös käyttäjäaktivoinnin, jota selain
  * vaatii vastauksen toistamiseen ääneen.
  *
- * Viimeksi kuultu lause näytetään muutaman sekunnin ajan: ilman sitä
- * herätesanan ohi menevä tunnistus näyttää täsmälleen samalta kuin rikki
- * oleva mikrofoni.
+ * Viimeksi kuultu lause näytetään muutaman sekunnin ajan selitteineen: ilman
+ * sitä herätesanan ohi menevä tunnistus näyttää täsmälleen samalta kuin
+ * rikki oleva mikrofoni.
  */
 function MicStatus({
   isListening,
   micAvailable,
   micAllowed,
   directMode,
-  lastHeard,
+  heard,
   onAsk,
 }: {
   isListening: boolean
   micAvailable: boolean
   micAllowed: boolean
   directMode: boolean
-  lastHeard: string | null
+  heard: Heard | null
   onAsk: () => void
 }) {
   if (!micAvailable) return null
@@ -212,9 +279,12 @@ function MicStatus({
       >
         {label}
       </span>
-      {lastHeard && !directMode && (
-        <span className="truncate text-[9px] text-ax-dim" title={lastHeard}>
-          kuulin: {lastHeard}
+      {heard && !directMode && (
+        <span
+          className={`truncate text-[9px] ${heard.status === 'ok' ? 'text-ax-dim' : 'text-ax-warn'}`}
+          title={heard.text}
+        >
+          {HEARD_PREFIX[heard.status]}: {heard.text}
         </span>
       )}
     </button>
@@ -235,8 +305,8 @@ export function CommandPalette() {
   /** ...ja mikrofonilupa on voimassa. Erillään tuesta, jotta evätyn luvan
    *  jälkeen merkki jää näkyviin ja tarjoaa uuden yrityksen. */
   const [micAllowed, setMicAllowed] = useState(false)
-  /** Viimeksi kuultu lause, näytetään hetken merkissä. */
-  const [lastHeard, setLastHeard] = useState<string | null>(null)
+  /** Viimeksi kuultu lause ja sen lopputulos, näytetään hetken merkissä. */
+  const [heard, setHeard] = useState<Heard | null>(null)
   /** Selain esti äänen automaattisen toiston — tarjotaan nappi. */
   const [speechBlocked, setSpeechBlocked] = useState(false)
   /** Suora kysymystila: seuraava kuultu lause menee assistentille ilman
@@ -280,11 +350,13 @@ export function CommandPalette() {
   }, [directMode])
 
   // Kuultu lause katoaa itsestään, jottei merkki jää roikkumaan vanhaan.
+  // Ohi mennyt komento näkyy pidempään: siinä on käyttäjälle luettavaa,
+  // läpi menneessä ei — paletti avautuu joka tapauksessa sen päälle.
   useEffect(() => {
-    if (!lastHeard) return
-    const timer = setTimeout(() => setLastHeard(null), 6000)
+    if (!heard) return
+    const timer = setTimeout(() => setHeard(null), heard.status === 'ok' ? 6000 : 10000)
     return () => clearTimeout(timer)
-  }, [lastHeard])
+  }, [heard])
 
   /**
    * Lukee assistentin vastauksen ääneen (Google Cloud TTS, brittienglantia
@@ -434,11 +506,6 @@ export function CommandPalette() {
       }
       if (!finalTranscript) return
 
-      // Näytetään mitä kuultiin, myös silloin kun herätesana ei täsmää:
-      // muuten ohi mennyt tunnistus ja rikki oleva mikrofoni näyttävät
-      // käyttäjälle täsmälleen samalta.
-      setLastHeard(finalTranscript)
-
       // Suora tila: käyttäjä painoi nappia, joten koko lause on kysymys.
       // Tämä reitti ei riipu herätesanan tunnistuksesta lainkaan.
       if (directModeRef.current) {
@@ -446,6 +513,7 @@ export function CommandPalette() {
         setDirectMode(false)
         const question = finalTranscript.trim()
         if (!question) return
+        setHeard({ text: finalTranscript, status: 'ok' })
         setOpen(true)
         askAssistant(question)
         return
@@ -454,15 +522,26 @@ export function CommandPalette() {
       // Sumea vertailu tarkan indexOf:n sijaan: suomen puheentunnistus ei
       // kirjoita "arxcian":ia koskaan täysin oikein (havaittu mm. "arksian",
       // "arksi on", "arction"). Sanat pilkotaan alkuperäisestä transkriptista
-      // — vain vertailua varten tehdään pienaakkosnormalisoitu kopio kustakin
-      // ehdokkaasta, jottei käyttäjän oma ä/ö/å korruptoidu itse kysymyksessä.
+      // — vain vertailua varten tehdään taitettu kopio kustakin ehdokkaasta,
+      // jottei käyttäjän oma ä/ö/å korruptoidu itse kysymyksessä.
       const words = finalTranscript.split(/[\s,]+/).filter(Boolean)
       const matchedWords = matchWakeWord(words)
-      if (matchedWords === null) return
+
+      // Molemmissa hylkäyshaaroissa kerrotaan syy: hiljainen paluu jätti
+      // käyttäjän arvaamaan, oliko vika herätesanassa, kysymyksessä vai
+      // mikrofonissa.
+      if (matchedWords === null) {
+        setHeard({ text: finalTranscript, status: 'no-wake' })
+        return
+      }
 
       const rest = words.slice(matchedWords).join(' ').trim()
-      if (!rest || !/[a-zA-Z0-9äöåÄÖÅ]/.test(rest)) return
+      if (!rest || !/[a-zA-Z0-9äöåÄÖÅ]/.test(rest)) {
+        setHeard({ text: finalTranscript, status: 'no-question' })
+        return
+      }
 
+      setHeard({ text: finalTranscript, status: 'ok' })
       setOpen(true)
       askAssistant(rest)
     }
@@ -553,7 +632,7 @@ export function CommandPalette() {
     setMicAllowed(true)
     directModeRef.current = true
     setDirectMode(true)
-    setLastHeard(null)
+    setHeard(null)
     try {
       recognition.start()
     } catch {
@@ -604,7 +683,7 @@ export function CommandPalette() {
         micAvailable={micAvailable}
         micAllowed={micAllowed}
         directMode={directMode}
-        lastHeard={lastHeard}
+        heard={heard}
         onAsk={askByVoice}
       />
 
