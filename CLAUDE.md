@@ -165,6 +165,10 @@ kaikkea kerralla.
 
 ## Tunnetut puutteet
 
-- `/api/webhook/register` on middlewaressa auki eikä todenna itse. Sitä ajetaan `vercel.json`in cronista, joten istuntotarkistus estäisi ajastuksen. `/api/webhook/drive` on samasta syystä auki, mutta se todentaa itse `x-goog-channel-token`-otsakkeella. Kestävä korjaus olisi `CRON_SECRET`-tarkistus samaan tapaan kuin `/api/arxcian/cron`issa.
+Ei tällä hetkellä avoimia tunnettuja puutteita — alla korjatut, jotta samaa ei ehdoteta uudelleen.
+
+Korjattu 10.8.2026: `/api/webhook/register` oli middlewaressa auki eikä todentanut itse, joten kuka tahansa saattoi laukaista Drive watch -kanavan rekisteröinnin. Reitti todentaa nyt `authorizeCron`illa ([cron.ts](src/lib/arxcian/cron.ts)) eli `CRON_SECRET`illa tai kirjautuneella käyttäjällä, samaan tapaan kuin `/api/arxcian/cron`. Vercel Cron lähettää `CRON_SECRET`in `Authorization`-otsakkeessa automaattisesti, joten `vercel.json`in päivittäinen ajo toimii ennallaan. `/api/webhook/drive` todentaa edelleen itse `x-goog-channel-token`-otsakkeella. Middlewaren poikkeus on nyt eksplisiittinen lista kahdesta polusta (`/api/webhook/drive`, `/api/webhook/register`) eikä `/api/webhook/`-prefiksi, jottei uusi webhook-reitti aukea vahingossa.
+
+Korjattu 10.8.2026: kirjautumisen yritysrajoitus ([api/login](src/app/api/login/route.ts)) tunnisti kutsujan `x-forwarded-for`-otsakkeesta, jonka vasemman arvon kutsuja voi väärentää ja saada joka yrityksellä uuden kiintiön. IP luetaan nyt `req.ip`:stä (varalla `x-real-ip`), jotka tulevat Vercelin proxyltä eivätkä ole asiakkaan asetettavissa.
 
 Korjattu 10.8.2026: RJ-Mobin vanhat API-reitit (`/api/sheets`, `/api/targets`, `/api/receipts`, `/api/files`, `/api/rules`, `/api/shifts`) olivat middlewaressa auki ilman istuntoa. Nyt **kaikki** API-reitit vaativat istunnon lukuun ottamatta `isPublic()`-listaa [middleware.ts](src/middleware.ts):ssä.
