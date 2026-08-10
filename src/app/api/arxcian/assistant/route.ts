@@ -98,6 +98,9 @@ function getClient() {
   return client
 }
 
+/** Suoratoiston mediatyyppi. Asiakas pyytää tätä Accept-otsakkeella. */
+const NDJSON_TYPE = 'application/x-ndjson'
+
 const encoder = new TextEncoder()
 
 /**
@@ -241,6 +244,30 @@ export async function POST(req: NextRequest) {
 
   const question = prompt
 
+  // Suoratoisto vain pyydettäessä. Deployn jälkeen avoinna oleva välilehti ja
+  // asennettu PWA ajavat yhä vanhaa JS:ää, joka kutsuu res.json():ia — moniriviseen
+  // NDJSON-virtaan se kaatuu ja käyttäjä näkee vain "Jokin meni pieleen." Vanha
+  // asiakas ei lähetä tätä otsaketta, joten se saa entisen kertavastauksen ja
+  // korjaantuu itsestään kun sivu seuraavan kerran latautuu.
+  const wantsStream = req.headers.get('accept')?.includes(NDJSON_TYPE) ?? false
+
+  if (!wantsStream) {
+    let text = ''
+    try {
+      await runAssistant(question, chunk => {
+        text += chunk
+      })
+    } catch (error) {
+      console.error('[api/arxcian/assistant] generointi epäonnistui', error)
+      return NextResponse.json({ error: 'Generointi epäonnistui' }, { status: 500 })
+    }
+    if (!text) {
+      console.error('[api/arxcian/assistant] vastauksessa ei tekstiä')
+      return NextResponse.json({ error: 'Generointi epäonnistui' }, { status: 502 })
+    }
+    return NextResponse.json({ text })
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       let emitted = 0
@@ -266,7 +293,7 @@ export async function POST(req: NextRequest) {
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Content-Type': `${NDJSON_TYPE}; charset=utf-8`,
       'Cache-Control': 'no-store',
       // Ilman tätä välityspalvelin voi puskuroida koko vastauksen, jolloin
       // suoratoisto käyttäytyisi täsmälleen kuten vanha kertavastaus.

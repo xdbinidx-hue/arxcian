@@ -402,7 +402,13 @@ export function CommandPalette() {
     try {
       const res = await fetch('/api/arxcian/assistant', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Pyytää suoratoiston. Ilman tätä palvelin palauttaa entisen
+          // kertavastauksen, mikä pitää deployn jälkeen vielä auki olevan
+          // vanhan asiakkaan toimintakuntoisena.
+          Accept: 'application/x-ndjson',
+        },
         body: JSON.stringify({ prompt }),
       })
 
