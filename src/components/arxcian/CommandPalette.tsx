@@ -103,6 +103,12 @@ declare global {
   }
 }
 
+/**
+ * Ikkunatapahtuma jolla mikä tahansa näkymä voi avata paletin ilman propseja.
+ * Vienti tästä tiedostosta, jotta nimi ei ole kahdessa paikassa merkkijonona.
+ */
+export const OPEN_PALETTE_EVENT = 'arxcian:open-palette'
+
 /** Herätesana joka avaa paletin ja lähettää loppuosan kysymyksenä avustajalle. */
 const WAKE_WORD = 'arxcian'
 
@@ -481,6 +487,16 @@ export function CommandPalette() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Muut näkymät avaavat paletin tapahtumalla eivätkä propseilla: paletti
+  // renderöidään Shellissä, joten esimerkiksi hubin alapalkki ei voi antaa
+  // sille propsia joutumatta nostamaan tilaa koko sovelluksen läpi. Yksi
+  // ikkunatapahtuma pitää ne toisistaan riippumattomina.
+  useEffect(() => {
+    const onOpenRequest = () => setOpen(true)
+    window.addEventListener(OPEN_PALETTE_EVENT, onOpenRequest)
+    return () => window.removeEventListener(OPEN_PALETTE_EVENT, onOpenRequest)
   }, [])
 
   useEffect(() => {
