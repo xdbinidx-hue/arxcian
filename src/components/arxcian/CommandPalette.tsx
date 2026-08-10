@@ -164,33 +164,55 @@ function MicStatus({
   isListening,
   micAvailable,
   micAllowed,
+  directMode,
   lastHeard,
-  onToggle,
+  onAsk,
 }: {
   isListening: boolean
   micAvailable: boolean
   micAllowed: boolean
+  directMode: boolean
   lastHeard: string | null
-  onToggle: () => void
+  onAsk: () => void
 }) {
   if (!micAvailable) return null
 
-  const label = !micAllowed ? 'salli mikrofoni' : isListening ? 'kuuntelee' : 'mikrofoni'
+  const label = directMode
+    ? 'puhu nyt'
+    : !micAllowed
+      ? 'salli mikrofoni'
+      : isListening
+        ? 'kuuntelee'
+        : 'mikrofoni'
 
   return (
     <button
       type="button"
-      onClick={onToggle}
-      aria-label={isListening ? 'Lopeta kuuntelu' : 'Aloita kuuntelu'}
-      className="fixed bottom-16 right-3 z-40 flex max-w-[70vw] items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi lg:bottom-3"
+      onClick={onAsk}
+      aria-label={directMode ? 'Peruuta puhekysymys' : 'Kysy puheella'}
+      className={`fixed bottom-16 right-3 z-40 flex max-w-[70vw] items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi lg:bottom-3 ${
+        directMode ? 'ring-1 ring-ax-accent' : ''
+      }`}
     >
       <span
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          !micAllowed ? 'bg-ax-warn' : isListening ? 'ax-pulse bg-ax-up' : 'bg-ax-faint'
+          directMode
+            ? 'ax-pulse bg-ax-accent'
+            : !micAllowed
+              ? 'bg-ax-warn'
+              : isListening
+                ? 'ax-pulse bg-ax-up'
+                : 'bg-ax-faint'
         }`}
       />
-      <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-ax-faint">{label}</span>
-      {lastHeard && (
+      <span
+        className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${
+          directMode ? 'text-ax-accent' : 'text-ax-faint'
+        }`}
+      >
+        {label}
+      </span>
+      {lastHeard && !directMode && (
         <span className="truncate text-[9px] text-ax-dim" title={lastHeard}>
           kuulin: {lastHeard}
         </span>
@@ -217,6 +239,9 @@ export function CommandPalette() {
   const [lastHeard, setLastHeard] = useState<string | null>(null)
   /** Selain esti äänen automaattisen toiston — tarjotaan nappi. */
   const [speechBlocked, setSpeechBlocked] = useState(false)
+  /** Suora kysymystila: seuraava kuultu lause menee assistentille ilman
+   *  herätesanaa. Käynnistyy vain napista, ei koskaan itsestään. */
+  const [directMode, setDirectMode] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -242,6 +267,17 @@ export function CommandPalette() {
   }, [mode])
 
   const micAllowedRef = useRef(false)
+  const directModeRef = useRef(false)
+
+  // Suora tila ei jää päälle jos käyttäjä painoi nappia vahingossa.
+  useEffect(() => {
+    if (!directMode) return
+    const timer = setTimeout(() => {
+      directModeRef.current = false
+      setDirectMode(false)
+    }, 15000)
+    return () => clearTimeout(timer)
+  }, [directMode])
 
   // Kuultu lause katoaa itsestään, jottei merkki jää roikkumaan vanhaan.
   useEffect(() => {
@@ -403,6 +439,18 @@ export function CommandPalette() {
       // käyttäjälle täsmälleen samalta.
       setLastHeard(finalTranscript)
 
+      // Suora tila: käyttäjä painoi nappia, joten koko lause on kysymys.
+      // Tämä reitti ei riipu herätesanan tunnistuksesta lainkaan.
+      if (directModeRef.current) {
+        directModeRef.current = false
+        setDirectMode(false)
+        const question = finalTranscript.trim()
+        if (!question) return
+        setOpen(true)
+        askAssistant(question)
+        return
+      }
+
       // Sumea vertailu tarkan indexOf:n sijaan: suomen puheentunnistus ei
       // kirjoita "arxcian":ia koskaan täysin oikein (havaittu mm. "arksian",
       // "arksi on", "arction"). Sanat pilkotaan alkuperäisestä transkriptista
@@ -481,27 +529,35 @@ export function CommandPalette() {
   }, [])
 
   /**
-   * Kuuntelun käsin käynnistys ja pysäytys. Safari käynnistää tunnistuksen
-   * vain käyttäjän eleestä, ja evätty lupa vaatii uuden yrityksen — kumpaakaan
-   * ei voi hoitaa automaattisella käynnistyksellä.
+   * Kysy puheella ilman herätesanaa: seuraava kuultu lause menee suoraan
+   * assistentille.
+   *
+   * Tämä on ääniohjauksen luotettava reitti. Herätesana "arxcian" on
+   * suomenkieliselle puheentunnistukselle vaikea, ja jos se kuullaan väärin,
+   * mikään ei tapahdu eikä käyttäjä saa mitään palautetta. Nappi ohittaa koko
+   * ongelman. Klikkaus on samalla se käyttäjän ele jota Safari vaatii
+   * tunnistuksen käynnistämiseen ja selain vastauksen toistamiseen ääneen.
    */
-  const toggleListening = () => {
+  const askByVoice = () => {
     const recognition = recognitionRef.current
     if (!recognition) return
 
-    if (isListening) {
-      micAllowedRef.current = false
-      setMicAllowed(false)
+    if (directModeRef.current) {
+      directModeRef.current = false
+      setDirectMode(false)
       recognition.stop()
       return
     }
 
     micAllowedRef.current = true
     setMicAllowed(true)
+    directModeRef.current = true
+    setDirectMode(true)
+    setLastHeard(null)
     try {
       recognition.start()
     } catch {
-      // Jo käynnissä — onstart on jo asettanut tilan.
+      // Jo käynnissä taustakuuntelussa — lippu poimii seuraavan lauseen.
     }
   }
 
@@ -547,8 +603,9 @@ export function CommandPalette() {
         isListening={isListening}
         micAvailable={micAvailable}
         micAllowed={micAllowed}
+        directMode={directMode}
         lastHeard={lastHeard}
-        onToggle={toggleListening}
+        onAsk={askByVoice}
       />
 
       {open && (
