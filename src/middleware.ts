@@ -3,8 +3,6 @@ import type { NextRequest } from 'next/server'
 import { getIronSession } from 'iron-session'
 import { sessionOptions, sessionUser, type SessionData } from '@/lib/session'
 
-const ARXCIAN_API_PREFIX = '/api/arxcian'
-
 function isPublic(pathname: string) {
   return (
     pathname === '/login' ||
@@ -12,7 +10,11 @@ function isPublic(pathname: string) {
     pathname.startsWith('/api/logout') ||
     // Cron-reitti todentaa itse CRON_SECRETilla. Istuntoa vaativa
     // middleware estäisi Vercelin ajastetut kutsut kokonaan.
-    pathname.startsWith('/api/arxcian/cron')
+    pathname.startsWith('/api/arxcian/cron') ||
+    // Drive-webhookit kutsutaan ilman istuntoa: /api/webhook/drive on Googlen
+    // kutsuma ja todentaa itse x-goog-channel-token-otsakkeella,
+    // /api/webhook/register ajetaan vercel.jsonin cronista.
+    pathname.startsWith('/api/webhook/')
   )
 }
 
@@ -21,11 +23,10 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic(pathname)) return NextResponse.next()
 
-  // RJ-Mobin nykyiset API-reitit toimivat ennallaan.
-  // arxcianin omat reitit vaativat aina istunnon.
-  const isRjmobApi = pathname.startsWith('/api/') && !pathname.startsWith(ARXCIAN_API_PREFIX)
-  if (isRjmobApi) return NextResponse.next()
-
+  // Kaikki API-reitit vaativat istunnon, myös RJ-Mobin vanhat. Ne olivat
+  // pitkään auki internetiin (maksukuitit, tavoitteet, työvuorot luettavissa
+  // pelkällä osoitteella) — RJ-Mobin sivut ovat client-komponentteja ja
+  // hakevat suhteellisilla poluilla, joten eväste kulkee mukana normaalisti.
   const res = NextResponse.next()
   const session = await getIronSession<SessionData>(request, res, sessionOptions())
   const user = sessionUser(session)

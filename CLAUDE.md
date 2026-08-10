@@ -149,4 +149,6 @@ kaikkea kerralla.
 
 ## Tunnetut puutteet
 
-- RJ-Mobin nykyiset API-reitit (`/api/sheets`, `/api/targets`, …) ovat middlewaressa auki ilman istuntoa — vanha käytäntö, ei muutettu jotta mikään ei hajoa. `/api/arxcian/*` vaatii aina istunnon.
+- `/api/webhook/register` on middlewaressa auki eikä todenna itse. Sitä ajetaan `vercel.json`in cronista, joten istuntotarkistus estäisi ajastuksen. `/api/webhook/drive` on samasta syystä auki, mutta se todentaa itse `x-goog-channel-token`-otsakkeella. Kestävä korjaus olisi `CRON_SECRET`-tarkistus samaan tapaan kuin `/api/arxcian/cron`issa.
+
+Korjattu 10.8.2026: RJ-Mobin vanhat API-reitit (`/api/sheets`, `/api/targets`, `/api/receipts`, `/api/files`, `/api/rules`, `/api/shifts`) olivat middlewaressa auki ilman istuntoa. Nyt **kaikki** API-reitit vaativat istunnon lukuun ottamatta `isPublic()`-listaa [middleware.ts](src/middleware.ts):ssä.
