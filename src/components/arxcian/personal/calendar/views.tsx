@@ -14,17 +14,21 @@ import {
   startOfMonth,
   weekDays,
 } from '@/lib/arxcian/personal/calendar/dates'
-import type { CalendarEvent } from '@/lib/arxcian/personal/calendar/types'
+import { accountAccent, type CalendarEvent } from '@/lib/arxcian/personal/calendar/types'
 
 type ViewProps = {
   events: CalendarEvent[]
   anchor: Date
+  /** Näytetäänkö tilin tunniste tapahtumien yhteydessä. Vain useamman
+   *  liitetyn tilin käyttäjälle, jotta yhden tilin näkymä ei muutu. */
+  showAccounts?: boolean
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const HOUR_HEIGHT = 40
 
 function EventChip({ event, compact = false }: { event: CalendarEvent; compact?: boolean }) {
+  const accent = accountAccent(event.accountColorIndex)
   const body = (
     <>
       {!event.allDay && !compact && (
@@ -33,16 +37,17 @@ function EventChip({ event, compact = false }: { event: CalendarEvent; compact?:
       <span className="truncate">{event.title}</span>
     </>
   )
-  const className = `block truncate rounded border-l-2 border-ax-accent bg-ax-accent/10 px-1.5 py-0.5 text-[11px] text-ax-text ${
-    event.htmlLink ? 'hover:bg-ax-accent/20' : ''
+  const className = `block truncate rounded border-l-2 px-1.5 py-0.5 text-[11px] text-ax-text ${
+    event.htmlLink ? 'hover:brightness-125' : ''
   }`
+  const style = { borderLeftColor: accent.solid, backgroundColor: accent.soft }
 
   return event.htmlLink ? (
-    <a href={event.htmlLink} target="_blank" rel="noopener noreferrer" className={className} title={event.title}>
+    <a href={event.htmlLink} target="_blank" rel="noopener noreferrer" className={className} style={style} title={event.title}>
       {body}
     </a>
   ) : (
-    <span className={className} title={event.title}>
+    <span className={className} style={style} title={event.title}>
       {body}
     </span>
   )
@@ -79,25 +84,30 @@ function DayColumn({ events, day }: { events: CalendarEvent[]; day: Date }) {
 
   return (
     <div className="relative h-full">
-      {positioned.map(({ event, top, height, col, cols }) => (
-        <a
-          key={`${event.id}-${col}`}
-          href={event.htmlLink ?? undefined}
-          target={event.htmlLink ? '_blank' : undefined}
-          rel="noopener noreferrer"
-          title={`${formatTime(event.start)}–${formatTime(event.end)} ${event.title}`}
-          className="absolute overflow-hidden rounded border-l-2 border-ax-accent bg-ax-accent/15 px-1 py-0.5 text-[10px] leading-tight text-ax-text hover:bg-ax-accent/25"
-          style={{
-            top: top * total,
-            height: Math.max(height * total, 16),
-            left: `${(col / cols) * 100}%`,
-            width: `${(1 / cols) * 100 - 1}%`,
-          }}
-        >
-          <span className="block truncate font-medium">{event.title}</span>
-          <span className="block truncate font-mono text-[9px] text-ax-dim">{formatTime(event.start)}</span>
-        </a>
-      ))}
+      {positioned.map(({ event, top, height, col, cols }) => {
+        const accent = accountAccent(event.accountColorIndex)
+        return (
+          <a
+            key={`${event.id}-${col}`}
+            href={event.htmlLink ?? undefined}
+            target={event.htmlLink ? '_blank' : undefined}
+            rel="noopener noreferrer"
+            title={`${formatTime(event.start)}–${formatTime(event.end)} ${event.title}`}
+            className="absolute overflow-hidden rounded border-l-2 px-1 py-0.5 text-[10px] leading-tight text-ax-text hover:brightness-125"
+            style={{
+              top: top * total,
+              height: Math.max(height * total, 16),
+              left: `${(col / cols) * 100}%`,
+              width: `${(1 / cols) * 100 - 1}%`,
+              borderLeftColor: accent.solid,
+              backgroundColor: accent.soft,
+            }}
+          >
+            <span className="block truncate font-medium">{event.title}</span>
+            <span className="block truncate font-mono text-[9px] text-ax-dim">{formatTime(event.start)}</span>
+          </a>
+        )
+      })}
     </div>
   )
 }
@@ -124,7 +134,7 @@ function AllDayStrip({ events, days }: { events: CalendarEvent[]; days: Date[] }
   )
 }
 
-export function AgendaView({ events }: ViewProps) {
+export function AgendaView({ events, showAccounts = false }: ViewProps) {
   const now = Date.now()
   const upcoming = events.filter(e => e.end >= now).slice(0, 50)
 
@@ -156,31 +166,48 @@ export function AgendaView({ events }: ViewProps) {
               {formatDayLabel(day)}
             </h3>
             <ul className="space-y-1">
-              {dayEvents.map(e => (
-                <li
-                  key={e.id}
-                  className="flex items-baseline gap-3 rounded-md border border-ax-line px-3 py-2 text-[12px]"
-                >
-                  <span className="w-24 shrink-0 font-mono text-[11px] text-ax-dim">
-                    {e.allDay ? 'koko päivä' : `${formatTime(e.start)}–${formatTime(e.end)}`}
-                  </span>
-                  <span className="flex-1 text-ax-text">
-                    {e.htmlLink ? (
-                      <a href={e.htmlLink} target="_blank" rel="noopener noreferrer" className="hover:text-ax-accent">
-                        {e.title}
-                      </a>
-                    ) : (
-                      e.title
-                    )}
-                    {e.location && <span className="ml-2 text-[11px] text-ax-faint">📍 {e.location}</span>}
-                  </span>
-                  {e.calendarName && (
-                    <span className="shrink-0 rounded border border-ax-line px-1.5 text-[9px] text-ax-faint">
-                      {e.calendarName}
+              {dayEvents.map(e => {
+                const accent = accountAccent(e.accountColorIndex)
+                return (
+                  <li
+                    key={e.id}
+                    className="flex items-baseline gap-3 rounded-md border border-ax-line px-3 py-2 text-[12px]"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 self-center rounded-full"
+                      style={{ backgroundColor: accent.solid }}
+                    />
+                    <span className="w-24 shrink-0 font-mono text-[11px] text-ax-dim">
+                      {e.allDay ? 'koko päivä' : `${formatTime(e.start)}–${formatTime(e.end)}`}
                     </span>
-                  )}
-                </li>
-              ))}
+                    <span className="flex-1 text-ax-text">
+                      {e.htmlLink ? (
+                        <a
+                          href={e.htmlLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-ax-accent"
+                        >
+                          {e.title}
+                        </a>
+                      ) : (
+                        e.title
+                      )}
+                      {e.location && <span className="ml-2 text-[11px] text-ax-faint">📍 {e.location}</span>}
+                    </span>
+                    {e.calendarName && (
+                      <span className="shrink-0 rounded border border-ax-line px-1.5 text-[9px] text-ax-faint">
+                        {e.calendarName}
+                      </span>
+                    )}
+                    {showAccounts && e.accountEmail && (
+                      <span className="shrink-0 rounded border border-ax-line px-1.5 text-[9px] text-ax-faint">
+                        {e.accountEmail}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )
