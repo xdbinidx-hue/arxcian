@@ -23,13 +23,28 @@ const MAX_TOOL_ROUNDS = 4
 // Käyttäjän oma valinta: assistentti vastaa englanniksi, koska ääni (ks.
 // lib/arxcian/tts.ts) on brittienglantia. Muu sovellus pysyy suomeksi
 // CLAUDE.md:n mukaisesti — tämä on tietoinen, rajattu poikkeus.
-const SYSTEM_PROMPT = `You are arxcian's assistant. Answer in English, concisely.
+//
+// Kielivaatimus on erikseen ja perusteluineen, koska pelkkä "Answer in English"
+// ei riittänyt: suomenkielinen kysymys ja suomenkieliset lähdeartikkelit
+// saivat mallin vastaamaan suomeksi, jolloin brittiääni luki suomea.
+//
+// Muotovaatimus on samoin oma kappaleensa: vastaus sekä luetaan ääneen että
+// näytetään sellaisenaan ilman markdown-renderöijää, joten korostusmerkinnät
+// näkyvät tähtinä ruudulla ja kuuluvat ääneen luettuina.
+const SYSTEM_PROMPT = `You are arxcian's assistant. Answer concisely.
+
+Always answer in English, even when the question or the source articles are in
+Finnish. The answer is read aloud by a British English voice, so any other
+language is mispronounced. Translate Finnish headlines into English instead of
+quoting them as they are.
+
+Write plain prose meant to be spoken aloud: no markdown, no asterisks, no
+bullet characters, no headings, no emojis. Separate items with sentences.
 
 ALWAYS use tools to fetch data — never guess numbers, news, or quotes from memory.
 Use web search when a question covers something the other tools don't — general
 knowledge or current events outside arxcian's own news digest and data.
-If the available data isn't enough to answer, say so directly instead of making things up.
-Do not use emojis in responses.`
+If the available data isn't enough to answer, say so directly instead of making things up.`
 
 const TOOLS = [
   {
@@ -83,6 +98,20 @@ function getClient() {
   return client
 }
 
+const encoder = new TextEncoder()
+
+/**
+ * Yksi NDJSON-tapahtuma. Rivinvaihto erottaa tapahtumat, jotta selain voi
+ * jäsentää virtaa palasittain — verkkopala voi katketa keskeltä riviä, ja
+ * rivipohjainen muoto tekee vajaan lopun käsittelystä yksiselitteistä.
+ *
+ * Virhe kulkee tapahtumana eikä statuskoodina, koska ensimmäisen tavun
+ * lähdettyä statusrivi on jo matkalla eikä sitä voi enää muuttaa.
+ */
+function encodeEvent(event: { type: 'text' | 'error'; value: string }): Uint8Array {
+  return encoder.encode(`${JSON.stringify(event)}\n`)
+}
+
 /** Poimii get_latest_news-työkalun syötteestä kelvolliset arvot, muu jää varaan. */
 function newsInput(input: unknown): { n: number; category: Category | undefined } {
   const raw = (input ?? {}) as { n?: unknown; category?: unknown }
@@ -130,28 +159,34 @@ async function toolResultFor(block: Anthropic.ToolUseBlock): Promise<Anthropic.T
   }
 }
 
-function textOf(response: Anthropic.Message): string | null {
-  const block = response.content.find(b => b.type === 'text')
-  return block && block.type === 'text' ? block.text : null
-}
-
 /**
- * Työkalusilmukka: enintään MAX_TOOL_ROUNDS kierrosta työkalukutsuja. Jos
- * malli haluaisi yhä kutsua työkaluja kierrosten loputtua, viimeinen kutsu
- * tehdään ilman tools-parametria — malli joutuu tällöin vastaamaan sillä
- * datalla joka on jo kerätty, sen sijaan että kierre jatkuisi loputtomiin.
+ * Työkalusilmukka, joka suoratoistaa tekstin sitä mukaa kun malli tuottaa sen.
+ *
+ * Mitattuna vastauksen generointi kesti yli 13 sekuntia, eikä siitä näkynyt
+ * mitään ennen kuin viimeinenkin token oli valmis — koettu viive oli siis koko
+ * generoinnin mittainen. Jokainen kierros ajetaan nyt streamina ja tekstipalat
+ * lähtevät selaimeen heti. Työkalukierrokset eivät tuota tekstiä, joten
+ * käytännössä virtaa viimeinen kierros; poikkeuksena malli joka selostaa
+ * tekemistään ennen työkalukutsua, ja sekin on käyttäjälle hyödyllistä.
+ *
+ * Enintään MAX_TOOL_ROUNDS kierrosta. Jos malli haluaisi yhä kutsua työkaluja
+ * kierrosten loputtua, viimeinen kutsu tehdään ilman tools-parametria — malli
+ * joutuu tällöin vastaamaan sillä datalla joka on jo kerätty, sen sijaan että
+ * kierre jatkuisi loputtomiin.
  */
-async function runAssistant(prompt: string): Promise<string | null> {
+async function runAssistant(prompt: string, onText: (chunk: string) => void): Promise<void> {
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }]
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await getClient().messages.create({
+    const stream = getClient().messages.stream({
       model: MODEL_ASSISTANT,
       max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       tools: TOOLS,
       messages,
     })
+    stream.on('text', onText)
+    const response = await stream.finalMessage()
 
     if (response.stop_reason === 'pause_turn') {
       // web_search on server-side työkalu: sen sisäinen hakusilmukka rajoittuu
@@ -162,7 +197,7 @@ async function runAssistant(prompt: string): Promise<string | null> {
       continue
     }
 
-    if (response.stop_reason !== 'tool_use') return textOf(response)
+    if (response.stop_reason !== 'tool_use') return
 
     messages.push({ role: 'assistant', content: response.content })
     const toolUses = response.content.filter(
@@ -172,13 +207,14 @@ async function runAssistant(prompt: string): Promise<string | null> {
     messages.push({ role: 'user', content: results })
   }
 
-  const final = await getClient().messages.create({
+  const final = getClient().messages.stream({
     model: MODEL_ASSISTANT,
     max_tokens: MAX_TOKENS,
     system: SYSTEM_PROMPT,
     messages,
   })
-  return textOf(final)
+  final.on('text', onText)
+  await final.finalMessage()
 }
 
 export async function POST(req: NextRequest) {
@@ -203,18 +239,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'prompt vaaditaan' }, { status: 400 })
   }
 
-  try {
-    const text = await runAssistant(prompt)
-    if (text === null) {
-      console.error('[api/arxcian/assistant] vastauksessa ei tekstilohkoa')
-      return NextResponse.json({ error: 'Generointi epäonnistui' }, { status: 502 })
-    }
-    return NextResponse.json({ text })
-  } catch (error) {
-    // Tarkempi syy vain palvelimen lokiin: Anthropicin virhevastaus voi
-    // sisältää organisaatio- tai avaintietoja, eikä sellaista palauteta
-    // selaimeen.
-    console.error('[api/arxcian/assistant] generointi epäonnistui', error)
-    return NextResponse.json({ error: 'Generointi epäonnistui' }, { status: 500 })
-  }
+  const question = prompt
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let emitted = 0
+      try {
+        await runAssistant(question, chunk => {
+          emitted += chunk.length
+          controller.enqueue(encodeEvent({ type: 'text', value: chunk }))
+        })
+        if (emitted === 0) {
+          console.error('[api/arxcian/assistant] vastauksessa ei tekstiä')
+          controller.enqueue(encodeEvent({ type: 'error', value: 'Generointi epäonnistui' }))
+        }
+      } catch (error) {
+        // Tarkempi syy vain palvelimen lokiin: Anthropicin virhevastaus voi
+        // sisältää organisaatio- tai avaintietoja, eikä sellaista palauteta
+        // selaimeen.
+        console.error('[api/arxcian/assistant] generointi epäonnistui', error)
+        controller.enqueue(encodeEvent({ type: 'error', value: 'Generointi epäonnistui' }))
+      }
+      controller.close()
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-store',
+      // Ilman tätä välityspalvelin voi puskuroida koko vastauksen, jolloin
+      // suoratoisto käyttäytyisi täsmälleen kuten vanha kertavastaus.
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

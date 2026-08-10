@@ -396,6 +396,7 @@ export function CommandPalette() {
   const askAssistant = useCallback(async (prompt: string) => {
     setMode('asking')
     setQuery('')
+    setAnswer(null)
     setSpeechBlocked(false)
     audioRef.current?.pause()
     try {
@@ -404,18 +405,59 @@ export function CommandPalette() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       })
-      const data = await res.json()
-      if (res.ok) {
-        setAnswer(data.text)
-        setMode('answered')
-        void speakAnswer(data.text)
-      } else {
-        setErrorMessage(data.error ?? 'Jokin meni pieleen.')
+
+      // Virheet ennen suoratoiston alkua (401, 429, virheellinen pyyntö) tulevat
+      // yhä tavallisena JSON-vastauksena statuskoodin kera.
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => null)
+        setErrorMessage(data?.error ?? 'Jokin meni pieleen.')
         setMode('error')
+        return
       }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let full = ''
+
+      // NDJSON: yksi tapahtuma per rivi. Verkkopala voi katketa keskeltä riviä,
+      // joten vajaa loppu jää puskuriin seuraavaa lukukierrosta varten.
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line) as { type: 'text' | 'error'; value: string }
+          if (event.type === 'error') {
+            setErrorMessage(event.value)
+            setMode('error')
+            return
+          }
+          full += event.value
+          setAnswer(full)
+          // Ensimmäinen pala vaihtaa näkymän, jotta käyttäjä näkee vastauksen
+          // syntyvän sen sijaan että tuijottaisi "Kysytään assistentilta…" -
+          // tekstiä koko generoinnin ajan.
+          setMode('answered')
+        }
+      }
+
+      if (!full) {
+        setErrorMessage('Jokin meni pieleen.')
+        setMode('error')
+        return
+      }
+
+      // Ääni vasta kun teksti on valmis: puhesynteesi tarvitsee koko vastauksen.
+      void speakAnswer(full)
     } catch {
-      // Verkkovirhe tms. ennen kuin vastaus edes saapui — ilman tätä käyttäjä
-      // jäisi 'asking'-tilaan loputtomiin, koska Escape ei tee siinä mitään.
+      // Verkkovirhe tms. — ilman tätä käyttäjä jäisi 'asking'-tilaan
+      // loputtomiin, koska Escape ei tee siinä mitään.
       setErrorMessage('Jokin meni pieleen.')
       setMode('error')
     }
