@@ -85,15 +85,31 @@ Redis on Upstash-resurssi `upstash-kv-amethyst-river`, liitetty vakionimillä ka
 
 ## Google Calendar
 
-Käyttäjäkohtainen OAuth, erillään sovelluksen PIN-kirjautumisesta: [oauth.ts](src/lib/arxcian/personal/calendar/oauth.ts) hoitaa luvan, [events.ts](src/lib/arxcian/personal/calendar/events.ts) haun. Tokenit Redisissä avaimella `calendar:tokens:<käyttäjä>`, eivät koskaan selaimeen.
+Käyttäjäkohtainen OAuth, erillään sovelluksen PIN-kirjautumisesta: [oauth.ts](src/lib/arxcian/personal/calendar/oauth.ts) hoitaa luvan, [accounts.ts](src/lib/arxcian/personal/calendar/accounts.ts) tilit ja tokenit, [events.ts](src/lib/arxcian/personal/calendar/events.ts) haun.
 
-Scope on vain `calendar.readonly`. Tapahtumat haetaan kaikista kalentereista jotka käyttäjä on valinnut näkyviin Googlessa, `singleEvents=true` purkaa toistuvat tapahtumat palvelinpuolella (siksi RRULE-jäsennintä ei tarvita).
+**Yksi käyttäjä voi liittää useita Google-tilejä** (henkilökohtainen + työ). Tallennus on jaettu kahtia tarkoituksella:
+
+| Avain | Sisältö |
+|---|---|
+| `calendar:accounts:<käyttäjä>` | `CalendarAccount[]` — **ei koskaan tokeneita**, tämä serialisoidaan selaimeen asti |
+| `calendar:tokens:<käyttäjä>:<tiliId>` | tokenit, vain palvelimelle |
+| `calendar:events:<käyttäjä>:<tiliId>` | tilikohtainen tapahtumavälimuisti |
+
+Yhtä taulukkoa jossa tokenit olisivat mukana ei voi käyttää: access-token uusiutuu haun yhteydessä jokaiselle tilille rinnakkain, ja kaksi yhtaikaista luku-muokkaa-kirjoita -kierrosta samaan avaimeen hukkaisi toisen tilin uuden tokenin. Indeksin luku-muokkaa-kirjoita jää vain lisäykseen ja poistoon, jotka ovat sarjallisia käyttäjän toimintoja.
+
+Tilin tunniste on Googlen `sub`, ei sähköposti — Workspace-osoite voi vaihtua, jolloin sähköpostiavaimella tili katoaisi. **Tyhjä indeksi `[]` on eri asia kuin puuttuva avain:** se tarkoittaa "kaikki katkaistu", ja avaimen olemassaolo on ainoa merkki siitä että migraatio vanhasta yhden tilin mallista on jo ajettu. Siksi katkaisu kirjoittaa `[]` eikä poista avainta.
+
+Scopet: `calendar.readonly` tapahtumiin, `openid` + `userinfo.email` vain tilin tunnisteeseen ja näytettävään osoitteeseen. `prompt: 'select_account consent'` on pakollinen — ilman `select_account`ia Google käyttää vaiti jo kirjautunutta tiliä eikä toista tiliä voi lisätä lainkaan. Tapahtumat haetaan kaikista kalentereista jotka käyttäjä on valinnut näkyviin Googlessa, `singleEvents=true` purkaa toistuvat tapahtumat palvelinpuolella (siksi RRULE-jäsennintä ei tarvita).
+
+Tilin väri johdetaan **järjestysnumerosta listassa** (`--ax-cal-1`…`--ax-cal-4`: sininen, keltainen, vihreä, violetti), ei tallennetusta arvosta eikä sähköpostista. Tilin poisto siis siirtää jäljelle jäävien värejä — tietoinen valinta.
 
 **OAuth-suostumusnäyttö on oltava "In Production", ei "Testing".** Testing-tilassa Google vanhentaa refresh-tokenit 7 päivässä, jolloin kalenteri pitäisi liittää uudelleen viikoittain. Vahvistamaton sovellus tuotantotilassa näyttää varoitusnäytön ja on rajattu 100 käyttäjään — molemmat merkityksettömiä kahdelle käyttäjälle.
 
 Valtuutuksen `state` tallennetaan iron-session-istuntoon ja kelpaa kertaalleen. Uudelleenohjausosoite johdetaan pyynnön originista, joten sama koodi toimii localhostissa ja tuotannossa — molemmat on rekisteröitävä Google-konsoliin.
 
-Valtuutusvirhe (peruutettu lupa) poistaa tokenit ja palauttaa tilan "ei yhdistetty"; verkkovirheessä näytetään vanhentunut data kuten muuallakin.
+Valtuutusvirhe (peruutettu lupa) poistaa **vain sen tilin** tokenit ja jättää tilin listaan `reauth`-tilaan, jotta käyttäjä näkee kumpi tili pitää liittää uudelleen. Muiden tilien tapahtumat säilyvät näkyvissä. Verkkovirheessä näytetään vanhentunut data kuten muuallakin. Ylätason tila on `connected` jos vähintään yksi tili toimii, joten yhden tilin sovellus käyttäytyy täsmälleen kuten ennen.
+
+`getCalendarStatus` on kääritty Reactin `cache()`iin: hub-etusivu kutsuu sitä kahdesti samalla renderöinnillä (DailyFocus ja UpcomingEvents), ja useamman tilin myötä ero olisi moninkertainen.
 
 ## PWA
 
