@@ -13,12 +13,19 @@ const DEFAULT_WINDOW_SECONDS = 60 * 60
  * Redis-virheet eivät saa estää käyttöä: samaa periaatetta noudattaa
  * lib/arxcian/cache.ts, jossa Redisin poissaolo ohittaa välimuistin sen
  * sijaan että kaataisi sivun.
+ *
+ * Poikkeus on kirjautuminen: `failClosed` kääntää tämän päinvastoin, jolloin
+ * Redisin ollessa poissa pyyntö estetään. Ilman sitä PIN olisi vapaasti
+ * brute-forcattavissa aina kun KV ei vastaa. Istunnot ovat evästeissä
+ * (iron-session), joten kirjautuneet pääsevät sisään Redis-katkon aikanakin —
+ * vain uudet kirjautumiset odottavat.
  */
 export async function checkRateLimit(
   prefix: string,
   userId: string,
   limit: number,
   windowSeconds = DEFAULT_WINDOW_SECONDS,
+  failClosed = false,
 ): Promise<boolean> {
   const bucket = Math.floor(Date.now() / (windowSeconds * 1000))
   const key = `ratelimit:${prefix}:${userId}:${bucket}`
@@ -29,6 +36,6 @@ export async function checkRateLimit(
     return count <= limit
   } catch (e) {
     console.error(`[ratelimit] tarkistus epäonnistui: ${prefix}`, e)
-    return true
+    return !failClosed
   }
 }
