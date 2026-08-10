@@ -3,6 +3,7 @@ import { currentUser, currentOwner } from '@/lib/session'
 import { getHabits } from '@/lib/arxcian/personal/habits'
 import { getGoals } from '@/lib/arxcian/personal/goals'
 import { getCalendarStatus } from '@/lib/arxcian/personal/calendar/events'
+import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 import { todayISOHelsinki } from '@/lib/arxcian/time'
 
 function requestOrigin(): string {
@@ -30,7 +31,7 @@ export async function DailyFocus() {
   const [habits, goals, calendar] = await Promise.all([
     getHabits(user),
     getGoals(user),
-    owner ? getCalendarStatus(owner, requestOrigin()) : Promise.resolve({ state: 'disconnected' as const }),
+    owner ? getCalendarStatus(owner, requestOrigin()) : Promise.resolve(CALENDAR_DISCONNECTED),
   ])
 
   const habitsDone = habits.filter(h => h.completedDates.includes(today)).length

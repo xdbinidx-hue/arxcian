@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { currentOwner } from '@/lib/session'
 import { getCalendarStatus, upcomingEvents } from '@/lib/arxcian/personal/calendar/events'
+import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 import { Panel } from '@/components/arxcian/Panel'
 
 function requestOrigin(): string {
@@ -30,7 +31,7 @@ export async function UpcomingEvents({ delay }: { delay?: number }) {
   const owner = await currentOwner()
   const status = owner
     ? await getCalendarStatus(owner, requestOrigin())
-    : ({ state: 'disconnected' } as const)
+    : CALENDAR_DISCONNECTED
 
   if (status.state !== 'connected') {
     const empty =

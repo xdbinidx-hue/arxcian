@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { currentOwner, getSession } from '@/lib/session'
-import { exchangeCode, storeTokens } from '@/lib/arxcian/personal/calendar/oauth'
+import { exchangeCode } from '@/lib/arxcian/personal/calendar/oauth'
+import { addAccount } from '@/lib/arxcian/personal/calendar/accounts'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,7 +9,8 @@ function back(origin: string, status: string) {
   return NextResponse.redirect(new URL(`/arxcian/personal?kalenteri=${status}`, origin))
 }
 
-/** Googlen paluuosoite: vaihtaa koodin tokeneiksi ja sitoo ne käyttäjään. */
+/** Googlen paluuosoite: vaihtaa koodin tokeneiksi, selvittää mille tilille
+ *  lupa myönnettiin ja lisää sen käyttäjän tililistaan. */
 export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin
 
@@ -32,9 +34,10 @@ export async function GET(req: NextRequest) {
   if (!expected || expected !== state) return back(origin, 'virhe')
 
   try {
-    const tokens = await exchangeCode(origin, code)
-    if (!tokens.refresh_token && !tokens.access_token) return back(origin, 'virhe')
-    await storeTokens(user, tokens)
+    const account = await exchangeCode(origin, code)
+    if (!account) return back(origin, 'virhe')
+
+    await addAccount(user, { id: account.id, email: account.email }, account.tokens)
     return back(origin, 'yhdistetty')
   } catch (e) {
     console.error('[calendar] koodin vaihto epäonnistui', e)

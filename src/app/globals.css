@@ -33,6 +33,16 @@ body {
   --ax-warn: 245 181 68;
   --ax-line: 112 158 230;
 
+  /* Kalenterin tilikohtaiset värit, järjestyksessä: ensimmäinen liitetty tili
+     saa korostusvärin, joten yhden tilin käyttäjälle ulkoasu ei muutu
+     lainkaan monitilituen myötä. Kolme ensimmäistä ovat olemassa olevia
+     tokeneita, neljäs on paletin ainoa uusi sävy. Punainen (--ax-down) on
+     varattu virheille eikä kuulu palettiin. */
+  --ax-cal-1: var(--ax-accent);
+  --ax-cal-2: var(--ax-warn);
+  --ax-cal-3: var(--ax-up);
+  --ax-cal-4: 189 141 255;
+
   color: rgb(var(--ax-text));
   background:
     radial-gradient(1000px 580px at 50% -10%, rgb(var(--ax-accent) / 0.22), transparent 62%),

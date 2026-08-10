@@ -1,6 +1,6 @@
 import { google } from 'googleapis'
 import type { OAuth2Client, Credentials } from 'google-auth-library'
-import { readCached, writeCached, invalidate } from '../../cache'
+import { getAccountTokens, storeAccountTokens } from './accounts'
 import type { UserId } from '@/lib/session'
 
 /**
@@ -8,19 +8,20 @@ import type { UserId } from '@/lib/session'
  * PIN + iron-session kertoo kuka olet arxcianissa, tämä antaa luvan lukea
  * juuri sinun Google-kalenterisi.
  *
- * Tokenit elävät Redisissä käyttäjäkohtaisesti eivätkä koskaan päädy
- * selaimeen. Refresh-token on pitkäikäinen valtuutus, joten sitä
+ * Tokenit elävät Redisissä tilikohtaisesti (accounts.ts) eivätkä koskaan
+ * päädy selaimeen. Refresh-token on pitkäikäinen valtuutus, joten sitä
  * käsitellään kuten muitakin salaisuuksia — vain palvelinpuolella.
  */
 
-// Vain luku riittää: näytämme tapahtumia, emme luo niitä.
-const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-
-const TOKEN_TTL_SECONDS = 5 * 365 * 24 * 60 * 60
-
-function tokenKey(user: UserId): string {
-  return `calendar:tokens:${user}`
-}
+// calendar.readonly riittää tapahtumien lukemiseen. openid ja userinfo.email
+// ovat mukana vain jotta liitetystä tilistä saadaan pysyvä tunniste (sub) ja
+// näytettävä sähköpostiosoite — ilman niitä kahta tiliä ei voisi erottaa
+// toisistaan käyttöliittymässä. Molemmat ovat ei-arkaluontoisia scopeja.
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+]
 
 export function isConfigured(): boolean {
   return Boolean(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)
@@ -48,39 +49,61 @@ export function authUrl(origin: string, state: string): string {
   return client(origin).generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
-    // Ilman tätä Google palauttaa refresh-tokenin vain ensimmäisellä
-    // valtuutuksella — uudelleenliitos jäisi ilman sitä.
-    prompt: 'consent',
+    // consent: ilman tätä Google palauttaa refresh-tokenin vain ensimmäisellä
+    // valtuutuksella. select_account: ilman tätä Google käyttää vaiti
+    // selaimessa jo kirjautunutta tiliä, jolloin toisen tilin (työ)
+    // lisääminen olisi mahdotonta.
+    prompt: 'select_account consent',
     include_granted_scopes: true,
     state,
   })
 }
 
-export async function exchangeCode(origin: string, code: string): Promise<Credentials> {
-  const { tokens } = await client(origin).getToken(code)
-  return tokens
-}
-
-export async function storeTokens(user: UserId, tokens: Credentials): Promise<void> {
-  await writeCached(tokenKey(user), tokens, TOKEN_TTL_SECONDS, 0)
-}
-
-export async function getStoredTokens(user: UserId): Promise<Credentials | null> {
-  const cached = await readCached<Credentials>(tokenKey(user))
-  return cached?.data ?? null
-}
-
-export async function clearTokens(user: UserId): Promise<void> {
-  await invalidate(tokenKey(user))
-}
-
-export async function isConnected(user: UserId): Promise<boolean> {
-  return Boolean(await getStoredTokens(user))
+export type ExchangedAccount = {
+  tokens: Credentials
+  /** Googlen pysyvä tunniste tilille. Sähköposti voi vaihtua, tämä ei. */
+  id: string
+  email: string | null
 }
 
 /**
- * Valtuutettu asiakas tallennetuilla tokeneilla, tai null jos käyttäjä ei
- * ole liittänyt kalenteria.
+ * Vaihtaa valtuutuskoodin tokeneiksi ja selvittää mille tilille lupa
+ * myönnettiin. Tunniste luetaan id_tokenista, joka varmennetaan Googlen
+ * julkisilla avaimilla — sen sisältöä ei oteta vastaan varmentamatta.
+ */
+export async function exchangeCode(origin: string, code: string): Promise<ExchangedAccount | null> {
+  const auth = client(origin)
+  const { tokens } = await auth.getToken(code)
+  if (!tokens.refresh_token && !tokens.access_token) return null
+
+  if (tokens.id_token) {
+    const ticket = await auth.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    })
+    const payload = ticket.getPayload()
+    if (payload?.sub) {
+      return { tokens, id: payload.sub, email: payload.email ?? null }
+    }
+  }
+
+  // Varatie jos id_token puuttuu (esim. scopet eivät ole vielä voimassa
+  // suostumusnäytöllä): tokeninfo kertoo saman tunnisteen.
+  if (tokens.access_token) {
+    try {
+      const info = await auth.getTokenInfo(tokens.access_token)
+      if (info.sub) return { tokens, id: info.sub, email: info.email ?? null }
+    } catch (e) {
+      console.error('[calendar] tokeninfo epäonnistui', e)
+    }
+  }
+
+  return null
+}
+
+/**
+ * Valtuutettu asiakas yhden tilin tallennetuilla tokeneilla, tai null jos
+ * tiliä ei ole liitetty.
  *
  * Palauttaa myös `persist`-funktion: serverless-ympäristössä jokainen
  * pyyntö luo uuden asiakkaan, joten uusiutunut access-token on
@@ -89,9 +112,10 @@ export async function isConnected(user: UserId): Promise<boolean> {
  */
 export async function authorizedClient(
   user: UserId,
+  accountId: string,
   origin: string,
 ): Promise<{ auth: OAuth2Client; persistIfRefreshed: () => Promise<void> } | null> {
-  const stored = await getStoredTokens(user)
+  const stored = await getAccountTokens(user, accountId)
   if (!stored) return null
 
   const auth = client(origin)
@@ -104,7 +128,11 @@ export async function authorizedClient(
       const current = auth.credentials
       if (current.access_token && current.access_token !== originalAccessToken) {
         // Google ei palauta refresh-tokenia uusinnan yhteydessä — säilytetään alkuperäinen.
-        await storeTokens(user, { ...stored, ...current, refresh_token: current.refresh_token ?? stored.refresh_token })
+        await storeAccountTokens(user, accountId, {
+          ...stored,
+          ...current,
+          refresh_token: current.refresh_token ?? stored.refresh_token,
+        })
       }
     },
   }

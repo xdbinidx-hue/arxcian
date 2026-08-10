@@ -8,7 +8,7 @@ import { GoalsPanel } from '@/components/arxcian/personal/GoalsPanel'
 import { HabitTracker } from '@/components/arxcian/personal/HabitTracker'
 import { NotesInbox } from '@/components/arxcian/personal/NotesInbox'
 import { CalendarPanel } from '@/components/arxcian/personal/calendar/CalendarPanel'
-import type { CalendarStatus } from '@/lib/arxcian/personal/calendar/types'
+import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 
 export const metadata = { title: 'Personal · arxcian' }
 export const dynamic = 'force-dynamic'
@@ -35,7 +35,7 @@ export default async function PersonalPage({
     getNotes(user),
     owner
       ? getCalendarStatus(owner, requestOrigin())
-      : Promise.resolve<CalendarStatus>({ state: 'disconnected' }),
+      : Promise.resolve(CALENDAR_DISCONNECTED),
   ])
 
   return (
