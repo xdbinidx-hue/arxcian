@@ -174,6 +174,7 @@ export function CommandPalette() {
   const [micSupported, setMicSupported] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const router = useRouter()
 
   const results = useMemo(() => {
@@ -197,9 +198,37 @@ export function CommandPalette() {
 
   const micSupportedRef = useRef(false)
 
+  /**
+   * Lukee assistentin vastauksen ääneen (Google Cloud TTS, brittienglantia
+   * — ks. src/lib/arxcian/tts.ts). Käyttäjän oma puhe tunnistetaan yhä
+   * suomeksi (recognition.lang alempana), vain assistentin vastaus on
+   * tarkoituksella englanniksi sekä tekstinä että äänenä.
+   */
+  const speakAnswer = useCallback(async (text: string) => {
+    try {
+      const res = await fetch('/api/arxcian/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.addEventListener('ended', () => URL.revokeObjectURL(url))
+      audio.addEventListener('error', () => URL.revokeObjectURL(url))
+      await audio.play()
+    } catch {
+      // Ääni on lisäarvo, ei kriittinen — tekstivastaus on jo näkyvissä.
+      // Epäonnistunut puhesynteesi ei saa rikkoa käyttöliittymää.
+    }
+  }, [])
+
   const askAssistant = useCallback(async (prompt: string) => {
     setMode('asking')
     setQuery('')
+    audioRef.current?.pause()
     try {
       const res = await fetch('/api/arxcian/assistant', {
         method: 'POST',
@@ -210,6 +239,7 @@ export function CommandPalette() {
       if (res.ok) {
         setAnswer(data.text)
         setMode('answered')
+        void speakAnswer(data.text)
       } else {
         setErrorMessage(data.error ?? 'Jokin meni pieleen.')
         setMode('error')
@@ -220,10 +250,9 @@ export function CommandPalette() {
       setErrorMessage('Jokin meni pieleen.')
       setMode('error')
     }
-    // Ei riipu mistään paitsi useStaten omista, taatusti pysyvistä setter-
-    // funktioista — turvallinen jättää tyhjäksi riippuvuuslistaksi.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    // speakAnswer on itsekin riippumaton renderöinnistä ([]-riippuvuus), joten
+    // sen lisääminen tähän ei riko "vain vakaita referenssejä" -periaatetta.
+  }, [speakAnswer])
 
   // ⌘K / Ctrl+K avaa ja sulkee
   useEffect(() => {
@@ -249,6 +278,7 @@ export function CommandPalette() {
       setMode('search')
       setAnswer(null)
       setErrorMessage(null)
+      audioRef.current?.pause()
     }
   }, [open])
 
