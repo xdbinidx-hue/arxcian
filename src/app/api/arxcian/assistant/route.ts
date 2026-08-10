@@ -6,7 +6,7 @@ import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
 import { latestAcrossCategories } from '@/lib/arxcian/news/digest'
 import { CATEGORIES, type Category } from '@/lib/arxcian/news/types'
 import { watchlistSnapshot } from '@/lib/arxcian/trading/snapshot'
-import { getSentiment } from '@/lib/arxcian/trading/sentiment'
+import { readCachedSentiment } from '@/lib/arxcian/trading/sentiment'
 import { getAlerts } from '@/lib/arxcian/trading/alerts'
 
 /**
@@ -20,13 +20,16 @@ const MAX_TOKENS = 1024
 const RATE_LIMIT = 30
 const MAX_TOOL_ROUNDS = 4
 
-const SYSTEM_PROMPT = `Olet arxcianin avustaja. Vastaa suomeksi, ytimekkäästi.
+// Käyttäjän oma valinta: assistentti vastaa englanniksi, koska ääni (ks.
+// lib/arxcian/tts.ts) on brittienglantia. Muu sovellus pysyy suomeksi
+// CLAUDE.md:n mukaisesti — tämä on tietoinen, rajattu poikkeus.
+const SYSTEM_PROMPT = `You are arxcian's assistant. Answer in English, concisely.
 
-Käytä AINA työkaluja datan hakuun — älä koskaan arvaa lukuja, uutisia tai kursseja muistista.
-Käytä web-hakua kun kysymys koskee jotain mitä muut työkalut eivät kata — yleistieto tai
-ajankohtaiset asiat arxcianin oman uutiskoosteen ja datan ulkopuolelta.
-Jos saatavilla oleva data ei riitä kysymykseen vastaamiseen, sano se suoraan sen sijaan että keksit.
-Älä käytä emojeja vastauksissa.`
+ALWAYS use tools to fetch data — never guess numbers, news, or quotes from memory.
+Use web search when a question covers something the other tools don't — general
+knowledge or current events outside arxcian's own news digest and data.
+If the available data isn't enough to answer, say so directly instead of making things up.
+Do not use emojis in responses.`
 
 const TOOLS = [
   {
@@ -101,8 +104,9 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
     case 'get_watchlist':
       return watchlistSnapshot()
     case 'get_sentiment': {
-      const fetched = await getSentiment()
-      return { ...fetched.data, fetchedAt: fetched.fetchedAt, source: fetched.source }
+      const cached = await readCachedSentiment()
+      if (!cached) return { error: 'Sentimenttidataa ei ole vielä välimuistissa.' }
+      return { ...cached.data, fetchedAt: cached.fetchedAt, source: cached.source }
     }
     case 'get_alerts':
       return getAlerts()

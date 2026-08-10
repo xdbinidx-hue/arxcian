@@ -1,4 +1,4 @@
-import { fetchAndCache } from '../cache'
+import { fetchAndCache, readCached } from '../cache'
 import type { Sentiment } from './types'
 
 const CACHE_KEY = 'trading:sentiment'
@@ -24,6 +24,11 @@ async function fetchFearGreed(): Promise<Sentiment> {
 
 export async function getSentiment() {
   return fetchAndCache({ key: CACHE_KEY, ttl: TTL_SECONDS }, fetchFearGreed)
+}
+
+/** Vain välimuistista, ei hakua lähteestä — assistentti ei saa laukaista ulkoisia hakuja. */
+export async function readCachedSentiment() {
+  return readCached<Sentiment>(CACHE_KEY)
 }
 
 /** Suomennos + väri UI:ta varten. */

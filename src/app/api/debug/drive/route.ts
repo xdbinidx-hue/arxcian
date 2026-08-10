@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
+import { currentUser } from '@/lib/session'
 
 // Tilapäinen tutkimustyökalu Driven sisällön selaamiseen (esim. uuden kansion löytäminen ja
 // sen tekstisisällön lukeminen) ilman että jokaista uutta tarvetta varten pitäisi kirjoittaa
@@ -19,6 +20,12 @@ async function readDocText(drive: ReturnType<typeof google.drive>, fileId: strin
   return res.data as unknown as string
 }
 
+// Drive-kyselyn merkkijonoarvot on suojattava: heittomerkki käyttäjän syötteessä
+// katkaisisi kyselyn ja antaisi liittää siihen omia ehtoja.
+function escapeDriveValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
 async function readSheetText(sheets: ReturnType<typeof google.sheets>, fileId: string, wantedSheet?: string | null): Promise<string[][]> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: fileId })
   const names = meta.data.sheets?.map(s => s.properties?.title ?? '') ?? []
@@ -28,6 +35,10 @@ async function readSheetText(sheets: ReturnType<typeof google.sheets>, fileId: s
 }
 
 export async function GET(req: NextRequest) {
+  // Middleware suojaa vain /api/arxcian/*-reitit, joten istunto on tarkistettava täällä.
+  const user = await currentUser()
+  if (!user) return NextResponse.json({ error: 'Kirjautuminen vaaditaan' }, { status: 401 })
+
   try {
     const auth = getAuth()
     const drive = google.drive({ version: 'v3', auth })
@@ -64,7 +75,7 @@ export async function GET(req: NextRequest) {
 
     if (listChildrenOf) {
       const res = await drive.files.list({
-        q: `'${listChildrenOf}' in parents and trashed = false`,
+        q: `'${escapeDriveValue(listChildrenOf)}' in parents and trashed = false`,
         fields: 'files(id, name, mimeType, modifiedTime)',
       })
       return NextResponse.json({ files: res.data.files ?? [] })
@@ -72,7 +83,7 @@ export async function GET(req: NextRequest) {
 
     if (q) {
       const res = await drive.files.list({
-        q: `name contains '${q}' and trashed = false`,
+        q: `name contains '${escapeDriveValue(q)}' and trashed = false`,
         fields: 'files(id, name, mimeType, parents, modifiedTime)',
       })
       return NextResponse.json({ files: res.data.files ?? [] })

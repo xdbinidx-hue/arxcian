@@ -1,5 +1,5 @@
 import { readCached, writeCached } from '../cache'
-import { visibleTo, type Owner, type SessionUser } from '@/lib/session'
+import { canView, visibleTo, type Owner, type SessionUser } from '@/lib/session'
 import type { Goal, GoalArea } from './types'
 
 const CACHE_KEY = 'personal:goals'
@@ -38,8 +38,13 @@ export async function addGoal(input: {
   return all
 }
 
-export async function toggleGoalDone(id: string): Promise<Goal[]> {
+// Muutokset tarkistavat omistajuuden: pelkkä id ei riitä, muuten kirjautunut
+// käyttäjä voisi arvata toisen käyttäjän tietueen tunnisteen ja muokata sitä.
+export async function toggleGoalDone(id: string, user: SessionUser | null): Promise<Goal[]> {
   const all = await getAll()
+  const target = all.find(g => g.id === id)
+  if (!target || !canView(target.owner, user)) return all
+
   const updated = all.map(g =>
     g.id === id ? { ...g, done: !g.done, completedAt: !g.done ? Date.now() : null } : g,
   )
@@ -47,8 +52,12 @@ export async function toggleGoalDone(id: string): Promise<Goal[]> {
   return updated
 }
 
-export async function removeGoal(id: string): Promise<Goal[]> {
-  const updated = (await getAll()).filter(g => g.id !== id)
+export async function removeGoal(id: string, user: SessionUser | null): Promise<Goal[]> {
+  const all = await getAll()
+  const target = all.find(g => g.id === id)
+  if (!target || !canView(target.owner, user)) return all
+
+  const updated = all.filter(g => g.id !== id)
   await saveAll(updated)
   return updated
 }

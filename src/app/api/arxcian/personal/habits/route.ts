@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest) {
   const { id } = (await req.json()) as { id?: string }
   if (!id) return NextResponse.json({ error: 'id puuttuu' }, { status: 400 })
 
-  return respond(await toggleHabitToday(id), user)
+  return respond(await toggleHabitToday(id, user), user)
 }
 
 export async function DELETE(req: NextRequest) {
@@ -46,5 +46,5 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id puuttuu' }, { status: 400 })
 
-  return respond(await removeHabit(id), user)
+  return respond(await removeHabit(id, user), user)
 }

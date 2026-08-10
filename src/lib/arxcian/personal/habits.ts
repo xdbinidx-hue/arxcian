@@ -1,15 +1,12 @@
 import { readCached, writeCached } from '../cache'
-import { visibleTo, type Owner, type SessionUser } from '@/lib/session'
+import { canView, visibleTo, type Owner, type SessionUser } from '@/lib/session'
+import { todayISOHelsinki } from '../time'
 import type { Habit } from './types'
 
 export { calculateStreak } from './streak'
 
 const CACHE_KEY = 'personal:habits'
 const TTL_SECONDS = 5 * 365 * 24 * 60 * 60
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
 async function getAll(): Promise<Habit[]> {
   const cached = await readCached<Habit[]>(CACHE_KEY)
@@ -31,10 +28,13 @@ export async function addHabit(input: { owner: Owner; title: string }): Promise<
   return all
 }
 
-/** Kääntää tämän päivän tehty-tilan päälle/pois. */
-export async function toggleHabitToday(id: string): Promise<Habit[]> {
-  const today = todayISO()
+/** Kääntää tämän päivän tehty-tilan päälle/pois. Tarkistaa omistajuuden, ks. goals.ts. */
+export async function toggleHabitToday(id: string, user: SessionUser | null): Promise<Habit[]> {
+  const today = todayISOHelsinki()
   const all = await getAll()
+  const target = all.find(h => h.id === id)
+  if (!target || !canView(target.owner, user)) return all
+
   const updated = all.map(h => {
     if (h.id !== id) return h
     const has = h.completedDates.includes(today)
@@ -44,8 +44,12 @@ export async function toggleHabitToday(id: string): Promise<Habit[]> {
   return updated
 }
 
-export async function removeHabit(id: string): Promise<Habit[]> {
-  const updated = (await getAll()).filter(h => h.id !== id)
+export async function removeHabit(id: string, user: SessionUser | null): Promise<Habit[]> {
+  const all = await getAll()
+  const target = all.find(h => h.id === id)
+  if (!target || !canView(target.owner, user)) return all
+
+  const updated = all.filter(h => h.id !== id)
   await saveAll(updated)
   return updated
 }

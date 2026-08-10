@@ -1,5 +1,5 @@
 import { readCached, writeCached } from '../cache'
-import { visibleTo, type Owner, type SessionUser } from '@/lib/session'
+import { canView, visibleTo, type Owner, type SessionUser } from '@/lib/session'
 import { createGoalFromNote } from './goals'
 import type { Note } from './types'
 
@@ -40,17 +40,22 @@ export async function addNote(input: { owner: Owner; text: string }): Promise<No
   return all
 }
 
-export async function removeNote(id: string): Promise<Note[]> {
-  const updated = (await getAll()).filter(n => n.id !== id)
+/** Tarkistaa omistajuuden ennen poistoa, ks. goals.ts. */
+export async function removeNote(id: string, user: SessionUser | null): Promise<Note[]> {
+  const all = await getAll()
+  const target = all.find(n => n.id === id)
+  if (!target || !canView(target.owner, user)) return all
+
+  const updated = all.filter(n => n.id !== id)
   await saveAll(updated)
   return updated
 }
 
 /** Luo muistiinpanosta tavoitteen ja merkitsee muistiinpanon ylennetyksi. */
-export async function promoteNoteToGoal(id: string): Promise<Note[]> {
+export async function promoteNoteToGoal(id: string, user: SessionUser | null): Promise<Note[]> {
   const all = await getAll()
   const note = all.find(n => n.id === id)
-  if (!note || note.promotedToGoalId) return all
+  if (!note || note.promotedToGoalId || !canView(note.owner, user)) return all
 
   const goal = await createGoalFromNote({ owner: note.owner, title: note.text.slice(0, 200) })
   const updated = all.map(n => (n.id === id ? { ...n, promotedToGoalId: goal.id } : n))

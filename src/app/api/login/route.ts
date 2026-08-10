@@ -5,6 +5,7 @@ import {
   USER_IDS,
   type UserId,
 } from '@/lib/session'
+import { checkRateLimit } from '@/lib/arxcian/rateLimit'
 
 /** Tunnukset ympäristömuuttujista, ei kovakoodattuna. */
 function pinFor(user: UserId): string | undefined {
@@ -12,6 +13,12 @@ function pinFor(user: UserId): string | undefined {
 }
 
 export async function POST(req: NextRequest) {
+  // Nelinumeroinen PIN on brute-forcattavissa ilman yritysrajoitusta.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'tuntematon'
+  if (!(await checkRateLimit('login', ip, 10, 15 * 60))) {
+    return NextResponse.json({ error: 'Liikaa kirjautumisyrityksiä. Yritä myöhemmin uudelleen.' }, { status: 429 })
+  }
+
   const { username, password } = await req.json()
   const user = String(username ?? '').trim().toLowerCase()
   const pin = String(password ?? '')

@@ -3,10 +3,7 @@ import { currentUser, currentOwner } from '@/lib/session'
 import { getHabits } from '@/lib/arxcian/personal/habits'
 import { getGoals } from '@/lib/arxcian/personal/goals'
 import { getCalendarStatus } from '@/lib/arxcian/personal/calendar/events'
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+import { todayISOHelsinki } from '@/lib/arxcian/time'
 
 function requestOrigin(): string {
   const h = headers()
@@ -28,7 +25,7 @@ function isToday(ms: number): boolean {
 export async function DailyFocus() {
   const user = await currentUser()
   const owner = await currentOwner()
-  const today = todayISO()
+  const today = todayISOHelsinki()
 
   const [habits, goals, calendar] = await Promise.all([
     getHabits(user),
