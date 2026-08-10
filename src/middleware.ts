@@ -11,10 +11,13 @@ function isPublic(pathname: string) {
     // Cron-reitti todentaa itse CRON_SECRETilla. Istuntoa vaativa
     // middleware estäisi Vercelin ajastetut kutsut kokonaan.
     pathname.startsWith('/api/arxcian/cron') ||
-    // Drive-webhookit kutsutaan ilman istuntoa: /api/webhook/drive on Googlen
-    // kutsuma ja todentaa itse x-goog-channel-token-otsakkeella,
-    // /api/webhook/register ajetaan vercel.jsonin cronista.
-    pathname.startsWith('/api/webhook/')
+    // Drive-webhookit kutsutaan ilman istuntoa, mutta molemmat todentavat itse:
+    // /api/webhook/drive on Googlen kutsuma ja tarkistaa x-goog-channel-token-
+    // otsakkeen, /api/webhook/register ajetaan vercel.jsonin cronista ja
+    // tarkistaa authorizeCronilla CRON_SECRETin tai istunnon. Polut luetellaan
+    // erikseen prefiksin sijaan, jottei uusi /api/webhook/*-reitti aukea vahingossa.
+    pathname === '/api/webhook/drive' ||
+    pathname === '/api/webhook/register'
   )
 }
 
