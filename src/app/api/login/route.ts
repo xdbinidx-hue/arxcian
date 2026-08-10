@@ -14,7 +14,11 @@ function pinFor(user: UserId): string | undefined {
 
 export async function POST(req: NextRequest) {
   // Nelinumeroinen PIN on brute-forcattavissa ilman yritysrajoitusta.
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'tuntematon'
+  // IP luetaan vain luotetusta lähteestä: x-forwarded-for ei kelpaa, koska
+  // kutsuja voi asettaa sen vasemman arvon itse ja saisi jokaisella yrityksellä
+  // uuden rajoituskiintiön. req.ip ja x-real-ip tulevat Vercelin proxyltä
+  // eivätkä ole asiakkaan asetettavissa.
+  const ip = req.ip ?? req.headers.get('x-real-ip') ?? 'tuntematon'
   if (!(await checkRateLimit('login', ip, 10, 15 * 60, true))) {
     return NextResponse.json({ error: 'Liikaa kirjautumisyrityksiä. Yritä myöhemmin uudelleen.' }, { status: 429 })
   }
