@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { google } from 'googleapis'
 import crypto from 'crypto'
+import { authorizeCron } from '@/lib/arxcian/cron'
 
 const WEBHOOK_ADDRESS = 'https://rjmob-portal.vercel.app/api/webhook/drive'
 
@@ -55,9 +57,18 @@ async function registerWatch() {
 
 // Kutsutaan manuaalisesti kerran deployn jälkeen (https://rjmob-portal.vercel.app/api/webhook/register)
 // ja automaattisesti Vercel Cron Jobilla kerran päivässä (ks. vercel.json) watch-kanavan
-// tuoreuden varmistamiseksi.
-export async function GET() {
+// tuoreuden varmistamiseksi. Kutsu vaatii nyt CRON_SECRETin Authorization-otsakkeessa
+// (Vercel Cron lähettää sen automaattisesti) tai kirjautuneen istunnon — sama mekanismi
+// kuin /api/arxcian/cronissa. Middleware päästää reitin läpi, joten todennus tehdään tässä.
+export async function GET(req: NextRequest) {
   try {
+    const auth = await authorizeCron(req)
+    if (!auth.ok) {
+      return NextResponse.json({ error: 'Ei oikeutta' }, { status: 401 })
+    }
+
+    // Vasta todennuksen jälkeen: todentamaton kutsuja ei saa tietoa siitä,
+    // mitä ympäristömuuttujia palvelimelta puuttuu.
     if (!process.env.DRIVE_WEBHOOK_TOKEN) {
       return NextResponse.json({ error: 'DRIVE_WEBHOOK_TOKEN puuttuu ympäristömuuttujista' }, { status: 500 })
     }
