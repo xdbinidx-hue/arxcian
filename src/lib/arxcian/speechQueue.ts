@@ -18,8 +18,18 @@
  * polttaisi kiintiötä myös silloin kun käyttäjä keskeyttää heti.
  */
 
-/** Kuinka monta palaa haetaan valmiiksi soivan palan lisäksi. */
-const PREFETCH = 2
+/**
+ * Kuinka monta palaa haetaan valmiiksi soivan palan lisäksi.
+ *
+ * Yksi eikä kaksi: PREFETCH tarkoittaa PREFETCH+1 yhtaikaista TTS-pyyntöä, ja
+ * ElevenLabsin halvimmilla tasoilla rinnakkaisuuskatto on 2–3 — ylitys ei
+ * hidasta vaan palauttaa 429:n, jolloin pala jää lukematta kokonaan.
+ * Tervehdys ja vastauksen ensimmäiset palat osuvat helposti samaan hetkeen,
+ * joten kolme yhtaikaista pyyntöä oli liian lähellä kattoa. Yksi valmiiksi
+ * haettu pala riittää pitämään toiston saumattomana: seuraavan haku ehtii
+ * tapahtua edellisen soidessa.
+ */
+const PREFETCH = 1
 
 export type SpeechQueueHandlers = {
   /** Jono alkoi tai loppui — käyttöliittymän "puhuu"-tila. */
@@ -28,6 +38,13 @@ export type SpeechQueueHandlers = {
   onBlocked: () => void
   /** Äänen haku epäonnistui (verkko, kiintiö, palvelin). */
   onError: (message: string) => void
+  /**
+   * Jaettu äänielementti (voice/audio.ts). Ilman tätä jono luo joka palalle
+   * oman elementtinsä, jonka selain estää aina kun toistoa ei ole aloitettu
+   * käyttäjän eleestä — herätyssanan jälkeen ei ole. Sama elementti kaikelle
+   * toistolle on siis autoplay-eston kierto, ei optimointi.
+   */
+  audio?: () => HTMLAudioElement
 }
 
 type QueueItem = {
@@ -35,6 +52,12 @@ type QueueItem = {
   controller: AbortController
   /** null = haku epäonnistui, pala ohitetaan. Alkaa vasta kun pump() käynnistää. */
   audio: Promise<string | null> | null
+  /**
+   * Jono loi osoitteen ja vastaa sen vapauttamisesta. Epätosi kun osoite tuli
+   * kutsujalta (pushAudio): esiladattu tervehdys soitetaan monta kertaa, eikä
+   * jono saa vapauttaa sitä ensimmäisen toiston jälkeen.
+   */
+  owned: boolean
 }
 
 export class SpeechQueue {
@@ -56,8 +79,26 @@ export class SpeechQueue {
   push(text: string) {
     const trimmed = text.trim()
     if (!trimmed) return
-    this.items.push({ text: trimmed, controller: new AbortController(), audio: null })
+    this.items.push({ text: trimmed, controller: new AbortController(), audio: null, owned: true })
     this.pump()
+    this.start()
+  }
+
+  /**
+   * Lisää valmiin ääniosoitteen jonoon ilman TTS-kutsua.
+   *
+   * Tervehdys on syntetisoitu ja esiladattu etukäteen juuri siksi, ettei
+   * herätyssanan jälkeen odoteta verkkoa. Sen on silti kuljettava saman jonon
+   * läpi kuin vastauspalojen: muuten tervehdys ja vastauksen ensimmäinen lause
+   * soisivat päällekkäin, eikä "puhuu"-tila kertoisi tervehdyksestä mitään.
+   */
+  pushAudio(url: string) {
+    this.items.push({
+      text: '',
+      controller: new AbortController(),
+      audio: Promise.resolve(url),
+      owned: false,
+    })
     this.start()
   }
 
@@ -97,13 +138,18 @@ export class SpeechQueue {
     for (const item of this.items) {
       item.controller.abort()
       // Jo valmistunut objectURL vapautetaan, keskeytynyt haku hylkää itsensä.
-      void item.audio?.then(url => url && URL.revokeObjectURL(url)).catch(() => {})
+      if (item.owned) void item.audio?.then(url => url && URL.revokeObjectURL(url)).catch(() => {})
     }
     this.items = []
 
     if (this.current) {
       this.current.pause()
-      this.current.src = ''
+      this.current.onended = null
+      this.current.onerror = null
+      // Jaettua elementtiä ei tyhjennetä src:llä: se on avattu käyttäjän
+      // eleellä ja sitä käytetään uudelleen, joten sen tilaan ei kosketa
+      // enempää kuin on pakko. Oman elementin lähde vapautetaan.
+      if (!this.handlers.audio) this.current.src = ''
       this.current = null
     }
     this.handlers.onSpeakingChange(false)
@@ -173,8 +219,8 @@ export class SpeechQueue {
           return
         }
 
-        this.items.shift()
-        URL.revokeObjectURL(url)
+        const played = this.items.shift()
+        if (played?.owned) URL.revokeObjectURL(url)
       }
     } finally {
       // Vain jos jono on yhä sama: peruutuksen jälkeen lippujen omistaa jo
@@ -190,11 +236,15 @@ export class SpeechQueue {
   /** Toistaa yhden palan loppuun asti. */
   private play(url: string): Promise<'ok' | 'blocked'> {
     return new Promise(resolve => {
-      const audio = new Audio(url)
+      // Jaettu elementti jos kutsuja antoi sellaisen, muuten oma. Käsittelijät
+      // asetetaan aina uudelleen, koska jaettu elementti kantaa edellisen
+      // palan käsittelijät mukanaan.
+      const audio = this.handlers.audio?.() ?? new Audio()
       this.current = audio
       audio.onended = () => resolve('ok')
       // Vioittunut tai purkukelvoton pala ei saa jättää jonoa jumiin.
       audio.onerror = () => resolve('ok')
+      audio.src = url
       audio.play().catch(() => resolve('blocked'))
     })
   }
