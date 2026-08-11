@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import type { GlobePoint, GlobeSource } from '@/lib/arxcian/globe/types'
+import type { GlobePoint } from '@/lib/arxcian/globe/types'
 
 /**
  * Maapallon HUD. Tehty DOM-elementteinä canvasin päälle eikä WebGL-tekstinä:
@@ -16,13 +16,7 @@ const TONE_CLASS: Record<string, string> = {
   neutral: 'text-ax-dim',
 }
 
-function fmtTime(ms: number | null): string {
-  if (!ms) return 'ei haettu'
-  return new Date(ms).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
-}
-
 type Props = {
-  sources: GlobeSource[]
   caveats: string[]
   selected: GlobePoint | null
   onClearSelection: () => void
@@ -35,7 +29,6 @@ const ZOOM_BUTTON =
   'pointer-events-auto flex h-7 w-7 items-center justify-center ax-glass rounded-lg text-[13px] leading-none text-ax-faint transition-colors hover:text-ax-text disabled:opacity-30 disabled:hover:text-ax-faint'
 
 export function GlobeHud({
-  sources,
   caveats,
   selected,
   onClearSelection,
@@ -84,31 +77,26 @@ export function GlobeHud({
         ))}
       </svg>
 
-      {/* Lähdetiedot — aina näkyvissä, jottei vanhentunutta dataa luulla
-          tuoreeksi. Kaikki lähteet listataan, koska näkymässä on nyt useamman
-          lähteen dataa yhtä aikaa. */}
-      <div className="absolute right-0 top-0 max-w-[45%] text-right">
-        {sources.map(source => (
-          <p key={source.name} className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">
-            {source.name}{' '}
-            <span className="text-ax-faint/70">{fmtTime(source.fetchedAt)}</span>
-          </p>
-        ))}
+      {/*
+        Lähdenimet ja hakuajat eivät ole enää kartan päällä: ne veivät tilaa
+        juuri siitä nurkasta johon kaupunkikortit haluavat, ja kartan piti
+        näyttää kartalta eikä mittaristolta. Markkinoiden hakuaika näkyy yhä
+        MARKKINAT-paneelin otsikkorivillä, joten tuoreus ei jää arvailun
+        varaan.
 
-        {/* Varaumat kuuluvat lähdetietojen viereen eivätkä pallon alle:
-            alalaidassa ne jäivät hubin kiinteän avustajapalkin alle, ja
-            asiallisesti ne ovat samaa tietoa kuin lähde ja hakuhetki —
-            mitä datasta puuttuu ja miksi. */}
-        {caveats.length > 0 && (
-          <div className="mt-1.5 hidden space-y-1 sm:block">
-            {caveats.map(caveat => (
-              <p key={caveat} className="text-[9px] leading-snug text-ax-faint/60">
-                {caveat}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
+        Varaumat jäävät, koska ne kertovat mitä kartalta *puuttuu* — sitä ei
+        näe mistään muualta. Kapealla näytöllä ne piilotetaan, koska siellä
+        kartta on pieni ja teksti veisi siitä kohtuuttoman osan.
+      */}
+      {caveats.length > 0 && (
+        <div className="absolute right-0 top-0 hidden max-w-[45%] space-y-1 text-right sm:block">
+          {caveats.map(caveat => (
+            <p key={caveat} className="text-[9px] leading-snug text-ax-faint/60">
+              {caveat}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Zoom. Rullaa ei kaapata: maapallo on iso keskellä vieritettävää sivua,
           ja rullan kaappaaminen rikkoisi sivun selaamisen. Kosketuksella

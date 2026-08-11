@@ -52,7 +52,6 @@ export function Globe({ data, className = '' }: { data: GlobeData; className?: s
           Yksittäiset painikkeet palauttavat pointer-eventsin itselleen. */}
       <div className="pointer-events-none absolute inset-0 p-3 sm:p-4">
         <GlobeHud
-          sources={data.sources}
           caveats={data.caveats}
           selected={selected}
           onClearSelection={() => setSelected(null)}
