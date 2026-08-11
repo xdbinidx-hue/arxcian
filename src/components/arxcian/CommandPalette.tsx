@@ -61,6 +61,39 @@ const TOOL_LABEL: Record<string, string> = {
 }
 
 /**
+ * Ääniohjauksen tila. Jokainen näkyy käyttöliittymässä — hiljainen
+ * epäonnistuminen on ääniohjauksen pahin vika, koska käyttäjä ei näe
+ * kuunteleeko kone, ajatteleeko se vai onko se kaatunut.
+ */
+type VoiceState = 'idle' | 'ready' | 'listening' | 'processing' | 'speaking' | 'denied' | 'error'
+
+/** Tilan selite merkissä. Virhetila näyttää virheen tekstin, ei tätä. */
+const VOICE_LABEL: Record<Exclude<VoiceState, 'error'>, string> = {
+  idle: 'mikrofoni',
+  ready: 'valmiina',
+  listening: 'kuuntelee',
+  processing: 'käsittelee',
+  speaking: 'puhuu',
+  denied: 'salli mikrofoni',
+}
+
+/**
+ * Puheentunnistuksen virheet käyttäjän kielellä.
+ *
+ * 'aborted' ja 'no-speech' puuttuvat tarkoituksella: edellinen tulee joka
+ * kerta kun kuuntelu pysäytetään normaalisti, jälkimmäinen taustakuuntelun
+ * hiljaisuudesta muutaman sekunnin välein. Kumpikaan ei ole vika.
+ */
+const RECOGNITION_ERROR: Partial<Record<SpeechRecognitionErrorCode, string>> = {
+  'not-allowed': 'mikrofonilupa evätty',
+  'service-not-allowed': 'selain esti puheentunnistuksen',
+  'audio-capture': 'mikrofonia ei löytynyt',
+  network: 'ei yhteyttä puheentunnistukseen',
+  'bad-grammar': 'puheentunnistus epäonnistui',
+  'language-not-supported': 'kieltä ei tueta',
+}
+
+/**
  * Viimeksi kuultu lause ja se, mitä sille tapahtui. Pelkkä teksti ei riitä:
  * kuultu mutta ohi mennyt komento näyttäisi täsmälleen samalta kuin läpi
  * mennyt, eikä käyttäjä näkisi kaatuiko herätesana vai puuttuiko kysymys.
@@ -267,58 +300,61 @@ function matchWakeWord(words: string[]): number | null {
  * rikki oleva mikrofoni.
  */
 function MicStatus({
-  isListening,
+  state,
   micAvailable,
-  micAllowed,
-  directMode,
+  error,
   heard,
   onAsk,
 }: {
-  isListening: boolean
+  state: VoiceState
   micAvailable: boolean
-  micAllowed: boolean
-  directMode: boolean
+  error: string | null
   heard: Heard | null
   onAsk: () => void
 }) {
   if (!micAvailable) return null
 
-  const label = directMode
-    ? 'puhu nyt'
-    : !micAllowed
-      ? 'salli mikrofoni'
-      : isListening
-        ? 'kuuntelee'
-        : 'mikrofoni'
+  const dot: Record<VoiceState, string> = {
+    idle: 'bg-ax-faint',
+    ready: 'bg-ax-up',
+    listening: 'ax-pulse bg-ax-accent',
+    processing: 'ax-pulse bg-ax-warn',
+    speaking: 'ax-pulse bg-ax-up',
+    denied: 'bg-ax-warn',
+    error: 'bg-ax-down',
+  }
+
+  const text: Record<VoiceState, string> = {
+    idle: 'text-ax-faint',
+    ready: 'text-ax-faint',
+    listening: 'text-ax-accent',
+    processing: 'text-ax-warn',
+    speaking: 'text-ax-up',
+    denied: 'text-ax-warn',
+    error: 'text-ax-down',
+  }
+
+  const label = state === 'error' ? (error ?? 'virhe') : VOICE_LABEL[state]
+
+  // Kuultu lause näytetään vain lepotilassa: kuunnellessa, käsitellessä ja
+  // puhuessa merkki kertoo tuoreempaa asiaa, eikä lappu mahdu kahdesti.
+  const showHeard = heard && (state === 'idle' || state === 'ready')
 
   return (
     <button
       type="button"
       onClick={onAsk}
-      aria-label={directMode ? 'Peruuta puhekysymys' : 'Kysy puheella'}
+      aria-label={state === 'listening' ? 'Lopeta kuuntelu' : 'Kysy puheella'}
+      aria-live="polite"
       className={`fixed bottom-16 right-3 z-40 flex max-w-[70vw] items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi lg:bottom-3 ${
-        directMode ? 'ring-1 ring-ax-accent' : ''
+        state === 'listening' ? 'ring-1 ring-ax-accent' : ''
       }`}
     >
-      <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          directMode
-            ? 'ax-pulse bg-ax-accent'
-            : !micAllowed
-              ? 'bg-ax-warn'
-              : isListening
-                ? 'ax-pulse bg-ax-up'
-                : 'bg-ax-faint'
-        }`}
-      />
-      <span
-        className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${
-          directMode ? 'text-ax-accent' : 'text-ax-faint'
-        }`}
-      >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[state]}`} />
+      <span className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${text[state]}`}>
         {label}
       </span>
-      {heard && !directMode && (
+      {showHeard && (
         <span
           className={`truncate text-[9px] ${heard.status === 'ok' ? 'text-ax-dim' : 'text-ax-warn'}`}
           title={heard.text}
@@ -427,6 +463,8 @@ export function CommandPalette() {
   const [speaking, setSpeaking] = useState(false)
   /** Äänen haku epäonnistui (verkko, kiintiö, palvelin). */
   const [speechError, setSpeechError] = useState<string | null>(null)
+  /** Mikrofonin tai puheentunnistuksen virhe, näkyy merkissä. */
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   /** Suora kysymystila: seuraava kuultu lause menee assistentille ilman
    *  herätesanaa. Käynnistyy vain napista, ei koskaan itsestään. */
   const [directMode, setDirectMode] = useState(false)
@@ -488,15 +526,26 @@ export function CommandPalette() {
   const micAllowedRef = useRef(false)
   const directModeRef = useRef(false)
 
-  // Suora tila ei jää päälle jos käyttäjä painoi nappia vahingossa.
+  // Kuuntelu ei jää päälle jos käyttäjä painoi nappia vahingossa. Syy
+  // näytetään: hiljainen paluu lepotilaan näyttäisi samalta kuin rikki oleva
+  // mikrofoni, ja juuri sitä ääniohjauksessa ei saa joutua arvaamaan.
   useEffect(() => {
     if (!directMode) return
     const timer = setTimeout(() => {
       directModeRef.current = false
       setDirectMode(false)
+      setVoiceError('en kuullut mitään')
     }, 15000)
     return () => clearTimeout(timer)
   }, [directMode])
+
+  // Virheilmoitus katoaa itsestään kuten kuultu lausekin. Evätty mikrofonilupa
+  // näkyy tämän jälkeenkin 'salli mikrofoni' -tilana, joten tieto ei katoa.
+  useEffect(() => {
+    if (!voiceError) return
+    const timer = setTimeout(() => setVoiceError(null), 8000)
+    return () => clearTimeout(timer)
+  }, [voiceError])
 
   // Kuultu lause katoaa itsestään, jottei merkki jää roikkumaan vanhaan.
   // Ohi mennyt komento näkyy pidempään: siinä on käyttäjälle luettavaa,
@@ -596,6 +645,7 @@ export function CommandPalette() {
     setErrorMessage(null)
     setSpeechBlocked(false)
     setSpeechError(null)
+    setVoiceError(null)
 
     // Pilkkoja on kysymyskohtainen: se pitää sisällään keskeneräisen lauseen
     // ja palojen järjestysnumeron, jotka eivät saa vuotaa seuraavaan vastaukseen.
@@ -793,8 +843,19 @@ export function CommandPalette() {
         micAllowedRef.current = false
         setMicAllowed(false)
       }
-      // Muut virheet (esim. 'no-speech'): ei erikoiskäsittelyä, onend hoitaa
-      // uudelleenkäynnistyksen normaalisti.
+
+      // 'aborted' seuraa jokaisesta tavallisesta pysäytyksestä ja 'no-speech'
+      // taustakuuntelun hiljaisuudesta: kumpikaan ei ole käyttäjälle
+      // kerrottava vika. Muut virheet näkyviin — mikrofonivika ei saa jäädä
+      // pelkäksi hiljaisuudeksi. 'no-speech' kuitataan puhekysymyksen
+      // aikakatkaisulla, ei täällä, koska kuuntelu jatkuu vielä sen jälkeen.
+      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        setVoiceError(RECOGNITION_ERROR[event.error] ?? 'puheentunnistus epäonnistui')
+        if (directModeRef.current) {
+          directModeRef.current = false
+          setDirectMode(false)
+        }
+      }
     }
 
     recognition.onresult = event => {
@@ -906,8 +967,9 @@ export function CommandPalette() {
   }, [])
 
   /**
-   * Kysy puheella ilman herätesanaa: seuraava kuultu lause menee suoraan
-   * assistentille.
+   * Puhu-painike (push-to-talk): painallus aloittaa kuuntelun, seuraava kuultu
+   * lause menee suoraan assistentille ilman herätesanaa. Uusi painallus
+   * lopettaa kuuntelun, ja niin tekee myös lauseen päättyminen.
    *
    * Tämä on ääniohjauksen luotettava reitti. Herätesana "arxcian" on
    * suomenkieliselle puheentunnistukselle vaikea, ja jos se kuullaan väärin,
@@ -932,6 +994,7 @@ export function CommandPalette() {
     speechRef.current?.cancel()
     setSpeechBlocked(false)
     setSpeechError(null)
+    setVoiceError(null)
 
     micAllowedRef.current = true
     setMicAllowed(true)
@@ -1014,13 +1077,31 @@ export function CommandPalette() {
     }
   }
 
+  /**
+   * Yksi tila neljästä näkyvissä kerrallaan, tässä järjestyksessä: virhe menee
+   * kaiken edelle (sitä ei saa piilottaa), sitten kuuntelu, käsittely ja puhe
+   * — se mitä kone juuri nyt tekee käyttäjän puolesta.
+   */
+  const voiceState: VoiceState = voiceError
+    ? 'error'
+    : !micAllowed
+      ? 'denied'
+      : directMode
+        ? 'listening'
+        : mode === 'asking'
+          ? 'processing'
+          : speaking
+            ? 'speaking'
+            : isListening
+              ? 'ready'
+              : 'idle'
+
   return (
     <>
       <MicStatus
-        isListening={isListening}
+        state={voiceState}
         micAvailable={micAvailable}
-        micAllowed={micAllowed}
-        directMode={directMode}
+        error={voiceError}
         heard={heard}
         onAsk={askByVoice}
       />
