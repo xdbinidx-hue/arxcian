@@ -175,13 +175,25 @@ Alapalkki ei ole oma hakukenttänsä vaan avaa `CommandPaletten` ikkunatapahtuma
 
 Seuratut YouTube-kanavat: [channels.ts](src/lib/arxcian/channels.ts), julkinen RSS-syöte ilman API-avainta, cron-työ `hub-channels`. Kanava-ID on pysyvä vaikka kanava vaihtaisi nimeä — siksi ID kovakoodataan eikä @-tunnusta.
 
+**YouTube vaatii selainmaiset otsakkeet.** Bottimaisella User-Agentilla haku toimii kotiverkosta mutta kaatuu Vercelistä: cron kirjoitti 11.8.2026 nolla videota samalla ajolla jossa uutis-RSS haki kuusikymmentä. Tarvitaan oikea User-Agent, `Accept-Language` ja `CONSENT=YES+cb` -eväste (ilman sitä YouTube ohjaa suostumussivulle). Sama koskee [ict.ts](src/lib/arxcian/trading/ict.ts):ää.
+
+RJ-Mobin kuukausiluvut: [rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts), cron-työ `rjmob-summary`. Laskenta on jaettu kirjastoihin ([rjmobSheets.ts](src/lib/rjmobSheets.ts), [rjmobDrive.ts](src/lib/rjmobDrive.ts)) juuri siksi että ajastettu työ pääsee siihen ilman istuntoa — `/api/sheets` ja `/api/files` ovat enää ohuita kuoria. **Kuukausi valitaan samalla `vuosi × 100 + kuukausi` -säännöllä kuin tuottoseurannan sivulla**, ja kentät ovat ne joita sivu itse näyttää (`liittKpl`, `kassa`, `fsecKpl`); muuten hubin luku voisi ajautua eri suuntaan kuin se luku jota sivulla katsotaan.
+
+Muutosprosentti on **run rate -ennuste, ei toteuma**: hub näyttää aina kuluvaa kuukautta, joten kertymän vertaaminen edellisen kuun kokonaislukuun näyttäisi romahdusta vaikka myynti kävisi normaalisti. Kertymä projisoidaan kuukauden loppuun ja vertailu tehdään sillä. Ennustetta ei näytetä ennen kuin kuukaudesta on kulunut seitsemän päivää — sitä ennen kerroin on niin suuri (1. päivänä ×31) että yksi päivä heiluttaa prosenttia satoja yksiköitä.
+
+**Maapallon mantereet ovat yhtä sinistä sävyä** ([GlobeScene.tsx](src/components/arxcian/globe/GlobeScene.tsx)): päivätekstuurista otetaan vain kirkkaus, ei väriä. Kaupunkivalot luetaan omasta tekstuuristaan eikä niihin kosketa, joten ne pysyvät keltaisina — se kontrasti tekee yöpuolen luettavaksi. Merillä on oma tumma sävynsä; aiemmin niissä näkyi suoraan taustan sumutekstuuri, jolloin pallo oli reikä taustaan eikä kappale.
+
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
 
 ## Tunnetut puutteet
 
-Hubin **RJ-MOB-paneeli on tyhjässä tilassa**: se lukee `rjmob:summary`-avainta jota kukaan ei vielä kirjoita. Paneeli ja tyyppi ([rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts)) ovat valmiit, mutta kirjoittajaa ei ole tehty arvaamalla — luvut syntyvät Google Sheetsistä [rjmob.ts](src/lib/rjmob.ts):n sääntöjen läpi (sivukulukerroin, läpimeno, myyjäkohtaiset kertoimet, nimien normalisointi), ja väärä myyntiluku etusivulla on pahempi kuin puuttuva. Lisätään kun laskenta on verrattu tuottoseurannan omiin lukuihin.
+Maapallolla **ei ole punaisia uutispisteitä** eikä kaupunkien välisiä synapsikaaria. Uutispisteet vaatisivat pääteltyä sijaintia (RSS:ssä ei ole sijaintikenttää), kaaret odottavat käyttäjän omaa toteutusta.
+
+Kaupunkilaput on pinottu pallon reunoihin eikä sijoitettu vapaasti pisteen viereen: kaupunkeja on 14 ja Eurooppa yksin tuo seitsemän lappua muutaman asteen sisään toisistaan, jolloin vapaa sijoittelu menisi päällekkäin ilman törmäyksenväistoa.
 
 Alla korjatut, jotta samaa ei ehdoteta uudelleen.
+
+Korjattu 11.8.2026: hubin RJ-MOB-paneeli oli tyhjässä tilassa, koska `rjmob:summary`-avainta ei kirjoittanut kukaan. Laskenta siirrettiin reiteiltä kirjastoihin ja cron-työ `rjmob-summary` kirjoittaa avaimen. Siirto varmistettiin vertaamalla `/api/sheets`-vastausta ennen ja jälkeen: tuloste oli tavumerkilleen identtinen kahdelta kuukaudelta.
 
 Korjattu 10.8.2026: `/api/webhook/register` oli middlewaressa auki eikä todentanut itse, joten kuka tahansa saattoi laukaista Drive watch -kanavan rekisteröinnin. Reitti todentaa nyt `authorizeCron`illa ([cron.ts](src/lib/arxcian/cron.ts)) eli `CRON_SECRET`illa tai kirjautuneella käyttäjällä, samaan tapaan kuin `/api/arxcian/cron`. Vercel Cron lähettää `CRON_SECRET`in `Authorization`-otsakkeessa automaattisesti, joten `vercel.json`in päivittäinen ajo toimii ennallaan. `/api/webhook/drive` todentaa edelleen itse `x-goog-channel-token`-otsakkeella. Middlewaren poikkeus on nyt eksplisiittinen lista kahdesta polusta (`/api/webhook/drive`, `/api/webhook/register`) eikä `/api/webhook/`-prefiksi, jottei uusi webhook-reitti aukea vahingossa.
 
