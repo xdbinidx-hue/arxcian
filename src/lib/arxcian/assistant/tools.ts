@@ -7,7 +7,7 @@ import { latestAcrossCategories } from '../news/digest'
 import { watchlistSnapshot } from '../trading/snapshot'
 import { readCachedSentiment } from '../trading/sentiment'
 import { getAlerts } from '../trading/alerts'
-import { RJMOB_SUMMARY_KEY, type RjMobSummaryData } from '../rjmobSummary'
+import { parseMonthInput, readRjMobMonths, readRjMobSummary } from '../rjmobSummary'
 import { getCalendarStatus, upcomingEvents } from '../personal/calendar/events'
 import { getGoals } from '../personal/goals'
 import { getHabits, calculateStreak } from '../personal/habits'
@@ -101,8 +101,19 @@ export const READ_TOOLS = [
   {
     name: 'get_rjmob_summary',
     description:
-      'Hakee RJ-Mobin kuluvan kuukauden myyntiluvut: liittymät, kassakate ja F-Secure. Muutosprosentti on kuukauden loppuun projisoitu ennuste, ei toteuma. Vain luku — RJ-Mobin lukuja ei voi muuttaa avustajan kautta.',
-    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+      'Hakee RJ-Mobin yhden kuukauden myyntiluvut: liittymät, kassakate ja F-Secure. Oletuksena kuluva kuukausi. Vain kuluvan kuukauden muutosprosentti on kuukauden loppuun projisoitu ennuste (projected on tosi); valmiin kuukauden muutos on toteutunut vertailu edelliseen kuukauteen. Vastauksen availableMonths kertoo miltä kuukausilta lukuja on. Vain luku — RJ-Mobin lukuja ei voi muuttaa avustajan kautta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: {
+          type: 'string',
+          description:
+            'Kuukausi jonka luvut haetaan: "2026-06", "current", "previous" tai suomenkielinen kuukauden nimi ("kesäkuu", "viime kuu"). Jätä pois kuluvalle kuukaudelle.',
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
   },
   {
     name: 'get_calendar',
@@ -171,6 +182,47 @@ function countInput(input: unknown, fallback: number): number {
   return Math.min(MAX_ITEMS, Math.max(1, Number.isFinite(parsed) ? parsed : fallback))
 }
 
+/**
+ * RJ-Mobin kuukausiluvut välimuistista.
+ *
+ * Työkalu ei hae Drivestä eikä laske mitään: kuukaudet ovat cron-työn
+ * `rjmob-summary` kirjoittamia. Kun pyydettyä kuukautta ei ole, vastaus
+ * kertoo mitä kuukausia on — malli ei saa täyttää aukkoa arvauksella,
+ * koska väärä myyntiluku näyttää täsmälleen oikealta.
+ */
+async function rjmobSummaryResult(input: unknown): Promise<unknown> {
+  const raw = (input ?? {}) as { month?: unknown }
+  const asked = typeof raw.month === 'string' ? raw.month : ''
+
+  const availableMonths = await readRjMobMonths()
+  const month = parseMonthInput(asked)
+
+  if (!month) {
+    return {
+      error: `Kuukautta ei tunnistettu: "${asked}".`,
+      availableMonths,
+      note: 'Kysy käyttäjältä mitä kuukautta hän tarkoittaa. Älä arvaa lukuja.',
+    }
+  }
+
+  const cached = await readRjMobSummary(month)
+  if (!cached) {
+    return {
+      error: `RJ-Mobin lukuja kuukaudelta ${month} ei ole välimuistissa.`,
+      availableMonths,
+      note: 'Kerro käyttäjälle miltä kuukausilta lukuja on. Älä arvaa lukuja.',
+    }
+  }
+
+  return {
+    ...cached.data,
+    month,
+    availableMonths,
+    fetchedAt: helsinkiTime(cached.fetchedAt),
+    note: 'changePercent on kuukauden loppuun projisoitu ennuste, kun projected on tosi. Muuten se on toteuma.',
+  }
+}
+
 async function calendarResult(input: unknown, user: SessionUser, origin: string): Promise<unknown> {
   const status = await getCalendarStatus(user, origin)
 
@@ -225,17 +277,8 @@ export async function runReadTool(
     }
     case 'get_alerts':
       return getAlerts()
-    case 'get_rjmob_summary': {
-      const cached = await readCached<RjMobSummaryData>(RJMOB_SUMMARY_KEY)
-      if (!cached) {
-        return { error: 'RJ-Mobin kuukausiyhteenvetoa ei ole vielä laskettu välimuistiin.' }
-      }
-      return {
-        ...cached.data,
-        fetchedAt: helsinkiTime(cached.fetchedAt),
-        note: 'changePercent on kuukauden loppuun projisoitu ennuste, kun projected on tosi.',
-      }
-    }
+    case 'get_rjmob_summary':
+      return rjmobSummaryResult(input)
     case 'get_calendar':
       return calendarResult(input, user, origin)
     case 'get_goals': {
