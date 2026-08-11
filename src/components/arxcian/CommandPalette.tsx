@@ -28,6 +28,37 @@ const COMMANDS: Command[] = [
 type Mode = 'search' | 'asking' | 'answered' | 'error'
 
 /**
+ * Yksi tapahtuma assistentin NDJSON-virrasta.
+ *
+ * `proposal` tulee enintään kerran pyyntöä kohti ja aina ennen mallin sanallista
+ * selostusta. Argumentteja ei lähetetä: selain vahvistaa pelkällä tunnisteella,
+ * jolloin niitä ei voi muokata ehdotuksen ja suorituksen välissä.
+ */
+type AssistantEvent =
+  | { type: 'text'; value: string }
+  | { type: 'error'; value: string }
+  | { type: 'proposal'; value: { id: string; tool: string; summary: string } }
+
+/** Vahvistusta odottava kirjoitustoimi ja sen tila selaimessa. */
+type ProposalCard = {
+  id: string
+  tool: string
+  summary: string
+  /** pending = odottaa käyttäjää, confirming = pyyntö matkalla, done/failed = ohi. */
+  status: 'pending' | 'confirming' | 'done' | 'failed'
+  /** Lopputuloksen teksti: palvelimen summary tai virheilmoitus. */
+  message?: string
+}
+
+/** Työkalun nimi käyttäjälle. Tuntematon nimi näytetään sellaisenaan. */
+const TOOL_LABEL: Record<string, string> = {
+  create_note: 'Muistiinpano',
+  create_goal: 'Tavoite',
+  complete_habit_today: 'Rutiini',
+  create_alert: 'Hälytys',
+}
+
+/**
  * Viimeksi kuultu lause ja se, mitä sille tapahtui. Pelkkä teksti ei riitä:
  * kuultu mutta ohi mennyt komento näyttäisi täsmälleen samalta kuin läpi
  * mennyt, eikä käyttäjä näkisi kaatuiko herätesana vai puuttuiko kysymys.
@@ -297,6 +328,81 @@ function MicStatus({
   )
 }
 
+/**
+ * Vahvistuskortti avustajan ehdottamalle kirjoitustoimelle.
+ *
+ * **Mikään ei tapahdu ilman käyttäjän painallusta.** Ei oletusvalintaa, ei
+ * Enter-oikopolkua, ei automaattista vahvistusta ajastimella: avustaja saa
+ * ehdottaa, käyttäjä päättää. Suorituksen jälkeen kortti jää näkyviin
+ * lopputuloksen kanssa, koska ehdotus on palvelimella kertakäyttöinen eikä
+ * epäonnistunutta voi yrittää uudelleen — käyttäjän on nähtävä kumpi kävi.
+ */
+function ProposalPanel({
+  card,
+  onConfirm,
+  onDismiss,
+}: {
+  card: ProposalCard
+  onConfirm: () => void
+  onDismiss: () => void
+}) {
+  const label = TOOL_LABEL[card.tool] ?? card.tool
+  const open = card.status === 'pending' || card.status === 'confirming'
+
+  return (
+    <div
+      className={`mt-3 rounded-lg border p-3 ${
+        card.status === 'failed'
+          ? 'border-ax-down/40 bg-ax-down/[0.06]'
+          : card.status === 'done'
+            ? 'border-ax-up/40 bg-ax-up/[0.06]'
+            : 'border-ax-accent/40 bg-ax-accent/[0.06]'
+      }`}
+    >
+      <div className="font-mono text-[9px] uppercase tracking-wider text-ax-faint">
+        {open ? 'Vahvistus vaaditaan' : card.status === 'done' ? 'Tehty' : 'Ei tehty'} · {label}
+      </div>
+
+      <div className="mt-1.5 text-[13px] leading-relaxed text-ax-text">{card.summary}</div>
+
+      {card.message && card.status !== 'done' && (
+        <div className="mt-1.5 text-[11px] text-ax-down">{card.message}</div>
+      )}
+
+      <div className="mt-2.5 flex items-center gap-2">
+        {open ? (
+          <>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={card.status === 'confirming'}
+              className="rounded-md border border-ax-accent/60 bg-ax-accent/15 px-3 py-1 text-[12px] text-ax-accent transition-colors hover:bg-ax-accent/25 disabled:opacity-50"
+            >
+              {card.status === 'confirming' ? 'Vahvistetaan…' : 'Vahvista'}
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={card.status === 'confirming'}
+              className="rounded-md border border-ax-line px-3 py-1 text-[12px] text-ax-dim transition-colors hover:bg-ax-panel-hi disabled:opacity-50"
+            >
+              Peruuta
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded-md border border-ax-line px-3 py-1 text-[12px] text-ax-dim transition-colors hover:bg-ax-panel-hi"
+          >
+            Sulje
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** Komentopaletti nopeaan siirtymiseen — ja kun mikään komento ei osu, kysymys AI-avustajalle samassa ikkunassa. */
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
@@ -318,10 +424,15 @@ export function CommandPalette() {
   /** Suora kysymystila: seuraava kuultu lause menee assistentille ilman
    *  herätesanaa. Käynnistyy vain napista, ei koskaan itsestään. */
   const [directMode, setDirectMode] = useState(false)
+  /** Vahvistusta odottava kirjoitustoimi. */
+  const [proposal, setProposal] = useState<ProposalCard | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const router = useRouter()
+
+  /** Ehdotus myös refissä: käsittelijät ovat vakaita eivätkä näe tuoreinta tilaa. */
+  const proposalRef = useRef<ProposalCard | null>(null)
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -399,12 +510,84 @@ export function CommandPalette() {
     }
   }, [])
 
+  /**
+   * Sulkee vahvistusta odottavan ehdotuksen näkyvistä.
+   *
+   * Yhä odottava ehdotus **peruutetaan myös palvelimelta**: muuten se jäisi
+   * roikkumaan kymmeneksi minuutiksi ja olisi vahvistettavissa senkin jälkeen
+   * kun käyttäjä on jo sivuuttanut sen. Suoritettu tai epäonnistunut ehdotus
+   * on palvelimella jo poistettu, joten sille ei lähetetä mitään.
+   */
+  const dropProposal = useCallback(() => {
+    const current = proposalRef.current
+    // Ref tyhjennetään heti, ettei kaksi peräkkäistä sulkemista lähetä kahta pyyntöä.
+    proposalRef.current = null
+    setProposal(null)
+    if (!current || current.status !== 'pending') return
+    void fetch(`/api/arxcian/assistant/confirm?id=${encodeURIComponent(current.id)}`, {
+      method: 'DELETE',
+      keepalive: true,
+    }).catch(() => {
+      // Peruutus on siivousta: epäonnistuessaan ehdotus vanhenee itsestään.
+    })
+  }, [])
+
+  /**
+   * Suorittaa ehdotuksen käyttäjän nimenomaisesta painalluksesta.
+   *
+   * Ehdotus on palvelimella kertakäyttöinen — se poistetaan ennen suoritusta —
+   * joten epäonnistuneelle vahvistukselle ei tarjota uudelleenyritystä.
+   * Uusi yritys kulkee mallin kautta, jotta käyttäjä näkee mitä hyväksyy.
+   */
+  const confirmProposal = useCallback(async () => {
+    const current = proposalRef.current
+    if (!current || current.status !== 'pending') return
+
+    const busy: ProposalCard = { ...current, status: 'confirming' }
+    proposalRef.current = busy
+    setProposal(busy)
+
+    const finish = (card: ProposalCard) => {
+      proposalRef.current = card
+      setProposal(card)
+    }
+
+    try {
+      const res = await fetch('/api/arxcian/assistant/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: current.id }),
+      })
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; summary?: string; error?: string }
+        | null
+
+      if (!res.ok || !data?.ok) {
+        finish({ ...current, status: 'failed', message: data?.error ?? 'Toimen suoritus epäonnistui.' })
+        return
+      }
+      finish({ ...current, status: 'done', message: data.summary ?? current.summary })
+    } catch {
+      // Verkko katkesi kesken vahvistuksen: emme tiedä ehtikö palvelin
+      // suorittaa toimen. Sanotaan se suoraan sen sijaan että tarjottaisiin
+      // uusi yritys, joka näyttäisi lupaavan ettei mitään tapahtunut.
+      finish({
+        ...current,
+        status: 'failed',
+        message: 'Yhteys katkesi kesken vahvistuksen — tarkista tuliko toimi tehdyksi.',
+      })
+    }
+  }, [])
+
   const askAssistant = useCallback(async (prompt: string) => {
     setMode('asking')
     setQuery('')
     setAnswer(null)
     setSpeechBlocked(false)
     audioRef.current?.pause()
+    // Edellinen ehdotus pois ennen uutta kysymystä: vanha kortti ei saa jäädä
+    // roikkumaan uuden vastauksen viereen eikä ehdotus palvelimelle.
+    dropProposal()
     try {
       const res = await fetch('/api/arxcian/assistant', {
         method: 'POST',
@@ -431,6 +614,7 @@ export function CommandPalette() {
       const decoder = new TextDecoder()
       let buffer = ''
       let full = ''
+      let gotProposal = false
 
       // NDJSON: yksi tapahtuma per rivi. Verkkopala voi katketa keskeltä riviä,
       // joten vajaa loppu jää puskuriin seuraavaa lukukierrosta varten.
@@ -444,12 +628,28 @@ export function CommandPalette() {
 
         for (const line of lines) {
           if (!line.trim()) continue
-          const event = JSON.parse(line) as { type: 'text' | 'error'; value: string }
+          const event = JSON.parse(line) as AssistantEvent
+
           if (event.type === 'error') {
             setErrorMessage(event.value)
             setMode('error')
             return
           }
+
+          // Ehdotus omana haaranaan **ennen** tekstin kertymistä: value on
+          // olio, joten yhteinen käsittely liimasi vastaukseen merkkijonon
+          // "[object Object]" ja luki senkin ääneen. Summaryä ei lueta
+          // erikseen — malli selostaa saman asian heti perään, ja kortti on
+          // joka tapauksessa se mitä käyttäjä vahvistaa.
+          if (event.type === 'proposal') {
+            gotProposal = true
+            const card: ProposalCard = { ...event.value, status: 'pending' }
+            proposalRef.current = card
+            setProposal(card)
+            setMode('answered')
+            continue
+          }
+
           full += event.value
           setAnswer(full)
           // Ensimmäinen pala vaihtaa näkymän, jotta käyttäjä näkee vastauksen
@@ -459,11 +659,13 @@ export function CommandPalette() {
         }
       }
 
-      if (!full) {
+      // Pelkkä ehdotus ilman sanallista selostusta on kelvollinen vastaus.
+      if (!full && !gotProposal) {
         setErrorMessage('Jokin meni pieleen.')
         setMode('error')
         return
       }
+      if (!full) return
 
       // Ääni vasta kun teksti on valmis: puhesynteesi tarvitsee koko vastauksen.
       void speakAnswer(full)
@@ -473,9 +675,9 @@ export function CommandPalette() {
       setErrorMessage('Jokin meni pieleen.')
       setMode('error')
     }
-    // speakAnswer on itsekin riippumaton renderöinnistä ([]-riippuvuus), joten
-    // sen lisääminen tähän ei riko "vain vakaita referenssejä" -periaatetta.
-  }, [speakAnswer])
+    // Molemmat ovat []-riippuvuuksisia useCallbackeja, joten askAssistantin
+    // identiteetti pysyy vakaana — puheentunnistuksen mount-effect riippuu siitä.
+  }, [speakAnswer, dropProposal])
 
   // ⌘K / Ctrl+K avaa ja sulkee
   useEffect(() => {
@@ -512,8 +714,11 @@ export function CommandPalette() {
       setAnswer(null)
       setErrorMessage(null)
       audioRef.current?.pause()
+      // Vahvistamatta jäänyt ehdotus peruutetaan eikä jätetä odottamaan
+      // vanhenemistaan — sulkeminen ei ole hyväksyntä, mutta se on päätös.
+      dropProposal()
     }
-  }, [open])
+  }, [open, dropProposal])
 
   useEffect(() => {
     setIndex(0)
@@ -711,6 +916,15 @@ export function CommandPalette() {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
+      // Vahvistusta odottava ehdotus syö ensimmäisen Escapen: kortti ei katoa
+      // vahingossa, vaan sulkeutuminen on samalla nimenomainen peruutus myös
+      // palvelimelle. Kesken olevaa vahvistusta ei keskeytetä lainkaan.
+      if (proposalRef.current) {
+        e.preventDefault()
+        if (proposalRef.current.status === 'confirming') return
+        dropProposal()
+        return
+      }
       if (mode === 'asking') return // odotetaan vastausta
       if (mode === 'answered' || mode === 'error') {
         setMode('search')
@@ -827,7 +1041,20 @@ export function CommandPalette() {
 
             {mode === 'answered' && (
               <div className="max-h-72 overflow-y-auto p-4">
-                <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-ax-text">{answer}</div>
+                {/* Ehdotus voi tulla ennen ensimmäistä sanaa, joten vastaus
+                    saa olla vielä tyhjä. */}
+                {answer && (
+                  <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-ax-text">{answer}</div>
+                )}
+
+                {proposal && (
+                  <ProposalPanel
+                    card={proposal}
+                    onConfirm={() => void confirmProposal()}
+                    onDismiss={dropProposal}
+                  />
+                )}
+
                 {speechBlocked && answer && (
                   <button
                     type="button"
