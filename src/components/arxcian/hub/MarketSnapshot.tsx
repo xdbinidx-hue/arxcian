@@ -19,7 +19,7 @@ export async function MarketSnapshot({ delay }: { delay?: number }) {
 
   return (
     <Panel
-      title="Markkinatilanne"
+      title="Markkinat"
       meta={
         fetchedAt
           ? new Date(fetchedAt).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
@@ -30,23 +30,32 @@ export async function MarketSnapshot({ delay }: { delay?: number }) {
     >
       {cached ? (
         <>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
+          {/* Rivimuoto sarakkeiden sijaan: nimi vasemmalle, kurssi ja muutos
+              oikeaan reunaan tasattuina. Silmä lukee muutosprosentit yhtenä
+              pystyrivinä, mikä on hubissa se mitä niistä halutaan — ei
+              yksittäisen instrumentin tarkka arvo. */}
+          <div className="divide-y divide-ax-line/10">
             {HUB_SYMBOLS.map(sym => {
               const q = quotes[sym.quoteSymbol]
               const up = q && q.change >= 0
               return (
-                <div key={sym.quoteSymbol}>
-                  <p className="text-[10px] uppercase tracking-wider text-ax-faint">{sym.label}</p>
-                  <p className="font-mono text-[13px] tabular-nums text-ax-text">
+                <div
+                  key={sym.quoteSymbol}
+                  className="grid grid-cols-[1fr_auto_auto] items-center gap-4 py-2.5"
+                >
+                  <span className="truncate text-[11px] uppercase tracking-wider text-ax-dim">
+                    {sym.label}
+                  </span>
+                  <span className="font-mono text-[12px] tabular-nums text-ax-text">
                     {q ? fmtPrice(q.price) : '—'}
-                  </p>
-                  <p
-                    className={`font-mono text-[11px] tabular-nums ${
+                  </span>
+                  <span
+                    className={`w-[54px] text-right font-mono text-[12px] tabular-nums ${
                       !q ? 'text-ax-faint' : up ? 'text-ax-up' : 'text-ax-down'
                     }`}
                   >
                     {q ? `${up ? '+' : ''}${q.changePercent.toFixed(2)}%` : '—'}
-                  </p>
+                  </span>
                 </div>
               )
             })}

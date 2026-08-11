@@ -43,9 +43,11 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
             </span>
           </Link>
 
-          <div className="min-w-0 flex-1">
-            <Ticker />
-          </div>
+          {/* Hubissa ylänauha jätetään tyhjäksi: etusivulla on jo oma
+              HUD-kello ja samat luvut paneeleissa, joten tikkeri toistaisi
+              ne kolmanteen kertaan. Muissa osioissa se on ainoa paikka jossa
+              kello ja yleistila näkyvät. */}
+          <div className="min-w-0 flex-1">{!onHub && <Ticker />}</div>
 
           <kbd className="hidden shrink-0 rounded border border-ax-line px-1.5 py-0.5 font-mono text-[10px] text-ax-faint md:inline">
             ⌘K

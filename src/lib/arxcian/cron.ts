@@ -6,6 +6,7 @@ import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
+import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -77,8 +78,19 @@ const globeJobs: CronJob[] = [
   },
 ]
 
+const hubJobs: CronJob[] = [
+  {
+    id: 'hub-channels',
+    description: 'Hub: seurattujen YouTube-kanavien tuoreimmat',
+    run: async () => {
+      const result = await getChannelVideos()
+      return { key: CHANNELS_CACHE_KEY, items: result.data.length }
+    },
+  },
+]
+
 /** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
-export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs]
+export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs, ...hubJobs]
 
 export function jobsFor(schedule: string | null): readonly CronJob[] {
   if (!schedule) return JOBS

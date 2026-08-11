@@ -37,7 +37,7 @@ export function Panel({ title, meta, empty, children, className = '', delay = 0 
       />
 
       <header className="ax-glass-divide flex items-center justify-between gap-3 border-b px-4 py-2.5">
-        <h2 className="text-[13px] font-light tracking-[0.06em] text-ax-text">{title}</h2>
+        <h2 className="text-[13px] font-light uppercase tracking-[0.1em] text-ax-text">{title}</h2>
         {meta ? (
           <span className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">{meta}</span>
         ) : (

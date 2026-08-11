@@ -19,7 +19,9 @@ export function AssistantBar({ name }: { name: string }) {
   const open = () => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))
 
   return (
-    <div className="pointer-events-none fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-end gap-3">
+    // Mobiilissa palkki nostetaan alanavigaation ja mikrofonimerkin yläpuolelle:
+    // bottom-4 jäisi kokonaan alapalkin taakse, eikä sitä pystyisi painamaan.
+    <div className="pointer-events-none fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-end gap-3 lg:bottom-4">
       <RobotHead />
 
       <button
@@ -48,16 +50,22 @@ export function AssistantBar({ name }: { name: string }) {
  */
 function RobotHead() {
   return (
-    <div aria-hidden="true" className="relative hidden h-[105px] w-[90px] md:block">
-      <div className="absolute bottom-0 left-1/2 h-6 w-20 -translate-x-1/2 rounded-[50%] border border-ax-accent/30 shadow-[0_0_18px_rgb(var(--ax-accent)/0.2)]" />
+    <div aria-hidden="true" className="relative hidden h-[128px] w-[104px] md:block">
+      {/* Jalusta: kaksi sisäkkäistä ellipsiä, jotta pää näyttää seisovan
+          samalla projektorikehällä kuin maapallo sen yläpuolella. */}
+      <div className="absolute bottom-0 left-1/2 h-7 w-24 -translate-x-1/2 rounded-[50%] border border-ax-accent/45 shadow-[0_0_22px_rgb(var(--ax-accent)/0.3)]" />
+      <div className="absolute bottom-1.5 left-1/2 h-4 w-14 -translate-x-1/2 rounded-[50%] border border-ax-accent/25" />
 
-      <div className="absolute bottom-3 left-1/2 h-[78px] w-[58px] -translate-x-1/2 rounded-[48%_48%_40%_45%] border border-ax-accent/35 bg-ax-accent/[0.025] shadow-[inset_0_0_20px_rgb(var(--ax-accent)/0.08),0_0_18px_rgb(var(--ax-accent)/0.12)] backdrop-blur-sm">
-        <div className="ax-pulse absolute left-[20%] top-[37%] h-1.5 w-1.5 rounded-full bg-ax-accent shadow-[0_0_8px_rgb(var(--ax-accent)/1)]" />
-        <div className="ax-pulse absolute right-[20%] top-[37%] h-1.5 w-1.5 rounded-full bg-ax-accent shadow-[0_0_8px_rgb(var(--ax-accent)/1)]" />
+      <div className="absolute bottom-4 left-1/2 h-[96px] w-[72px] -translate-x-1/2 rounded-[48%_48%_40%_45%] border border-ax-accent/55 bg-ax-accent/[0.05] shadow-[inset_0_0_26px_rgb(var(--ax-accent)/0.16),0_0_28px_rgb(var(--ax-accent)/0.25)] backdrop-blur-sm">
+        <span className="ax-pulse absolute left-[20%] top-[37%] h-2 w-2 rounded-full bg-ax-accent shadow-[0_0_10px_rgb(var(--ax-accent)/1),0_0_20px_rgb(var(--ax-accent)/0.6)]" />
+        <span className="ax-pulse absolute right-[20%] top-[37%] h-2 w-2 rounded-full bg-ax-accent shadow-[0_0_10px_rgb(var(--ax-accent)/1),0_0_20px_rgb(var(--ax-accent)/0.6)]" />
 
-        <div className="absolute left-1/2 top-[52%] h-[18%] w-px -translate-x-1/2 rotate-6 bg-ax-accent/30" />
-        <div className="absolute bottom-[22%] left-1/2 h-px w-[28%] -translate-x-1/2 bg-ax-accent/40" />
-        <div className="absolute inset-[11%] rounded-[50%] border border-dashed border-ax-accent/20" />
+        <span className="absolute left-1/2 top-[52%] h-[16%] w-px -translate-x-1/2 rotate-6 bg-ax-accent/45" />
+        <span className="absolute bottom-[22%] left-1/2 h-px w-[30%] -translate-x-1/2 bg-ax-accent/55" />
+
+        {/* Rautalankaverkko: yksi katkoviivakehä riittää digitaaliseen
+            vaikutelmaan. Toinen pystysuora ellipsi teki päästä kypärän. */}
+        <span className="absolute inset-[10%] rounded-[50%] border border-dashed border-ax-accent/25" />
       </div>
     </div>
   )

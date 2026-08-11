@@ -87,13 +87,27 @@ export function GlobeHud({
       {/* Lähdetiedot — aina näkyvissä, jottei vanhentunutta dataa luulla
           tuoreeksi. Kaikki lähteet listataan, koska näkymässä on nyt useamman
           lähteen dataa yhtä aikaa. */}
-      <div className="absolute right-0 top-0 text-right">
+      <div className="absolute right-0 top-0 max-w-[45%] text-right">
         {sources.map(source => (
           <p key={source.name} className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">
             {source.name}{' '}
             <span className="text-ax-faint/70">{fmtTime(source.fetchedAt)}</span>
           </p>
         ))}
+
+        {/* Varaumat kuuluvat lähdetietojen viereen eivätkä pallon alle:
+            alalaidassa ne jäivät hubin kiinteän avustajapalkin alle, ja
+            asiallisesti ne ovat samaa tietoa kuin lähde ja hakuhetki —
+            mitä datasta puuttuu ja miksi. */}
+        {caveats.length > 0 && (
+          <div className="mt-1.5 hidden space-y-1 sm:block">
+            {caveats.map(caveat => (
+              <p key={caveat} className="text-[9px] leading-snug text-ax-faint/60">
+                {caveat}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Zoom. Rullaa ei kaapata: maapallo on iso keskellä vieritettävää sivua,
@@ -144,16 +158,6 @@ export function GlobeHud({
         </div>
       )}
 
-      {/* Varaumat, kun jokin lähde jättää osan datasta pois kartalta */}
-      {!selected && caveats.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 mx-auto max-w-md space-y-1 text-center">
-          {caveats.map(caveat => (
-            <p key={caveat} className="text-[10px] leading-relaxed text-ax-faint/70">
-              {caveat}
-            </p>
-          ))}
-        </div>
-      )}
     </>
   )
 }
