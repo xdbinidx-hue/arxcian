@@ -184,14 +184,16 @@ const EARTH_FRAGMENT = `
     // Ilman muunnosta se vaalenisi ulostulon gammakorjauksessa harmahtavaksi
     // eikä vastaisi sitä sinistä joka on käyttöliittymän muissa osissa.
     float dayLum = dot(daySrgb, vec3(0.299, 0.587, 0.114));
-    vec3 landBlue = toLinear(vec3(0.38, 0.70, 1.0)) * (0.85 + 0.45 * dayLum);
+    vec3 landBlue = toLinear(vec3(0.54, 0.78, 1.0)) * (0.92 + 0.45 * dayLum);
 
-    vec3 lit = landBlue * (0.95 + 0.75 * max(lambert, 0.0));
+    vec3 lit = landBlue * (0.95 + 0.7 * max(lambert, 0.0));
     // Yöpuolella mantereet hohtavat omaa valoaan, jotta koko pallo on samaa
     // sinistä eikä varjopuoli jää pelkiksi irrallisiksi valopisteiksi mustassa.
     // Kaupunkivalot lisätään päälle omasta tekstuuristaan, joten ne pysyvät
     // keltaisina sinisen maan päällä.
-    vec3 dark = landBlue * 0.62 + night * twinkle * 2.4;
+    // Yöpuolen hehku pidetään selvästi himmeämpänä kuin päiväpuolen: liian
+    // kirkkaana manner nielaisee keltaiset kaupunkivalot alleen.
+    vec3 dark = landBlue * 0.40 + night * twinkle * 2.4;
     vec3 color = mix(dark, lit, dayAmount);
 
     // Reunavalo korostaa ilmakehän rajaa myös itse planeetassa. Vain maalla:
@@ -381,27 +383,40 @@ type Marker = {
   point: GlobePoint
   anchor: THREE.Object3D
   dot: SVGCircleElement
-  /** Kutsuviiva ja lämpötila — vain pisteillä joilla on callout. */
+  /** Lyhyt yhdysviiva kortista pisteeseen — vain pisteillä joilla on callout. */
   line: SVGLineElement | null
-  text: SVGTextElement | null
-  /** Tekstin leveys pikseleinä, mitattuna kerran luonnin yhteydessä. */
+  /** Kortti: tausta, nimi ja arvo yhtenä ryhmänä. */
+  card: SVGGElement | null
+  /** Kortin leveys pikseleinä, mitattuna kerran luonnin yhteydessä. */
   width: number
   /** Viimeisin ruutusijainti, klikkauksen osumatestiä varten. Null = ei näy. */
   sx: number | null
   sy: number | null
 }
 
-/* --- Merkkien ja kutsuviivojen asettelu, kaikki pikseleinä --- */
+/* --- Korttien asettelu, kaikki pikseleinä --- */
 
-/** Kuinka kaukana canvasin reunasta tekstipylväät ovat. */
-const CALLOUT_MARGIN = 6
-/** Pystysuora vähimmäisväli kahden nimilapun välillä. */
-const CALLOUT_SPACING = 19
-/** Nimilaput pidetään pois ylä- ja alakulmista, joissa on muuta HUDia. */
-const CALLOUT_TOP = 0.13
-const CALLOUT_BOTTOM = 0.87
-/** Rako viivan pään ja tekstin välissä. */
-const CALLOUT_GAP = 4
+/** Kortin korkeus. Matala tarkoituksella: kortteja on toistakymmentä. */
+const CARD_HEIGHT = 18
+/** Vaakasuora sisennys kortin reunasta tekstiin. */
+const CARD_PAD = 6
+/** Rako nimen ja arvon välissä. */
+const CARD_GAP = 5
+/** Kuinka kauas pisteestä kortti työnnetään ulospäin pallon keskeltä. */
+const CARD_OFFSET = 13
+/** Vähimmäisrako kahden kortin välissä törmäyksenväistossa. */
+const CARD_MARGIN = 4
+/**
+ * Törmäyksenväiston kierrosmäärä.
+ *
+ * Kortteja on neljätoista, joten yksi kierros on 91 pariparivertailua — se
+ * on ruutua kohden mitätöntä. Neljäkymmentä kierrosta riittää purkamaan myös
+ * Euroopan ruuhkan, jossa seitsemän kaupunkia osuu muutaman asteen sisään
+ * toisistaan. Silmukka katkeaa heti kun mikään ei enää liiku.
+ */
+const RELAX_PASSES = 40
+/** Kortit pidetään canvasin sisällä tällä marginaalilla. */
+const CARD_BOUNDS = 3
 /** Kuinka läheltä merkkiä klikkaus vielä osuu. */
 const HIT_RADIUS = 18
 
@@ -755,68 +770,101 @@ export default function GlobeScene({
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerUp)
 
-    /* --- Merkkien ja kutsuviivojen asettelu ---
+    /* --- Korttien asettelu ---
        Sijainti projisoidaan ruudulle joka ruudussa, koska pallo kääntyy.
-       Nimilaput eivät kuitenkaan seuraa pistettä vapaasti: ne pinotaan
-       canvasin vasempaan ja oikeaan reunaan, koska 14 kaupunkia vapaasti
-       sijoiteltuna menisi päällekkäin — Eurooppa yksin tuo seitsemän lappua
-       muutaman asteen sisään toisistaan. */
+       Kortti asettuu kaupunkinsa viereen — ei reunaan pinottuna kuten ennen,
+       jolloin kartan yli kulki toistakymmentä pitkää kutsuviivaa.
+
+       Vapaa sijoittelu yksin ei riitä: Eurooppa tuo seitsemän kaupunkia
+       muutaman asteen sisään toisistaan, jolloin kortit menisivät päällekkäin.
+       Siksi haluttu paikka on vain lähtökohta, jota törmäyksenväisto siirtää
+       kunnes kortit eivät enää leikkaa toisiaan. */
     const worldPos = new THREE.Vector3()
     const toCamera = new THREE.Vector3()
     const normal = new THREE.Vector3()
 
-    type Slot = { marker: Marker; sx: number; sy: number; y: number }
-    const left: Slot[] = []
-    const right: Slot[] = []
+    type Slot = { marker: Marker; sx: number; sy: number; cx: number; cy: number; w: number }
+    const slots: Slot[] = []
 
-    const placeColumn = (slots: Slot[], isLeft: boolean) => {
+    const layoutCards = () => {
       if (slots.length === 0) return
-      slots.sort((a, b) => a.sy - b.sy)
+      const half = cssSize / 2
 
-      const top = cssSize * CALLOUT_TOP
-      const bottom = cssSize * CALLOUT_BOTTOM
-
-      // Ylhäältä alas: kukin lappu omalle korkeudelleen, mutta vähintään
-      // CALLOUT_SPACING edellisen alapuolelle.
-      let prev = -Infinity
+      // Lähtöpaikka: piste työnnettynä ulospäin pallon keskipisteestä, jolloin
+      // kortti asettuu kaupungin ulkopuolelle eikä sen päälle. Reunalla oleva
+      // kaupunki saa korttinsa luonnostaan pallon ulkopuolelle.
       for (const s of slots) {
-        s.y = Math.max(s.sy, prev + CALLOUT_SPACING, top)
-        prev = s.y
+        const dx = s.sx - half
+        const dy = s.sy - half
+        const len = Math.hypot(dx, dy) || 1
+        s.cx = s.sx + (dx / len) * (CARD_OFFSET + s.w / 2)
+        s.cy = s.sy + (dy / len) * (CARD_OFFSET + CARD_HEIGHT / 2)
       }
 
-      // Jos pino valui alareunan yli, se siirretään ylös alhaalta lukien —
-      // pelkkä koko pinon siirto voisi työntää ylimmät ulos yläreunasta.
-      const overflow = slots[slots.length - 1].y - bottom
-      if (overflow > 0) {
-        let next = Infinity
-        for (let i = slots.length - 1; i >= 0; i--) {
-          slots[i].y = Math.max(top, Math.min(slots[i].y - overflow, next - CALLOUT_SPACING))
-          next = slots[i].y
+      for (let pass = 0; pass < RELAX_PASSES; pass++) {
+        let moved = false
+
+        for (let i = 0; i < slots.length; i++) {
+          for (let j = i + 1; j < slots.length; j++) {
+            const a = slots[i]
+            const b = slots[j]
+            const minX = (a.w + b.w) / 2 + CARD_MARGIN
+            const minY = CARD_HEIGHT + CARD_MARGIN
+            const dx = b.cx - a.cx
+            const dy = b.cy - a.cy
+            const overlapX = minX - Math.abs(dx)
+            const overlapY = minY - Math.abs(dy)
+            if (overlapX <= 0 || overlapY <= 0) continue
+
+            moved = true
+            // Työnnetään sitä akselia pitkin jolla päällekkäisyys on pienempi:
+            // se on lyhin tie erilleen ja pitää kortin lähellä kaupunkiaan.
+            if (overlapY < overlapX) {
+              const push = (overlapY / 2) * (dy < 0 ? -1 : 1)
+              a.cy -= push
+              b.cy += push
+            } else {
+              const push = (overlapX / 2) * (dx < 0 ? -1 : 1)
+              a.cx -= push
+              b.cx += push
+            }
+          }
         }
+
+        if (!moved) break
       }
 
       for (const s of slots) {
-        const { line, text, width } = s.marker
-        if (!line || !text) continue
-        const textX = isLeft ? CALLOUT_MARGIN : cssSize - CALLOUT_MARGIN
-        const lineX = isLeft
-          ? CALLOUT_MARGIN + width + CALLOUT_GAP
-          : cssSize - CALLOUT_MARGIN - width - CALLOUT_GAP
+        const { line, card } = s.marker
+        if (!line || !card) continue
 
-        text.setAttribute('x', String(textX))
-        text.setAttribute('y', String(s.y))
-        text.setAttribute('text-anchor', isLeft ? 'start' : 'end')
+        s.cx = Math.min(cssSize - s.w / 2 - CARD_BOUNDS, Math.max(s.w / 2 + CARD_BOUNDS, s.cx))
+        s.cy = Math.min(
+          cssSize - CARD_HEIGHT / 2 - CARD_BOUNDS,
+          Math.max(CARD_HEIGHT / 2 + CARD_BOUNDS, s.cy),
+        )
+
+        card.setAttribute('transform', `translate(${s.cx.toFixed(1)} ${s.cy.toFixed(1)})`)
+
+        // Viiva päättyy kortin reunaan eikä sen keskelle, jottei se piirry
+        // taustan päälle. Suhde kertoo kuinka pitkälle kortin keskeltä
+        // pisteen suuntaan päästään ennen reunaa.
+        const dx = s.sx - s.cx
+        const dy = s.sy - s.cy
+        const tx = dx === 0 ? Infinity : s.w / 2 / Math.abs(dx)
+        const ty = dy === 0 ? Infinity : CARD_HEIGHT / 2 / Math.abs(dy)
+        const edge = Math.min(tx, ty, 1)
+
         line.setAttribute('x1', String(s.sx))
         line.setAttribute('y1', String(s.sy))
-        line.setAttribute('x2', String(lineX))
-        line.setAttribute('y2', String(s.y))
+        line.setAttribute('x2', String(s.cx + dx * edge))
+        line.setAttribute('y2', String(s.cy + dy * edge))
       }
     }
 
     const updateMarkers = (t: number) => {
       if (cssSize === 0) return
-      left.length = 0
-      right.length = 0
+      slots.length = 0
 
       for (const marker of markersRef.current) {
         marker.anchor.getWorldPosition(worldPos)
@@ -831,7 +879,7 @@ export default function GlobeScene({
 
         marker.dot.style.opacity = String(fade)
         if (marker.line) marker.line.style.opacity = String(fade * 0.55)
-        if (marker.text) marker.text.style.opacity = String(fade)
+        if (marker.card) marker.card.style.opacity = String(fade)
 
         if (fade <= 0) {
           marker.sx = null
@@ -855,11 +903,10 @@ export default function GlobeScene({
           String(selected ? base * (1.6 + 0.2 * Math.sin(t * 3)) : base),
         )
 
-        if (marker.line) (sx < cssSize / 2 ? left : right).push({ marker, sx, sy, y: sy })
+        if (marker.line) slots.push({ marker, sx, sy, cx: sx, cy: sy, w: marker.width })
       }
 
-      placeColumn(left, true)
-      placeColumn(right, false)
+      layoutCards()
     }
 
     const clock = new THREE.Clock()
@@ -986,35 +1033,61 @@ export default function GlobeScene({
       calloutSvg.appendChild(dot)
 
       let line: SVGLineElement | null = null
-      let text: SVGTextElement | null = null
+      let card: SVGGElement | null = null
       let width = 0
 
       if (point.callout) {
         line = document.createElementNS(ns, 'line')
-        line.style.cssText = 'stroke:rgb(var(--ax-line));stroke-width:0.75;opacity:0'
+        line.style.cssText = 'stroke:rgb(var(--ax-accent)/0.5);stroke-width:0.75;opacity:0'
         calloutSvg.appendChild(line)
 
-        text = document.createElementNS(ns, 'text')
-        text.setAttribute('dominant-baseline', 'middle')
-        // paint-order piirtää ääriviivan ennen täyttöä, jolloin siitä tulee
-        // taustanvärinen sädekehä eikä tekstin päälle levittyvä reunus. Ilman
-        // sitä lämpötila katoaisi kaupunkivalojen päälle osuessaan.
-        text.style.cssText =
-          'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;' +
-          `letter-spacing:0.02em;fill:rgb(var(--ax-${point.tone === 'warn' ? 'warn' : 'faint'}));` +
-          'paint-order:stroke;stroke:rgb(var(--ax-bg)/0.85);stroke-width:3px;' +
-          'stroke-linejoin:round;opacity:0'
-        text.textContent = `${point.label} ${point.callout}`
-        calloutSvg.appendChild(text)
+        // Kortti on oma ryhmänsä, jotta koko lappu siirtyy yhdellä
+        // transformilla eikä jokaista tekstiä tarvitse sijoittaa erikseen
+        // joka ruudussa.
+        card = document.createElementNS(ns, 'g')
+        card.style.opacity = '0'
 
-        // Leveys mitataan kerran: viivan pää täytyy tietää ennen kuin se
-        // voidaan piirtää tekstin viereen. getComputedTextLength on
-        // asettelukysely, joten sitä ei tehdä joka ruudussa. Jos fontti ei ole
-        // vielä latautunut, arvio monospace-leveydellä 0,6 em.
-        width = text.getComputedTextLength() || (text.textContent?.length ?? 0) * 6.6
+        const bg = document.createElementNS(ns, 'rect')
+        bg.setAttribute('rx', '5')
+        bg.setAttribute('height', String(CARD_HEIGHT))
+        bg.setAttribute('y', String(-CARD_HEIGHT / 2))
+        bg.style.cssText =
+          'fill:rgb(var(--ax-bg)/0.72);stroke:rgb(var(--ax-accent)/0.3);stroke-width:0.75'
+
+        const name = document.createElementNS(ns, 'text')
+        name.setAttribute('dominant-baseline', 'middle')
+        name.setAttribute('y', '0.5')
+        name.style.cssText =
+          'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8.5px;' +
+          'letter-spacing:0.08em;fill:rgb(var(--ax-dim));text-transform:uppercase'
+        name.textContent = point.label.toUpperCase()
+
+        const value = document.createElementNS(ns, 'text')
+        value.setAttribute('dominant-baseline', 'middle')
+        value.setAttribute('y', '0.5')
+        value.style.cssText =
+          'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;' +
+          `fill:rgb(var(--ax-${point.tone === 'warn' ? 'warn' : 'accent'}))`
+        value.textContent = point.callout
+
+        card.append(bg, name, value)
+        calloutSvg.appendChild(card)
+
+        // Leveydet mitataan kerran luonnin yhteydessä: getComputedTextLength on
+        // asettelukysely, eikä sitä tehdä joka ruudussa. Jos fontti ei ole vielä
+        // latautunut, arvio monospace-leveydellä 0,6 em.
+        const nameW = name.getComputedTextLength() || (name.textContent?.length ?? 0) * 5.1
+        const valueW = value.getComputedTextLength() || (value.textContent?.length ?? 0) * 6.0
+        width = CARD_PAD + nameW + CARD_GAP + valueW + CARD_PAD
+
+        bg.setAttribute('width', String(width))
+        bg.setAttribute('x', String(-width / 2))
+        name.setAttribute('x', String(-width / 2 + CARD_PAD))
+        value.setAttribute('x', String(width / 2 - CARD_PAD))
+        value.setAttribute('text-anchor', 'end')
       }
 
-      markersRef.current.push({ point, anchor, dot, line, text, width, sx: null, sy: null })
+      markersRef.current.push({ point, anchor, dot, line, card, width, sx: null, sy: null })
     }
   }, [data])
 
