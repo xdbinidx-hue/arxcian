@@ -44,6 +44,16 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
             Tämän kuun myynti
           </p>
 
+          {/* Ennusteen merkintä on paneelissa eikä pelkästään koodin
+              kommentissa: nuoli ja prosentti näyttäisivät muuten toteumalta,
+              vaikka ne vertaavat kuukauden loppuun projisoitua lukua. */}
+          {data.projected && (
+            <p className="mb-2 text-[9px] leading-snug text-ax-faint">
+              Muutos vertaa kuukauden loppuun projisoitua ennustetta edelliseen
+              kuukauteen. Isot luvut ovat toteutunut kertymä.
+            </p>
+          )}
+
           <div className="divide-y divide-ax-line/10">
             {METRICS.map(metric => {
               const value = data.metrics[metric.key]

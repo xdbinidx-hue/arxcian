@@ -7,6 +7,7 @@ import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
+import { refreshRjMobSummary, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -85,6 +86,14 @@ const hubJobs: CronJob[] = [
     run: async () => {
       const result = await getChannelVideos()
       return { key: CHANNELS_CACHE_KEY, items: result.data.length }
+    },
+  },
+  {
+    id: 'rjmob-summary',
+    description: 'Hub: RJ-Mobin kuukausiyhteenveto',
+    run: async () => {
+      await refreshRjMobSummary()
+      return { key: RJMOB_SUMMARY_KEY }
     },
   },
 ]
