@@ -17,7 +17,7 @@ import { DEFAULT_LANGUAGE, type AssistantLanguage } from '@/lib/arxcian/assistan
  * riippuvuutena, koska RJ-Mobin Sheets- ja Drive-haku käyttävät sitä.
  */
 
-/** Kielen ääni omassa ympäristömuuttujassaan. Sama avain molemmille äänille. */
+/** Kielen ääni omassa ympäristömuuttujassaan. API-avain on sama molemmille. */
 const VOICE_ENV: Record<AssistantLanguage, string> = {
   en: 'ELEVENLABS_VOICE_ID',
   fi: 'ELEVENLABS_VOICE_ID_FI',
