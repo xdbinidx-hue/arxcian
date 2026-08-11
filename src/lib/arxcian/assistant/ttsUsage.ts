@@ -18,7 +18,14 @@ import { kv } from '@vercel/kv'
  * hukkaisi ne, ja puhepaloja haetaan tarkoituksella rinnakkain.
  */
 
-export const TTS_CHARS_KEY = 'assistant:tts:chars'
+/**
+ * Etuliite kirjoitetaan tähän auki, koska cache.ts:n oma `fullKey` ei ole
+ * vietynä eikä sen läpi voi mennä: kasvatus vaatii atomisen INCRBY:n, jota
+ * cache.ts ei tarjoa. Ilman etuliitettä laskuri jäisi ainoana arxcianin
+ * avaimena `arxcian:`-nimiavaruuden ulkopuolelle, eikä se näkyisi kun
+ * avaimia listataan.
+ */
+export const TTS_CHARS_KEY = 'arxcian:assistant:tts:chars'
 
 /**
  * Kasvattaa laskuria. **Ei koskaan heitä**: mittari on sivuvaikutus, ei
