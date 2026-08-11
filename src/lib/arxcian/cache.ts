@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv'
+import { kv } from './kv'
 
 /**
  * Geneerinen hae-ja-välimuistita -apuri arxcianin ulkoisille datalähteille.
@@ -50,7 +50,7 @@ function fullKey(key: string) {
 /** Redis-virheet eivät saa kaataa kutsujaa. */
 async function readEnvelope<T>(key: string): Promise<Envelope<T> | null> {
   try {
-    return await kv.get<Envelope<T>>(fullKey(key))
+    return await kv().get<Envelope<T>>(fullKey(key))
   } catch (e) {
     console.error(`[cache] luku epäonnistui: ${key}`, e)
     return null
@@ -59,7 +59,7 @@ async function readEnvelope<T>(key: string): Promise<Envelope<T> | null> {
 
 async function writeEnvelope<T>(key: string, envelope: Envelope<T>, expiration: number) {
   try {
-    await kv.set(fullKey(key), envelope, { ex: expiration })
+    await kv().set(fullKey(key), envelope, { ex: expiration })
   } catch (e) {
     console.error(`[cache] kirjoitus epäonnistui: ${key}`, e)
   }
@@ -132,7 +132,7 @@ export async function writeCached<T>(
 /** Poistaa avaimen välimuistista. */
 export async function invalidate(key: string): Promise<void> {
   try {
-    await kv.del(fullKey(key))
+    await kv().del(fullKey(key))
   } catch (e) {
     console.error(`[cache] poisto epäonnistui: ${key}`, e)
   }

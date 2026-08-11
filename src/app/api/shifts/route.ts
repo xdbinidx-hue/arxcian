@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { kv } from '@/lib/arxcian/kv'
 import { DayInfo } from '@/lib/shiftSchedule'
 
 function keyFor(month: string) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   if (!month) return NextResponse.json({ error: 'month required (YYYY-MM)' }, { status: 400 })
 
   try {
-    const days = await kv.get<DayInfo[]>(keyFor(month))
+    const days = await kv().get<DayInfo[]>(keyFor(month))
     return NextResponse.json({ days: days ?? [] })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     if (!month || !Array.isArray(days)) {
       return NextResponse.json({ error: 'month and days[] required' }, { status: 400 })
     }
-    await kv.set(keyFor(month), days)
+    await kv().set(keyFor(month), days)
     return NextResponse.json({ ok: true })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
