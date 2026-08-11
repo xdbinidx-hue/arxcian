@@ -17,7 +17,8 @@ import { synthesizeSpeech } from '@/lib/arxcian/tts'
  * kapasiteetin kuin ennen pilkkomista ja jättää varaa pidemmille vastauksille.
  *
  * Raja suojaa ElevenLabsin merkkikiintiötä, ei palvelinta — synteesi on
- * ulkoinen maksullinen kutsu, joten katto pidetään olemassa.
+ * ulkoinen maksullinen kutsu, joten katto pidetään olemassa. Toteutunutta
+ * kulutusta seuraa erikseen lib/arxcian/assistant/ttsUsage.ts.
  */
 const RATE_LIMIT = 300
 

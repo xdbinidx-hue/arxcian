@@ -1,5 +1,6 @@
 import { speakableText } from '@/lib/arxcian/speakable'
 import { TTS_MODEL } from '@/lib/arxcian/models'
+import { addChars } from '@/lib/arxcian/assistant/ttsUsage'
 
 /**
  * Puheentuottaja AI-assistentin vastauksille (ElevenLabs).
@@ -108,6 +109,11 @@ export async function synthesizeSpeech(text: string): Promise<Buffer> {
 
   const audio = Buffer.from(await res.arrayBuffer())
   if (audio.length === 0) throw new Error('Puhesynteesi ei palauttanut ääntä')
+
+  // Kirjanpito vasta onnistuneesta kutsusta ja lähetetystä merkkimäärästä:
+  // laskutus koskee juuri näitä merkkejä, ei sitä mitä kutsuja tarjosi ennen
+  // siivousta ja katkaisua. Kasvatus ei koskaan heitä (ks. ttsUsage.ts).
+  await addChars(trimmed.length)
 
   return audio
 }
