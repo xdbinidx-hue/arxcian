@@ -163,9 +163,25 @@ AI-geokoodauksen jossa sijainti on pääteltu eikä artikkelin metadataa.
 Edetään näidenkin kanssa "Työtapa"-osion periaatteella: vaihe kerrallaan, ei
 kaikkea kerralla.
 
+## Hubin etusivu
+
+Etusivu on HUD-näkymä ([page.tsx](src/app/arxcian/page.tsx)): kello ja järjestelmän tila ylärivillä, maapallo keskellä, paneelit molemmin puolin ja avustajapalkki alalaidassa.
+
+Kaikki paneelit kulkevat jaetun [Panel.tsx](src/components/arxcian/Panel.tsx):n läpi — **ilme muuttuu yhdestä paikasta**, älä tyylittele yksittäisiä paneeleita erikseen. Taustan [SynapseField](src/components/arxcian/SynapseField.tsx) johtaa pistemääränsä näkymän pinta-alasta ja pysähtyy kun välilehti menee taustalle; viivahaku on O(n²), joten kiinteä pistemäärä olisi puhelimessa turhaa työtä.
+
+Maapallon ympärillä on kaksi eri kerrosta joita ei pidä sekoittaa: [GlobeHud](src/components/arxcian/globe/GlobeHud.tsx) piirtää SVG-renkaat, lähdetiedot ja varaumat pallon **sisälle**, [GlobeFrame](src/components/arxcian/hub/GlobeFrame.tsx) taas HUD-renkaat ja projektorikehän sen **ympärille**. Molemmat ovat `pointer-events-none`, koska pallo on raahattava.
+
+Alapalkki ei ole oma hakukenttänsä vaan avaa `CommandPaletten` ikkunatapahtumalla (`OPEN_PALETTE_EVENT`). Kaksi rinnakkaista kenttää samaan tarkoitukseen olisi kahdenlaista tilaa ilman hyötyä.
+
+Seuratut YouTube-kanavat: [channels.ts](src/lib/arxcian/channels.ts), julkinen RSS-syöte ilman API-avainta, cron-työ `hub-channels`. Kanava-ID on pysyvä vaikka kanava vaihtaisi nimeä — siksi ID kovakoodataan eikä @-tunnusta.
+
+**Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
+
 ## Tunnetut puutteet
 
-Ei tällä hetkellä avoimia tunnettuja puutteita — alla korjatut, jotta samaa ei ehdoteta uudelleen.
+Hubin **RJ-MOB-paneeli on tyhjässä tilassa**: se lukee `rjmob:summary`-avainta jota kukaan ei vielä kirjoita. Paneeli ja tyyppi ([rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts)) ovat valmiit, mutta kirjoittajaa ei ole tehty arvaamalla — luvut syntyvät Google Sheetsistä [rjmob.ts](src/lib/rjmob.ts):n sääntöjen läpi (sivukulukerroin, läpimeno, myyjäkohtaiset kertoimet, nimien normalisointi), ja väärä myyntiluku etusivulla on pahempi kuin puuttuva. Lisätään kun laskenta on verrattu tuottoseurannan omiin lukuihin.
+
+Alla korjatut, jotta samaa ei ehdoteta uudelleen.
 
 Korjattu 10.8.2026: `/api/webhook/register` oli middlewaressa auki eikä todentanut itse, joten kuka tahansa saattoi laukaista Drive watch -kanavan rekisteröinnin. Reitti todentaa nyt `authorizeCron`illa ([cron.ts](src/lib/arxcian/cron.ts)) eli `CRON_SECRET`illa tai kirjautuneella käyttäjällä, samaan tapaan kuin `/api/arxcian/cron`. Vercel Cron lähettää `CRON_SECRET`in `Authorization`-otsakkeessa automaattisesti, joten `vercel.json`in päivittäinen ajo toimii ennallaan. `/api/webhook/drive` todentaa edelleen itse `x-goog-channel-token`-otsakkeella. Middlewaren poikkeus on nyt eksplisiittinen lista kahdesta polusta (`/api/webhook/drive`, `/api/webhook/register`) eikä `/api/webhook/`-prefiksi, jottei uusi webhook-reitti aukea vahingossa.
 
