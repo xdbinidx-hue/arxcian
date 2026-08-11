@@ -1,5 +1,6 @@
 import type { SessionUser } from '@/lib/session'
 import { readCached, writeCached } from '../cache'
+import { DEFAULT_LANGUAGE, isLanguage, type AssistantLanguage } from './types'
 
 /**
  * Avustajan kieli käyttäjäkohtaisena asetuksena.
@@ -10,21 +11,9 @@ import { readCached, writeCached } from '../cache'
  * Selaimen lähettämä kieli tarkoittaisi että jokainen näistä joutuisi luottamaan
  * kutsujaan — ja PWA voi olla auki vanhalla JS:llä.
  *
- * Oletus on englanti. Se säilyttää nykyisen käyttäytymisen: ennen tätä avustaja
- * vastasi aina englanniksi, joten kukaan ei huomaa muutosta ennen kuin pyytää
- * suomea.
+ * Tyyppi ja oletus ovat types.ts:ssä, jotta selain voi tuoda ne ilman että
+ * kv-asiakas päätyy niputukseen.
  */
-
-export type AssistantLanguage = 'fi' | 'en'
-
-/** Oletus, kun asetusta ei ole tallennettu tai Redis ei vastaa. */
-export const DEFAULT_LANGUAGE: AssistantLanguage = 'en'
-
-/** Kielen nimi suomeksi lokeja ja käyttöliittymätekstejä varten. */
-export const LANGUAGE_LABELS: Record<AssistantLanguage, string> = {
-  fi: 'suomi',
-  en: 'englanti',
-}
 
 /**
  * Vuosi. Kyse ei ole tuoreudesta vaan siivouksesta: asetus pysyy voimassa
@@ -36,11 +25,6 @@ const TTL_SECONDS = 365 * 24 * 60 * 60
 
 function key(user: SessionUser): string {
   return `assistant:lang:${user}`
-}
-
-/** Kelpaako arvo kieleksi. Malli voi ehdottaa mitä tahansa merkkijonoa. */
-export function isLanguage(value: unknown): value is AssistantLanguage {
-  return value === 'fi' || value === 'en'
 }
 
 /**

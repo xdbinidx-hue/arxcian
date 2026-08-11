@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { UserId } from '@/lib/session'
 import { HUB_HREF, SECTIONS } from '@/lib/arxcian/nav'
-import { greetingText } from '@/lib/arxcian/assistant/greeting'
+import { GREETING_TEXT_HEADER, greetingText } from '@/lib/arxcian/assistant/greeting'
+import { DEFAULT_LANGUAGE } from '@/lib/arxcian/assistant/types'
 import { createSpeechSplitter } from '@/lib/arxcian/speakable'
 import { SpeechQueue } from '@/lib/arxcian/speechQueue'
 import { createUnlockedAudio, type UnlockedAudio } from '@/lib/arxcian/voice/audio'
@@ -411,6 +412,13 @@ export function CommandPalette({ user }: { user: UserId }) {
   const audioRef = useRef<UnlockedAudio | null>(null)
   /** Esiladatun tervehdyksen objectURL, tai null jos esilataus ei onnistunut. */
   const greetingUrlRef = useRef<string | null>(null)
+  /**
+   * Tervehdyksen teksti sellaisena kuin palvelin sen sanoo. Tulee äänen mukana
+   * otsakkeessa, koska kieli on käyttäjän palvelinpuolen asetus — selain ei
+   * tiedä sitä eikä sen kuulu arvata, muuten ruudulla lukisi eri kieli kuin
+   * kaiuttimesta kuuluu.
+   */
+  const greetingTextRef = useRef<string | null>(null)
 
   const captureRef = useRef<Capture>('off')
   const conversationRef = useRef(false)
@@ -829,13 +837,24 @@ export function CommandPalette({ user }: { user: UserId }) {
     [getSpeech, dropProposal],
   )
 
-  /** Esilataa tervehdyksen, jotta herätesanan jälkeen ei odoteta verkkoa. */
+  /**
+   * Esilataa tervehdyksen, jotta herätesanan jälkeen ei odoteta verkkoa.
+   *
+   * Teksti otetaan samasta vastauksesta kuin ääni: kieli voi olla suomi tai
+   * englanti, ja vain palvelin tietää kumpi. Kielen vaihto tulee voimaan
+   * seuraavalla sivulatauksella — tässä muistissa oleva ääni pysyy sen
+   * istunnon loppuun, koska soitossa olevan objectURLin vapauttaminen kesken
+   * puheen katkaisisi sen. Reitti tarkistaa tuoreuden ETagilla, joten
+   * selaimen oma välimuisti ei jää vanhalle kielelle.
+   */
   const prefetchGreeting = useCallback(async () => {
     if (greetingUrlRef.current) return
     try {
       const res = await fetch(GREETING_URL)
       if (!res.ok) return
+      const heading = res.headers.get(GREETING_TEXT_HEADER)
       greetingUrlRef.current = URL.createObjectURL(await res.blob())
+      greetingTextRef.current = heading ? decodeURIComponent(heading) : null
     } catch {
       // Tervehdys ei ole pakollinen: ilman esilatausta soitetaan suoraan
       // reitiltä, jolloin alkuun tulee verkon verran viivettä.
@@ -881,7 +900,10 @@ export function CommandPalette({ user }: { user: UserId }) {
       dropProposal()
       setMode('answered')
       setErrorMessage(null)
-      setAnswer(greetingText(user))
+      // Esilataus kertoi tekstin kielineen. Jos se ei ehtinyt tai epäonnistui,
+      // näytetään oletuskielinen tervehdys — sama jonka palvelin valitsisi
+      // ilman tallennettua asetusta.
+      setAnswer(greetingTextRef.current ?? greetingText(user, DEFAULT_LANGUAGE))
       speech.pushAudio(greetingUrlRef.current ?? GREETING_URL)
       // Esilataus jäi tekemättä tai epäonnistui — yritetään seuraavaa kertaa
       // varten uudelleen taustalla.

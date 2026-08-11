@@ -1,7 +1,7 @@
 import { speakableText } from '@/lib/arxcian/speakable'
 import { TTS_MODEL } from '@/lib/arxcian/models'
 import { addChars } from '@/lib/arxcian/assistant/ttsUsage'
-import { DEFAULT_LANGUAGE, type AssistantLanguage } from '@/lib/arxcian/assistant/language'
+import { DEFAULT_LANGUAGE, type AssistantLanguage } from '@/lib/arxcian/assistant/types'
 
 /**
  * Puheentuottaja AI-assistentin vastauksille (ElevenLabs).

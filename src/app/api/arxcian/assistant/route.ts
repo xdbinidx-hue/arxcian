@@ -4,7 +4,8 @@ import { currentUser, type SessionUser } from '@/lib/session'
 import { checkRateLimit } from '@/lib/arxcian/rateLimit'
 import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
 import { READ_TOOLS, requestOrigin, runReadTool } from '@/lib/arxcian/assistant/tools'
-import { getLanguage, type AssistantLanguage } from '@/lib/arxcian/assistant/language'
+import { getLanguage } from '@/lib/arxcian/assistant/language'
+import type { AssistantLanguage } from '@/lib/arxcian/assistant/types'
 import {
   WRITE_TOOLS,
   isWriteTool,

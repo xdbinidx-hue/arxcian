@@ -14,7 +14,8 @@ import { getHabits, calculateStreak } from '../personal/habits'
 import { getNotes } from '../personal/notes'
 import { CITIES_CACHE_KEY, describeWeatherCode, type CityWeather } from '../weather'
 import { isoDateHelsinki, todayISOHelsinki } from '../time'
-import { isLanguage, setLanguage } from './language'
+import { setLanguage } from './language'
+import { isLanguage } from './types'
 
 /**
  * Avustajan lukutyökalut.
