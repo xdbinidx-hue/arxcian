@@ -169,8 +169,29 @@ const EARTH_FRAGMENT = `
     // Pehmeä terminaattori valon ja varjon väliin.
     float dayAmount = smoothstep(-0.22, 0.38, lambert);
 
-    vec3 lit = day * (0.32 + 0.95 * max(lambert, 0.0));
-    vec3 dark = night * twinkle * 2.4;
+    // Mantereet yhtenä hehkuvana sinisenä, samalla sävyllä kuin avustajan pää
+    // alalaidassa (--ax-accent). Päivätekstuurista otetaan vain kirkkaus, ei
+    // väriä: maasto, rannikot ja vuoristot säilyvät luettavina, mutta ruskeat
+    // ja vihreät eivät riitele HUDin sinisen kanssa.
+    //
+    // Kaupunkivalot luetaan omasta tekstuuristaan eikä niihin kosketa, joten
+    // ne jäävät keltaisiksi sinisen maan päälle — juuri se kontrasti tekee
+    // yöpuolen luettavaksi.
+    // Kirkkaus pakataan kapeaan haarukkaan, jotta manner on yhtä sävyä eikä
+    // tekstuurin oma vaihtelu (aavikot, jäätiköt, metsät) tuo takaisin sitä
+    // kirjavuutta josta oltiin pääsemässä eroon. Maasto jää aavistuksena.
+    // Sävy annetaan sRGB-arvona ja muunnetaan lineaariseen kuten tekstuuritkin.
+    // Ilman muunnosta se vaalenisi ulostulon gammakorjauksessa harmahtavaksi
+    // eikä vastaisi sitä sinistä joka on käyttöliittymän muissa osissa.
+    float dayLum = dot(daySrgb, vec3(0.299, 0.587, 0.114));
+    vec3 landBlue = toLinear(vec3(0.38, 0.70, 1.0)) * (0.85 + 0.45 * dayLum);
+
+    vec3 lit = landBlue * (0.95 + 0.75 * max(lambert, 0.0));
+    // Yöpuolella mantereet hohtavat omaa valoaan, jotta koko pallo on samaa
+    // sinistä eikä varjopuoli jää pelkiksi irrallisiksi valopisteiksi mustassa.
+    // Kaupunkivalot lisätään päälle omasta tekstuuristaan, joten ne pysyvät
+    // keltaisina sinisen maan päällä.
+    vec3 dark = landBlue * 0.62 + night * twinkle * 2.4;
     vec3 color = mix(dark, lit, dayAmount);
 
     // Reunavalo korostaa ilmakehän rajaa myös itse planeetassa. Vain maalla:
@@ -225,9 +246,12 @@ const CLOUD_FRAGMENT = `
     vec2 landUv = vec2(fract(vUv.x + uCloudOffset), vUv.y);
     float land = 1.0 - waterMask(texture2D(dayMap, landUv).rgb);
 
+    // Pilvet samaan siniseen kuin manner: valkoisina ne olisivat ainoa muu väri
+    // pallolla ja veisivät katseen mantereiden muodolta.
+    //
     // Sama läpinäkyvyys kuin maalla: muuten pilvet jäisivät kuvan
     // läpinäkymättömimmäksi kerrokseksi sen pinnan päälle, jonka läpi näkee.
-    gl_FragColor = vec4(vec3(1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9 * land * uLandOpacity);
+    gl_FragColor = vec4(vec3(0.55, 0.80, 1.0), cloud * (0.06 + 0.78 * dayAmount) * 0.9 * land * uLandOpacity);
   }
 `
 

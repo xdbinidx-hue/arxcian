@@ -22,8 +22,19 @@ import { writeCached } from './cache'
 
 export const RJMOB_SUMMARY_KEY = 'rjmob:summary'
 
-/** Vuorokausi millisekunteina — kuukauden pituuden laskentaan. */
 const TTL_SECONDS = 6 * 60 * 60
+
+/**
+ * Kuinka monta päivää kuukaudesta on oltava kulunut ennen kuin ennustetta
+ * näytetään lainkaan.
+ *
+ * Kerroin on kuukauden päivät jaettuna kuluneilla, eli kuun 1. päivänä ×31.
+ * Silloin yksi poikkeava päivä — tai taulukon täyttämisen viive — heiluttaa
+ * prosenttia satoja yksiköitä, ja etusivu näyttäisi romahdusta tai raketin
+ * nousua ilman että kummallakaan on katetta. Viikon jälkeen kerroin on enää
+ * noin ×4 ja luku alkaa kertoa jotain.
+ */
+const MIN_DAYS_FOR_PROJECTION = 7
 
 export type RjMobMetric = {
   /** Valmiiksi muotoiltu kuluvan kuukauden kertymä, esim. "342" tai "18,9k €" */
@@ -92,7 +103,10 @@ export async function buildRjMobSummary(): Promise<RjMobSummaryData> {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const factor = isRunningMonth ? daysInMonth / Math.max(daysElapsed, 1) : 1
 
-  const prev = previous?.totals
+  // Kesken olevasta kuukaudesta ei näytetä vertailua ennen kuin kertymää on
+  // tarpeeksi. Isot luvut näkyvät silti heti — vain muutosprosentti odottaa.
+  const tooEarly = isRunningMonth && daysElapsed < MIN_DAYS_FOR_PROJECTION
+  const prev = tooEarly ? undefined : previous?.totals
 
   return {
     monthLabel: monthLabelOf(currentFile.name!),
