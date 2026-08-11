@@ -35,9 +35,22 @@ export function AssistantBar({ name }: { name: string }) {
         <span className="min-w-0 flex-1 truncate text-[13px] text-ax-dim">
           Kerro mitä tarvitset{name ? `, ${name}` : ''}
         </span>
-        <kbd className="shrink-0 rounded border border-ax-line px-1.5 py-0.5 font-mono text-[10px] text-ax-faint">
-          ⌘K
-        </kbd>
+        {/* Mikrofonikuvake kertoo että paletti kuuntelee myös puhetta.
+            Se on koriste tässä painikkeessa — varsinainen kuuntelun
+            katkaisin on CommandPaletten oma mikrofonimerkki. */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          className="h-4 w-4 shrink-0 text-ax-accent"
+        >
+          <rect x="9" y="3" width="6" height="11" rx="3" />
+          <path d="M5 11a7 7 0 0 0 14 0" />
+          <path d="M12 18v3" />
+        </svg>
       </button>
     </div>
   )

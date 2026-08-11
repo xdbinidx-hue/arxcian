@@ -54,7 +54,14 @@ export async function TodoPanel({ delay }: { delay?: number }) {
   return (
     <Panel
       title="To-do"
-      meta={goals.length > 0 ? `${goals.filter(g => g.done).length}/${goals.length}` : undefined}
+      action={
+        <Link
+          href="/arxcian/personal"
+          className="text-[10px] text-ax-accent transition-colors hover:text-ax-text"
+        >
+          + Lisää uusi
+        </Link>
+      }
       delay={delay}
       empty="Ei avoimia tavoitteita — lisää Personal-osiossa."
     >

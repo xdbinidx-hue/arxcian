@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { readCached } from '@/lib/arxcian/cache'
 import { CHANNELS_CACHE_KEY, type ChannelVideo } from '@/lib/arxcian/channels'
 import { Panel } from '@/components/arxcian/Panel'
@@ -44,6 +45,7 @@ export async function Channels({ delay }: { delay?: number }) {
       empty="Ei vielä videoita — haetaan seuraavassa ajastetussa ajossa."
     >
       {videos.length > 0 ? (
+        <>
         <ul>
           {videos.map(video => (
             <li key={video.id} className="ax-glass-divide border-b last:border-none">
@@ -80,6 +82,14 @@ export async function Channels({ delay }: { delay?: number }) {
             </li>
           ))}
         </ul>
+
+        <Link
+          href="/arxcian/trading"
+          className="mt-3 inline-flex items-center gap-1 text-[10px] text-ax-accent transition-colors hover:text-ax-text"
+        >
+          Näytä kaikki kanavat →
+        </Link>
+        </>
       ) : null}
     </Panel>
   )

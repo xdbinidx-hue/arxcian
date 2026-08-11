@@ -20,6 +20,13 @@ export type WatchSymbol = {
 // riipu datalähteestä.
 export const WATCHLIST: readonly WatchSymbol[] = [
   { quoteSymbol: 'CL=F', tvSymbol: 'TVC:USOIL', label: 'Öljy (WTI)', assetClass: 'commodity' },
+  // Hubin makronäkymän symbolit. Kaikki testattu käsin Yahoon chart-APIsta
+  // 11.8.2026. ^OMXH25 on Helsingin 25 vaihdetuinta, ^IXIC koko Nasdaq
+  // (eri kuin ^NDX joka on Nasdaq 100), BZ=F Brent (eri kuin CL=F eli WTI).
+  { quoteSymbol: '^OMXH25', tvSymbol: 'OMXHEX:OMXH25', label: 'OMX Helsinki 25', assetClass: 'index' },
+  { quoteSymbol: '^IXIC', tvSymbol: 'NASDAQ:IXIC', label: 'Nasdaq', assetClass: 'index' },
+  { quoteSymbol: '^DJI', tvSymbol: 'DJ:DJI', label: 'Dow Jones', assetClass: 'index' },
+  { quoteSymbol: 'BZ=F', tvSymbol: 'TVC:UKOIL', label: 'Öljy (Brent)', assetClass: 'commodity' },
   { quoteSymbol: 'BTC-USD', tvSymbol: 'BINANCE:BTCUSDT', label: 'BTC', assetClass: 'crypto' },
   { quoteSymbol: 'ETH-USD', tvSymbol: 'BINANCE:ETHUSDT', label: 'ETH', assetClass: 'crypto' },
   { quoteSymbol: '^GSPC', tvSymbol: 'TVC:SPX', label: 'US500', assetClass: 'index' },
@@ -52,11 +59,16 @@ export const WATCHLIST: readonly WatchSymbol[] = [
 ]
 
 /**
- * Hubin etusivun tiivis markkinanäkymä — kuusi makrosymbolia koko
- * watchlistin sijaan. Poimitaan WATCHLISTista, jotta nimet ja symbolit
- * pysyvät yhdessä paikassa.
+ * Hubin etusivun tiivis markkinanäkymä. Poimitaan WATCHLISTista, jotta nimet
+ * ja symbolit pysyvät yhdessä paikassa — ja koska refreshQuotes hakee juuri
+ * watchlistin, hubin symbolin on oltava siellä jotta sille on kurssi
+ * välimuistissa.
+ *
+ * Valinta on makrotason yleiskuva kotipörssistä maailmalle: Helsinki, kaksi
+ * Yhdysvaltain indeksiä, valuuttapari ja öljy. Krypto ja yksittäiset osakkeet
+ * ovat Trading-osiossa, jonne hubista pääsee yhdellä klikkauksella.
  */
-const HUB_QUOTE_SYMBOLS = ['^GSPC', '^NDX', 'BTC-USD', 'GC=F', 'DX-Y.NYB', 'EURUSD=X']
+const HUB_QUOTE_SYMBOLS = ['^OMXH25', '^IXIC', '^DJI', 'EURUSD=X', 'BZ=F']
 
 export const HUB_SYMBOLS: readonly WatchSymbol[] = HUB_QUOTE_SYMBOLS.map(symbol => {
   const found = WATCHLIST.find(w => w.quoteSymbol === symbol)

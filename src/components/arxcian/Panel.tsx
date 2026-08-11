@@ -4,6 +4,8 @@ type PanelProps = {
   title: string
   /** Pieni lisätieto otsikkorivin oikeassa reunassa */
   meta?: string
+  /** Toiminto otsikkorivin oikeaan reunaan, esim. "+ Lisää uusi". Korvaa metan. */
+  action?: ReactNode
   /** Näytetään kun sisältöä ei vielä ole */
   empty?: string
   children?: ReactNode
@@ -25,7 +27,15 @@ type PanelProps = {
  * on joko meta-teksti tai himmeä ••• -merkki, jotta rivi ei jää
  * epätasapainoon silloin kun metatietoa ei ole.
  */
-export function Panel({ title, meta, empty, children, className = '', delay = 0 }: PanelProps) {
+export function Panel({
+  title,
+  meta,
+  action,
+  empty,
+  children,
+  className = '',
+  delay = 0,
+}: PanelProps) {
   return (
     <section
       className={`ax-rise ax-glass relative overflow-hidden rounded-2xl ${className}`}
@@ -38,7 +48,9 @@ export function Panel({ title, meta, empty, children, className = '', delay = 0 
 
       <header className="ax-glass-divide flex items-center justify-between gap-3 border-b px-4 py-2.5">
         <h2 className="text-[13px] font-light uppercase tracking-[0.1em] text-ax-text">{title}</h2>
-        {meta ? (
+        {action ? (
+          action
+        ) : meta ? (
           <span className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">{meta}</span>
         ) : (
           <span aria-hidden="true" className="text-[10px] tracking-[0.3em] text-ax-accent/60">

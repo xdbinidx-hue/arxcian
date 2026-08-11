@@ -62,11 +62,27 @@ function text(value: unknown): string {
   return ''
 }
 
+/**
+ * Otsakkeet joilla YouTube suostuu palvelemaan syötteen konesalista.
+ *
+ * Havaittu 11.8.2026: bottimaisella User-Agentilla ("arxcian/1.0") pyyntö
+ * kaatuu Vercelistä vaikka se toimii kotiverkosta — cron kirjoitti nolla
+ * videota samalla ajolla jossa uutis-RSS haki kuusikymmentä. Selainmainen
+ * User-Agent, kielivalinta ja evästeellä annettu suostumus saavat YouTuben
+ * vastaamaan; ilman CONSENT-evästettä se ohjaa suostumussivulle.
+ */
+const YOUTUBE_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+  Cookie: 'CONSENT=YES+cb',
+}
+
 /** Uusin video yhdeltä kanavalta, tai null jos syöte ei vastaa. */
 async function fetchLatest(channel: Channel): Promise<ChannelVideo | null> {
   const res = await fetch(
     `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`,
-    { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; arxcian/1.0)' } },
+    { headers: YOUTUBE_HEADERS },
   )
   if (!res.ok) throw new Error(`${channel.name}: HTTP ${res.status}`)
 
@@ -108,6 +124,14 @@ async function fetchChannels(): Promise<ChannelVideo[]> {
       console.error(`[channels] ${CHANNELS[i].name} epäonnistui`, result.reason)
     }
   })
+
+  // Jos jokainen kanava kaatui, heitetään — muuten fetchAndCache tallentaisi
+  // tyhjän listan onnistuneena tuloksena ja paneeli näyttäisi tyhjää koko
+  // välimuistin voimassaolon ajan. Heitto vie vanhentuneen datan reitille,
+  // joka on koko välimuistin periaate: vanha data on parempi kuin ei mitään.
+  if (videos.length === 0 && CHANNELS.length > 0) {
+    throw new Error('Yhtään kanavaa ei saatu haettua')
+  }
 
   return videos.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
 }

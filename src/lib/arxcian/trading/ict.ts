@@ -26,8 +26,16 @@ function attr(node: unknown, key: string): string {
 }
 
 async function fetchIctVideos(): Promise<IctVideo[]> {
+  // Selainmaiset otsakkeet: bottimaisella User-Agentilla YouTube ei palvele
+  // konesalista, jolloin haku kaatuu Vercelissä vaikka toimii kotiverkosta
+  // (havaittu 11.8.2026). Sama korjaus kuin lib/arxcian/channels.ts:ssä.
   const res = await fetch(FEED_URL, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; arxcian/1.0)' },
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Cookie: 'CONSENT=YES+cb',
+    },
   })
   if (!res.ok) throw new Error(`ICT-kanava: HTTP ${res.status}`)
 
