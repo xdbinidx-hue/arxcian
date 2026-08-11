@@ -16,8 +16,8 @@ import { synthesizeSpeech } from '@/lib/arxcian/tts'
  * tarkoittanut vain ~15 vastausta tunnissa. 300 palauttaa saman käytännön
  * kapasiteetin kuin ennen pilkkomista ja jättää varaa pidemmille vastauksille.
  *
- * Raja suojaa Google TTS -kiintiötä, ei palvelinta — synteesi on ulkoinen
- * maksullinen kutsu, joten katto pidetään olemassa.
+ * Raja suojaa ElevenLabsin merkkikiintiötä, ei palvelinta — synteesi on
+ * ulkoinen maksullinen kutsu, joten katto pidetään olemassa.
  */
 const RATE_LIMIT = 300
 
