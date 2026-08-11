@@ -42,7 +42,7 @@ export class SpeechQueue {
   private current: HTMLAudioElement | null = null
   private running = false
   /** Selain esti toiston: jonon kärki jää odottamaan resume()-kutsua. */
-  private blocked = false
+  private gestureBlocked = false
   /**
    * Sukupolvi kasvaa jokaisessa cancel()-kutsussa. Kesken oleva silmukka voi
    * olla await-kohdassa peruutuksen hetkellä, joten se tarkistaa numeron
@@ -67,14 +67,18 @@ export class SpeechQueue {
    * selain esti toiston.
    */
   resume() {
-    if (!this.blocked) return
-    this.blocked = false
+    if (!this.gestureBlocked) return
+    this.gestureBlocked = false
     this.start()
   }
 
-  /** Onko jonossa mitään toistettavaa (estetty pala mukaan lukien). */
-  get pending(): boolean {
-    return this.items.length > 0
+  /**
+   * Odottaako jono käyttäjän elettä. Kutsuja tarvitsee tämän erottaakseen
+   * kaksi eri tilannetta toisistaan: estetty jono jatketaan siitä mihin se
+   * jäi, mutta muusta syystä vaiennut ääni luetaan alusta.
+   */
+  get blocked(): boolean {
+    return this.gestureBlocked
   }
 
   /**
@@ -88,7 +92,7 @@ export class SpeechQueue {
   cancel() {
     this.generation++
     this.running = false
-    this.blocked = false
+    this.gestureBlocked = false
 
     for (const item of this.items) {
       item.controller.abort()
@@ -137,7 +141,7 @@ export class SpeechQueue {
   }
 
   private start() {
-    if (this.running || this.blocked || this.items.length === 0) return
+    if (this.running || this.gestureBlocked || this.items.length === 0) return
     this.running = true
     this.handlers.onSpeakingChange(true)
     void this.run(this.generation)
@@ -145,7 +149,7 @@ export class SpeechQueue {
 
   private async run(generation: number) {
     try {
-      while (this.items.length > 0 && !this.blocked) {
+      while (this.items.length > 0 && !this.gestureBlocked) {
         const item = this.items[0]
         this.pump()
 
@@ -164,7 +168,7 @@ export class SpeechQueue {
 
         if (result === 'blocked') {
           // Pala jätetään jonon kärkeen valmiina, jotta resume() jatkaa siitä.
-          this.blocked = true
+          this.gestureBlocked = true
           this.handlers.onBlocked()
           return
         }

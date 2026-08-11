@@ -1016,11 +1016,18 @@ export function CommandPalette() {
     const speech = getSpeech()
     setSpeechBlocked(false)
     setSpeechError(null)
-    if (speech.pending) {
+
+    // Selaimen esto: jono on tallella ja tämä painallus on juuri se ele jota
+    // selain vaati, joten jatketaan siitä mihin jäätiin.
+    if (speech.blocked) {
       speech.resume()
       return
     }
+
+    // Muu vika (esim. yhden palan haku kaatui): luetaan koko vastaus alusta.
+    // Jono tyhjennetään ensin, ettei loppuosa soi uuden alun päälle.
     if (!answer) return
+    speech.cancel()
     const splitter = createSpeechSplitter()
     for (const piece of splitter.push(answer)) speech.push(piece)
     for (const piece of splitter.flush()) speech.push(piece)
