@@ -178,12 +178,23 @@ const EARTH_FRAGMENT = `
     float rim = pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 3.0);
     color += vec3(0.10, 0.34, 0.62) * rim * 0.5;
 
-    // Meret sulautetaan taustaan. Taustasumu luetaan ruutukoordinaateilla
-    // samasta tekstuurista jolla se piirretään, joten materiaali pysyy
-    // läpinäkymättömänä: ei läpinäkyvyyslajittelua, ja syvyyspuskuri piilottaa
-    // edelleen pallon takapuolen ristikkoviivat.
+    // Merillä on oma tumma sävynsä. Aiemmin tähän luettiin suoraan taustasumu,
+    // jolloin sen siniset pilvet näkyivät pallon sisällä läiskinä eikä pallo
+    // lukeutunut kappaleeksi vaan reiäksi taustaan. Sumua jätetään mukaan vain
+    // häivähdys, jotta silhuetti ei irtoa taustasta liiduksi.
+    //
+    // Materiaali pysyy yhä läpinäkymättömänä: ei läpinäkyvyyslajittelua, ja
+    // syvyyspuskuri piilottaa edelleen pallon takapuolen ristikkoviivat.
     vec3 bg = texture2D(bgMap, gl_FragCoord.xy / uResolution).rgb;
-    gl_FragColor = vec4(mix(bg, color, land * uLandOpacity), 1.0);
+
+    vec3 ocean = vec3(0.010, 0.030, 0.068);
+    ocean *= 0.55 + 0.80 * max(lambert, 0.0);
+    // Kevyt reunavalo myös merellä: nyt kun merellä on pinta, sirppi kertoo
+    // pallon kaarevuudesta sen sijaan että hehkuisi tyhjän päällä.
+    ocean += vec3(0.06, 0.20, 0.38) * rim * 0.30;
+
+    vec3 sea = mix(ocean, bg, 0.10);
+    gl_FragColor = vec4(mix(sea, color, land * uLandOpacity), 1.0);
   }
 `
 
