@@ -14,7 +14,11 @@ import type { ReactNode } from 'react'
  */
 export function GlobeFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative mx-auto w-full max-w-[820px]">
+    // Kapealla näytöllä pallo on yksin omalla rivillään ja neliömäisenä yhtä
+    // korkea kuin leveä — täysleveänä se täyttäisi koko ruudun eikä yhtäkään
+    // paneelia näkyisi ilman vieritystä. Kolmen sarakkeen taitossa (xl) tilaa
+    // on, joten siellä se saa olla iso.
+    <div className="relative mx-auto w-full max-w-[520px] xl:max-w-[820px]">
       {/* Ympäröivä hehku. Erillään pallon omasta ilmakehästä: tämä valaisee
           taustan, ilmakehä valaisee siluetin. */}
       <div
