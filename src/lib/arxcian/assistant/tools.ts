@@ -14,6 +14,7 @@ import { getHabits, calculateStreak } from '../personal/habits'
 import { getNotes } from '../personal/notes'
 import { CITIES_CACHE_KEY, describeWeatherCode, type CityWeather } from '../weather'
 import { isoDateHelsinki, todayISOHelsinki } from '../time'
+import { isLanguage, setLanguage } from './language'
 
 /**
  * Avustajan lukutyökalut.
@@ -28,6 +29,14 @@ import { isoDateHelsinki, todayISOHelsinki } from '../time'
  * Henkilökohtaiset tietueet haetaan kirjastoapureilla, jotka suodattavat
  * näkyvyyden jo itse (`visibleTo`). Käyttäjä välitetään läpi sellaisenaan —
  * suodatusta ei toisteta eikä ohiteta täällä.
+ *
+ * Yksi poikkeus lukemiseen: `set_language` kirjoittaa käyttäjän kieliasetuksen.
+ * Se on tarkoituksella **täällä eikä proposals.ts:ssä**, eli se ei tuota
+ * vahvistuskorttia. Vahvistus on tietueen luontia varten (muistiinpano,
+ * tavoite, hälytys), jossa väärin kuultu puhe jäisi listalle näyttämään
+ * oikealta. Kielivalinta ei ole tietue vaan asetus, jonka virheellisyys kuuluu
+ * heti seuraavasta lauseesta ja jonka voi perua sanomalla "vastaa englanniksi"
+ * — vahvistuskortti tekisi siitä tarpeettoman kankean.
  */
 
 /** Kuinka monta tietuetta yksi työkalu enintään palauttaa. */
@@ -154,6 +163,23 @@ export const READ_TOOLS = [
     description:
       'Hakee seurattujen kaupunkien nykysään (lämpötila ja sääkuvaus) maapallon välimuistista. Helsinki on mukana listassa.',
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'set_language',
+    description:
+      'Vaihtaa kielen jolla vastaat: "fi" on suomi, "en" englanti. Käytä tätä kun käyttäjä pyytää vastauksia toisella kielellä ("vastaa suomeksi", "answer in English"). Asetus säilyy seuraaviin keskusteluihin. Vaihdon jälkeen vastaa lyhyesti, yhdellä lauseella, uudella kielellä.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        language: {
+          type: 'string',
+          enum: ['fi', 'en'],
+          description: 'Uusi kieli: fi (suomi) tai en (englanti).',
+        },
+      },
+      required: ['language'],
+      additionalProperties: false,
+    },
   },
 ] satisfies Anthropic.Messages.ToolUnion[]
 
@@ -319,6 +345,26 @@ export async function runReadTool(
           temperature: c.temperature,
           conditions: describeWeatherCode(c.weatherCode).label,
         })),
+      }
+    }
+    case 'set_language': {
+      const raw = (input ?? {}) as { language?: unknown }
+      if (!isLanguage(raw.language)) {
+        return { error: 'Kielen on oltava "fi" tai "en".' }
+      }
+      // Omistaja on aina kirjautunut käyttäjä: mallin ehdottamaa käyttäjää ei
+      // lueta lainkaan, muuten toisen kieliasetuksen voisi vaihtaa pyytämällä
+      // sitä ääneen. Sama sääntö kuin ehdotuksissa (proposals.ts).
+      await setLanguage(user, raw.language)
+      // Kehotus on jo uudella kielellä: se on mallille vahvin yksittäinen
+      // vihje siitä millä kielellä seuraava lause kirjoitetaan.
+      return {
+        ok: true,
+        language: raw.language,
+        note:
+          raw.language === 'fi'
+            ? 'Kieli on nyt suomi. Vastaa tästä eteenpäin suomeksi, alkaen lyhyestä vahvistuksesta.'
+            : 'The language is now English. Answer in English from now on, starting with a short confirmation.',
       }
     }
     default:
