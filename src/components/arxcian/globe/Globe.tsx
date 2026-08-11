@@ -22,9 +22,19 @@ const GlobeScene = dynamic(() => import('./GlobeScene'), {
 
 const ZOOM_STEP = 0.25
 
+/**
+ * Aloitustaso. Näkymä on karttamainen eikä planeettamainen: Eurooppa täyttää
+ * ympyrän heti, eikä käyttäjän tarvitse zoomata itse nähdäkseen sen. Kaareva
+ * reuna jää tällä tasolla kokonaan näkymän ulkopuolelle, joten pinta lukeutuu
+ * kartaksi vaikka geometria on yhä pallo.
+ *
+ * Loitontaminen on yhä mahdollista, jos koko planeetan haluaa nähdä.
+ */
+const INITIAL_ZOOM = 0.86
+
 export function Globe({ data, className = '' }: { data: GlobeData; className?: string }) {
   const [selected, setSelected] = useState<GlobePoint | null>(null)
-  const [zoom, setZoom] = useState(0)
+  const [zoom, setZoom] = useState(INITIAL_ZOOM)
 
   const nudgeZoom = (delta: number) => setZoom(z => Math.min(1, Math.max(0, z + delta)))
 

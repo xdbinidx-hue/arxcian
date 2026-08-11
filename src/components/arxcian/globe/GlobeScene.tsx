@@ -21,18 +21,22 @@ import type { GlobeData, GlobePoint, PointTone } from '@/lib/arxcian/globe/types
  */
 
 /**
- * Maapallon asento. Arvot on ratkaistu numeerisesti, ei silmämääräisesti:
- * ehtona oli että Keski-Eurooppa (50°N, 12°E) osuu tarkalleen ruudun keskelle
- * kun akselikallistuma on −18°. Käsin arvattuna Eurooppa valui ylävasemmalle,
- * koska Z-kierto vie osan X-kallistuksesta sivusuuntaiseksi siirroksi.
+ * Maapallon asento. Näkymä on karttamainen: ympyrän sisällä Keski-Eurooppa,
+ * ja vaakavieritys kiertää maailman ympäri samalla leveyspiirillä.
  *
- * CENTER_LNG ei siksi ole 12 vaan 34,5 — se on se pituuspiiri joka kierron
- * jälkeen päätyy keskelle. Sivuvaikutus: New York jää juuri ja juuri näkyviin
- * reunalle.
+ * **Z-kallistus on tarkoituksella nolla.** Aiemmin akselia kallistettiin
+ * −18°, mikä näytti avaruudesta katsotulta planeetalta — mutta silloin
+ * napa-akseli on ruudulla vinossa, ja vaakaveto kuljettaa näkymää viistosti
+ * ylös tai alas. Kartalta odotetaan vaakasuoraa liikettä, joten akseli
+ * pidetään pystyssä ja raahaus liikkuu puhtaasti sivusuunnassa.
+ *
+ * X-kallistus nostaa halutun leveyspiirin ruudun keskelle: 0,90 rad ≈ 51,6°,
+ * eli Keski-Euroopan korkeus. CENTER_LNG on nyt suoraan se pituuspiiri joka
+ * halutaan keskelle — ilman Z-kiertoa sitä ei tarvitse enää kompensoida.
  */
-const CENTER_LNG = 34.5
-const WORLD_TILT_X = 0.935
-const WORLD_TILT_Z = (-18 * Math.PI) / 180
+const CENTER_LNG = 15
+const WORLD_TILT_X = 0.9
+const WORLD_TILT_Z = 0
 
 /**
  * Kuinka läpinäkymättömiä mantereet ovat. 1 = kiinteä pinta, 0 = koko pallo
@@ -417,6 +421,21 @@ const CARD_MARGIN = 4
 const RELAX_PASSES = 40
 /** Kortit pidetään canvasin sisällä tällä marginaalilla. */
 const CARD_BOUNDS = 3
+/**
+ * HUDin kiinteiden osien varaamat alueet. Ne ovat SVG-korttien ulkopuolella
+ * omassa kerroksessaan (ks. GlobeHud), joten asettelu ei näe niitä — ilman
+ * varausta kortti asettui niiden alle ja teksti jäi lukukelvottomaksi.
+ *
+ * Oikea yläkulma on lähdetiedot ja varaumat, oikea alakulma zoom-painikkeet.
+ * Yläkulman varaus on väljä, koska varaumarivien määrä vaihtelee datan mukaan
+ * eikä sitä voi tietää tästä.
+ */
+function hudObstacles(size: number) {
+  return [
+    { left: size * 0.54, top: 0, right: size, bottom: 78 },
+    { left: size - 44, top: size - 76, right: size, bottom: size },
+  ]
+}
 /** Kuinka läheltä merkkiä klikkaus vielä osuu. */
 const HIT_RADIUS = 18
 
@@ -434,7 +453,7 @@ const CAMERA_Z_FAR = 3.45
  * ympyrärajausta (ks. clipPath alempana) kuva näyttäisi silloin neliöltä:
  * pallo ei vääristy, mutta sen silhuetti jää neliön ulkopuolelle.
  */
-const CAMERA_Z_NEAR = 1.55
+const CAMERA_Z_NEAR = 1.25
 
 type Props = {
   data: GlobeData
@@ -803,6 +822,7 @@ export default function GlobeScene({
     const layoutCards = () => {
       if (slots.length === 0) return
       const half = cssSize / 2
+      const obstacles = hudObstacles(cssSize)
 
       // Lähtöpaikka: piste työnnettynä ulospäin pallon keskipisteestä, jolloin
       // kortti asettuu kaupungin ulkopuolelle eikä sen päälle. Reunalla oleva
@@ -815,21 +835,9 @@ export default function GlobeScene({
         s.cy = s.sy + (dy / len) * (CARD_OFFSET + CARD_HEIGHT / 2)
       }
 
-      for (let pass = 0; pass < RELAX_PASSES; pass++) {
+      /** Erottaa päällekkäiset kortit toisistaan. Palauttaa true jos liikutti. */
+      const separatePairs = () => {
         let moved = false
-
-        // Rajaus ruudun sisään tehdään joka kierroksen aluksi eikä vasta
-        // lopuksi: jälkikäteen se voisi työntää jo eroteltuja kortteja
-        // takaisin päällekkäin reunaa vasten, eikä mikään enää korjaisi sitä.
-        // Näin seuraava kierros purkaa myös rajauksen aiheuttamat osumat.
-        for (const s of slots) {
-          s.cx = Math.min(cssSize - s.w / 2 - CARD_BOUNDS, Math.max(s.w / 2 + CARD_BOUNDS, s.cx))
-          s.cy = Math.min(
-            cssSize - CARD_HEIGHT / 2 - CARD_BOUNDS,
-            Math.max(CARD_HEIGHT / 2 + CARD_BOUNDS, s.cy),
-          )
-        }
-
         for (let i = 0; i < slots.length; i++) {
           for (let j = i + 1; j < slots.length; j++) {
             const a = slots[i]
@@ -856,8 +864,58 @@ export default function GlobeScene({
             }
           }
         }
+        return moved
+      }
 
+      for (let pass = 0; pass < RELAX_PASSES; pass++) {
+        let moved = false
+
+        // Rajaus ruudun sisään tehdään joka kierroksen aluksi eikä vasta
+        // lopuksi: jälkikäteen se voisi työntää jo eroteltuja kortteja
+        // takaisin päällekkäin reunaa vasten, eikä mikään enää korjaisi sitä.
+        // Näin seuraava kierros purkaa myös rajauksen aiheuttamat osumat.
+        for (const s of slots) {
+          s.cx = Math.min(cssSize - s.w / 2 - CARD_BOUNDS, Math.max(s.w / 2 + CARD_BOUNDS, s.cx))
+          s.cy = Math.min(
+            cssSize - CARD_HEIGHT / 2 - CARD_BOUNDS,
+            Math.max(CARD_HEIGHT / 2 + CARD_BOUNDS, s.cy),
+          )
+        }
+
+        // HUDin kiinteät alueet: kortti työnnetään niiden alta pois lyhintä
+        // tietä, mutta este itse ei liiku.
+        for (const s of slots) {
+          for (const o of obstacles) {
+            const l = s.cx - s.w / 2
+            const r = s.cx + s.w / 2
+            const t = s.cy - CARD_HEIGHT / 2
+            const b = s.cy + CARD_HEIGHT / 2
+            if (r <= o.left || l >= o.right || b <= o.top || t >= o.bottom) continue
+
+            const outLeft = r - o.left
+            const outRight = o.right - l
+            const outUp = b - o.top
+            const outDown = o.bottom - t
+            const min = Math.min(outLeft, outRight, outUp, outDown)
+
+            if (min === outLeft) s.cx -= outLeft
+            else if (min === outRight) s.cx += outRight
+            else if (min === outUp) s.cy -= outUp
+            else s.cy += outDown
+            moved = true
+          }
+        }
+
+        if (separatePairs()) moved = true
         if (!moved) break
+      }
+
+      // Este ja parierottelu voivat nurkassa työntää samaa korttia vastakkaisiin
+      // suuntiin, jolloin silmukka päättyy tilaan jossa kaksi korttia yhä
+      // leikkaa. Viimeinen sana on parierottelulla: mieluummin kortti hipoo
+      // zoom-painikkeiden aluetta kuin peittää toisen kortin tekstin.
+      for (let pass = 0; pass < 8; pass++) {
+        if (!separatePairs()) break
       }
 
       for (const s of slots) {
