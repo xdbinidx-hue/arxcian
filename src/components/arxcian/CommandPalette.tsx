@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { HUB_HREF, SECTIONS } from '@/lib/arxcian/nav'
+import { createSpeechSplitter } from '@/lib/arxcian/speakable'
+import { SpeechQueue } from '@/lib/arxcian/speechQueue'
 import { SectionIcon, IconHub, IconSearch } from './icons'
 
 type Command = {
@@ -421,6 +423,10 @@ export function CommandPalette() {
   const [heard, setHeard] = useState<Heard | null>(null)
   /** Selain esti äänen automaattisen toiston — tarjotaan nappi. */
   const [speechBlocked, setSpeechBlocked] = useState(false)
+  /** Puhejono soittaa parhaillaan jotain palaa. */
+  const [speaking, setSpeaking] = useState(false)
+  /** Äänen haku epäonnistui (verkko, kiintiö, palvelin). */
+  const [speechError, setSpeechError] = useState<string | null>(null)
   /** Suora kysymystila: seuraava kuultu lause menee assistentille ilman
    *  herätesanaa. Käynnistyy vain napista, ei koskaan itsestään. */
   const [directMode, setDirectMode] = useState(false)
@@ -428,8 +434,34 @@ export function CommandPalette() {
   const [proposal, setProposal] = useState<ProposalCard | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const router = useRouter()
+
+  /**
+   * Puhejono. Elää renderöinnin ulkopuolella refissä, koska sen tila (mikä
+   * pala soi, mitkä on haettu) ei kuulu näkymään — näkymä saa vain tiedon
+   * puhuuko kone ja estikö selain toiston.
+   */
+  const speechRef = useRef<SpeechQueue | null>(null)
+  const getSpeech = useCallback(() => {
+    if (!speechRef.current) {
+      speechRef.current = new SpeechQueue({
+        onSpeakingChange: setSpeaking,
+        onBlocked: () => setSpeechBlocked(true),
+        onError: message => setSpeechError(message),
+      })
+    }
+    return speechRef.current
+  }, [])
+
+  // Komponentin purku ei saa jättää ääntä soimaan.
+  useEffect(() => () => speechRef.current?.cancel(), [])
+
+  /**
+   * Kesken oleva assistenttipyyntö. Ilman keskeytystä vanha virta jatkaisi
+   * tekstin ja puhepalojen syöttämistä sen jälkeen kun käyttäjä on jo kysynyt
+   * uutta tai sulkenut paletin.
+   */
+  const requestRef = useRef<AbortController | null>(null)
 
   /** Ehdotus myös refissä: käsittelijät ovat vakaita eivätkä näe tuoreinta tilaa. */
   const proposalRef = useRef<ProposalCard | null>(null)
@@ -474,41 +506,6 @@ export function CommandPalette() {
     const timer = setTimeout(() => setHeard(null), heard.status === 'ok' ? 6000 : 10000)
     return () => clearTimeout(timer)
   }, [heard])
-
-  /**
-   * Lukee assistentin vastauksen ääneen (Google Cloud TTS, brittienglantia
-   * — ks. src/lib/arxcian/tts.ts). Käyttäjän oma puhe tunnistetaan yhä
-   * suomeksi (recognition.lang alempana), vain assistentin vastaus on
-   * tarkoituksella englanniksi sekä tekstinä että äänenä.
-   */
-  const speakAnswer = useCallback(async (text: string) => {
-    try {
-      const res = await fetch('/api/arxcian/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      })
-      if (!res.ok) {
-        setSpeechBlocked(true)
-        return
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.addEventListener('ended', () => URL.revokeObjectURL(url))
-      audio.addEventListener('error', () => URL.revokeObjectURL(url))
-      await audio.play()
-      setSpeechBlocked(false)
-    } catch {
-      // Yleisin syy ei ole verkko vaan selaimen automaattisen toiston esto:
-      // puheella kysyttäessä sivulla ei ole käyttäjän elettä, jolloin play()
-      // hylätään. Ääni on lisäarvo, joten käyttöliittymä ei saa rikkoutua —
-      // mutta epäonnistuminen ei myöskään saa jäädä näkymättömäksi, joten
-      // tarjotaan nappi jolla vastauksen saa kuuluviin.
-      setSpeechBlocked(true)
-    }
-  }, [])
 
   /**
    * Sulkee vahvistusta odottavan ehdotuksen näkyvistä.
@@ -580,14 +577,34 @@ export function CommandPalette() {
   }, [])
 
   const askAssistant = useCallback(async (prompt: string) => {
-    setMode('asking')
-    setQuery('')
-    setAnswer(null)
-    setSpeechBlocked(false)
-    audioRef.current?.pause()
+    // Edellinen kysymys vaikenee ja katkeaa ennen uuden aloittamista: sekä
+    // puhejono että virta ovat renderöinnin ulkopuolista tilaa, joka jatkaisi
+    // muuten uuden vastauksen päälle.
+    requestRef.current?.abort()
+    const speech = getSpeech()
+    speech.cancel()
     // Edellinen ehdotus pois ennen uutta kysymystä: vanha kortti ei saa jäädä
     // roikkumaan uuden vastauksen viereen eikä ehdotus palvelimelle.
     dropProposal()
+
+    const controller = new AbortController()
+    requestRef.current = controller
+
+    setMode('asking')
+    setQuery('')
+    setAnswer(null)
+    setErrorMessage(null)
+    setSpeechBlocked(false)
+    setSpeechError(null)
+
+    // Pilkkoja on kysymyskohtainen: se pitää sisällään keskeneräisen lauseen
+    // ja palojen järjestysnumeron, jotka eivät saa vuotaa seuraavaan vastaukseen.
+    const splitter = createSpeechSplitter()
+    const speakPieces = (pieces: string[]) => {
+      if (controller.signal.aborted) return
+      for (const piece of pieces) speech.push(piece)
+    }
+
     try {
       const res = await fetch('/api/arxcian/assistant', {
         method: 'POST',
@@ -599,6 +616,7 @@ export function CommandPalette() {
           Accept: 'application/x-ndjson',
         },
         body: JSON.stringify({ prompt }),
+        signal: controller.signal,
       })
 
       // Virheet ennen suoratoiston alkua (401, 429, virheellinen pyyntö) tulevat
@@ -621,6 +639,7 @@ export function CommandPalette() {
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
+        if (controller.signal.aborted) return
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -656,20 +675,25 @@ export function CommandPalette() {
           // syntyvän sen sijaan että tuijottaisi "Kysytään assistentilta…" -
           // tekstiä koko generoinnin ajan.
           setMode('answered')
+          // Ääni lähtee liikkeelle heti ensimmäisestä valmiista lauseesta,
+          // ei vasta generoinnin päätyttyä.
+          speakPieces(splitter.push(event.value))
         }
       }
+
+      if (controller.signal.aborted) return
+
+      // Virran loppu: keskeneräinen viimeinen lause luetaan sellaisenaan.
+      speakPieces(splitter.flush())
 
       // Pelkkä ehdotus ilman sanallista selostusta on kelvollinen vastaus.
       if (!full && !gotProposal) {
         setErrorMessage('Jokin meni pieleen.')
         setMode('error')
-        return
       }
-      if (!full) return
-
-      // Ääni vasta kun teksti on valmis: puhesynteesi tarvitsee koko vastauksen.
-      void speakAnswer(full)
     } catch {
+      // Keskeytys on oma valinta eikä vika — käyttäjä kysyi uutta tai sulki paletin.
+      if (controller.signal.aborted) return
       // Verkkovirhe tms. — ilman tätä käyttäjä jäisi 'asking'-tilaan
       // loputtomiin, koska Escape ei tee siinä mitään.
       setErrorMessage('Jokin meni pieleen.')
@@ -677,7 +701,7 @@ export function CommandPalette() {
     }
     // Molemmat ovat []-riippuvuuksisia useCallbackeja, joten askAssistantin
     // identiteetti pysyy vakaana — puheentunnistuksen mount-effect riippuu siitä.
-  }, [speakAnswer, dropProposal])
+  }, [getSpeech, dropProposal])
 
   // ⌘K / Ctrl+K avaa ja sulkee
   useEffect(() => {
@@ -713,7 +737,12 @@ export function CommandPalette() {
       setMode('search')
       setAnswer(null)
       setErrorMessage(null)
-      audioRef.current?.pause()
+      setSpeechBlocked(false)
+      setSpeechError(null)
+      // Kesken oleva virta katkaistaan ja puhejono vaikenee: kumpikin jatkaisi
+      // muuten näkymättömissä, ja ääni puhuisi suljetun paletin jälkeen.
+      requestRef.current?.abort()
+      speechRef.current?.cancel()
       // Vahvistamatta jäänyt ehdotus peruutetaan eikä jätetä odottamaan
       // vanhenemistaan — sulkeminen ei ole hyväksyntä, mutta se on päätös.
       dropProposal()
@@ -897,6 +926,13 @@ export function CommandPalette() {
       return
     }
 
+    // Edellinen vastaus vaikenee heti kun käyttäjä alkaa puhua päälle:
+    // avustajan puhe kuuluisi muuten mikrofoniin ja jatkuisi uuden kysymyksen
+    // päälle. Sama syy kuin uuden kysymyksen kohdalla, eri laukaisin.
+    speechRef.current?.cancel()
+    setSpeechBlocked(false)
+    setSpeechError(null)
+
     micAllowedRef.current = true
     setMicAllowed(true)
     directModeRef.current = true
@@ -907,6 +943,24 @@ export function CommandPalette() {
     } catch {
       // Jo käynnissä taustakuuntelussa — lippu poimii seuraavan lauseen.
     }
+  }
+
+  /**
+   * Toistaa vastauksen uudelleen. Estetyssä tilassa jatketaan jonosta — nappi
+   * on se käyttäjän ele jota selain vaati — muuten koko vastaus luetaan alusta.
+   */
+  const replayAnswer = () => {
+    const speech = getSpeech()
+    setSpeechBlocked(false)
+    setSpeechError(null)
+    if (speech.pending) {
+      speech.resume()
+      return
+    }
+    if (!answer) return
+    const splitter = createSpeechSplitter()
+    for (const piece of splitter.push(answer)) speech.push(piece)
+    for (const piece of splitter.flush()) speech.push(piece)
   }
 
   const go = (href: string) => {
@@ -930,6 +984,12 @@ export function CommandPalette() {
         setMode('search')
         setAnswer(null)
         setErrorMessage(null)
+        // Vastaus voi olla yhä kesken (teksti virtaa vielä): sekä virta että
+        // puhejono katkaistaan, muuten ne kirjoittaisivat hakunäkymän päälle.
+        requestRef.current?.abort()
+        speechRef.current?.cancel()
+        setSpeechBlocked(false)
+        setSpeechError(null)
         inputRef.current?.focus()
         return
       }
@@ -1055,15 +1115,28 @@ export function CommandPalette() {
                   />
                 )}
 
-                {speechBlocked && answer && (
-                  <button
-                    type="button"
-                    onClick={() => void speakAnswer(answer)}
-                    className="mt-3 rounded-md border border-ax-line px-2.5 py-1 text-[11px] text-ax-accent transition-colors hover:bg-ax-accent/10"
-                  >
-                    Toista ääneen
-                  </button>
-                )}
+                <div
+                  className={`mt-3 flex items-center gap-2 ${
+                    speaking || speechBlocked || speechError ? '' : 'hidden'
+                  }`}
+                >
+                  {speaking && (
+                    <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-ax-up">
+                      <span className="ax-pulse h-1.5 w-1.5 rounded-full bg-ax-up" />
+                      puhuu
+                    </span>
+                  )}
+                  {(speechBlocked || speechError) && answer && (
+                    <button
+                      type="button"
+                      onClick={replayAnswer}
+                      className="rounded-md border border-ax-line px-2.5 py-1 text-[11px] text-ax-accent transition-colors hover:bg-ax-accent/10"
+                    >
+                      Toista ääneen
+                    </button>
+                  )}
+                  {speechError && <span className="text-[11px] text-ax-warn">{speechError}</span>}
+                </div>
               </div>
             )}
 

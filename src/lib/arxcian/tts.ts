@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { speakableText } from '@/lib/arxcian/speakable'
 
 /**
  * Puheentuottaja AI-assistentin vastauksille (Google Cloud Text-to-Speech,
@@ -28,42 +29,13 @@ function getAuth() {
 }
 
 /**
- * Poistaa markdown-merkinnän ennen puhesynteesiä.
+ * Muuntaa tekstin puheeksi ja palauttaa MP3-tavut.
  *
- * Assistentin ohje kieltää korostukset, mutta malli tuottaa niitä silti
- * ajoittain — ja Chirp3-HD ääntää ne kuuluvasti, jolloin vastaus alkaa
- * "tähti tähti Teknologia tähti tähti". Siivous tehdään täällä eikä
- * kutsujassa, jotta jokainen puhereitti saa saman kohtelun ohjeen
- * pettäessä.
- *
- * Yhden alaviivan korostusta ei pureta tarkoituksella: se osuisi myös
- * tavallisiin snake_case-nimiin ja typistäisi ne väärin.
+ * Markdownin siivous (speakableText) on lib/arxcian/speakable.ts:ssä, koska
+ * selain tarvitsee samaa funktiota lauseiksi pilkkomiseen eikä voi tuoda tätä
+ * tiedostoa. Siivous ajetaan silti myös täällä: reitti on julkinen rajapinta,
+ * eikä se saa luottaa kutsujan siivonneen tekstin.
  */
-export function speakableText(text: string): string {
-  return (
-    text
-      // [teksti](osoite) → teksti
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-      // **lihavointi** ja __lihavointi__ → sisältö
-      .replace(/(\*\*|__)(.*?)\1/g, '$2')
-      // *kursiivi* → sisältö, mutta vain kun tähdet rajaavat sanaa
-      .replace(/\*(?=\S)([^*]*?)(?<=\S)\*/g, '$1')
-      // `koodi` → koodi
-      .replace(/`+([^`]*)`+/g, '$1')
-      // otsikot ja lainaukset rivin alussa
-      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
-      .replace(/^\s{0,3}>\s?/gm, '')
-      // vaakaviivat omalla rivillään, ennen luettelomerkkejä ettei "---"
-      // typisty pelkäksi viivaksi
-      .replace(/^\s*([-*_]\s*){3,}$/gm, '')
-      // luettelomerkit rivin alussa
-      .replace(/^\s*[-*+]\s+/gm, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-  )
-}
-
-/** Muuntaa tekstin puheeksi ja palauttaa MP3-tavut. */
 export async function synthesizeSpeech(text: string): Promise<Buffer> {
   const spoken = speakableText(text)
   const trimmed = spoken.length > MAX_INPUT_CHARS ? spoken.slice(0, MAX_INPUT_CHARS) : spoken
