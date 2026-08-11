@@ -7,7 +7,7 @@ import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
-import { refreshRjMobSummary, RJMOB_SUMMARY_KEY } from './rjmobSummary'
+import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -90,10 +90,12 @@ const hubJobs: CronJob[] = [
   },
   {
     id: 'rjmob-summary',
-    description: 'Hub: RJ-Mobin kuukausiyhteenveto',
+    description: 'Hub: RJ-Mobin kuukausiyhteenveto (kuluva kuu + valmiit kuukaudet)',
     run: async () => {
-      await refreshRjMobSummary()
-      return { key: RJMOB_SUMMARY_KEY }
+      // items = montako kuukautta on välimuistissa, ei montako laskettiin:
+      // valmis kuukausi lasketaan kerran ja ohitetaan sen jälkeen.
+      const result = await refreshRjMobSummaries()
+      return { key: RJMOB_SUMMARY_KEY, items: result.months.length }
     },
   },
 ]
