@@ -17,7 +17,6 @@ const TONE_CLASS: Record<string, string> = {
 }
 
 type Props = {
-  caveats: string[]
   selected: GlobePoint | null
   onClearSelection: () => void
   zoom: number
@@ -29,7 +28,6 @@ const ZOOM_BUTTON =
   'pointer-events-auto flex h-7 w-7 items-center justify-center ax-glass rounded-lg text-[13px] leading-none text-ax-faint transition-colors hover:text-ax-text disabled:opacity-30 disabled:hover:text-ax-faint'
 
 export function GlobeHud({
-  caveats,
   selected,
   onClearSelection,
   zoom,
@@ -78,25 +76,15 @@ export function GlobeHud({
       </svg>
 
       {/*
-        Lähdenimet ja hakuajat eivät ole enää kartan päällä: ne veivät tilaa
-        juuri siitä nurkasta johon kaupunkikortit haluavat, ja kartan piti
-        näyttää kartalta eikä mittaristolta. Markkinoiden hakuaika näkyy yhä
-        MARKKINAT-paneelin otsikkorivillä, joten tuoreus ei jää arvailun
-        varaan.
+        Kartan päällä ei ole enää lähdenimiä, hakuaikoja eikä varaumia:
+        käyttäjän valinta, jotta näkymä on kartta eikä mittaristo. Markkinoiden
+        hakuaika näkyy yhä MARKKINAT-paneelin otsikkorivillä.
 
-        Varaumat jäävät, koska ne kertovat mitä kartalta *puuttuu* — sitä ei
-        näe mistään muualta. Kapealla näytöllä ne piilotetaan, koska siellä
-        kartta on pieni ja teksti veisi siitä kohtuuttoman osan.
+        Varaumat (esim. valuuttaparien keinotekoinen sijainti) elävät nyt vain
+        koodin kommenteissa lib/arxcian/globe/data.ts:ssä — GlobeData tuottaa
+        ne yhä, mutta mikään ei näytä niitä. Jos ne halutaan takaisin, kenttä
+        on tallella eikä dataa tarvitse rakentaa uudelleen.
       */}
-      {caveats.length > 0 && (
-        <div className="absolute right-0 top-0 hidden max-w-[45%] space-y-1 text-right sm:block">
-          {caveats.map(caveat => (
-            <p key={caveat} className="text-[9px] leading-snug text-ax-faint/60">
-              {caveat}
-            </p>
-          ))}
-        </div>
-      )}
 
       {/* Zoom. Rullaa ei kaapata: maapallo on iso keskellä vieritettävää sivua,
           ja rullan kaappaaminen rikkoisi sivun selaamisen. Kosketuksella

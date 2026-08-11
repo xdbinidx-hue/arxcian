@@ -424,16 +424,12 @@ const CARD_BOUNDS = 3
  * omassa kerroksessaan (ks. GlobeHud), joten asettelu ei näe niitä — ilman
  * varausta kortti asettui niiden alle ja teksti jäi lukukelvottomaksi.
  *
- * Oikea yläkulma on varaumat, oikea alakulma zoom-painikkeet. Yläkulman
- * varaus on arvio, koska varaumarivien määrä vaihtelee datan mukaan eikä
- * sitä voi tietää tästä. Kapealla näytöllä varaumat piilotetaan, joten
- * varaus on siellä turha mutta harmiton.
+ * Jäljellä on enää zoom-painikkeet oikeassa alakulmassa. Yläkulman varaus
+ * poistui, kun lähdetiedot ja varaumat otettiin kartalta pois — siellä ei ole
+ * enää mitään minkä alle kortti voisi jäädä.
  */
 function hudObstacles(size: number) {
-  return [
-    { left: size * 0.54, top: 0, right: size, bottom: 52 },
-    { left: size - 44, top: size - 76, right: size, bottom: size },
-  ]
+  return [{ left: size - 44, top: size - 76, right: size, bottom: size }]
 }
 /** Kuinka läheltä merkkiä klikkaus vielä osuu. */
 const HIT_RADIUS = 18
