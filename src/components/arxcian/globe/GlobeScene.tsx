@@ -426,7 +426,15 @@ const HIT_RADIUS = 18
  * erottuu kaupunkivaloineen ilman että käyttäjän pitää zoomata itse.
  */
 const CAMERA_Z_FAR = 3.45
-const CAMERA_Z_NEAR = 2.35
+/**
+ * Lähin etäisyys. Pallon säde on 1, joten tästä jää pinnan yläpuolelle 0,55 —
+ * riittävän lähellä että yksittäiset kaupunkivalot erottuvat toisistaan.
+ *
+ * Näin lähellä pallo täyttää koko canvasin eikä sen reunaa enää näy. Ilman
+ * ympyrärajausta (ks. clipPath alempana) kuva näyttäisi silloin neliöltä:
+ * pallo ei vääristy, mutta sen silhuetti jää neliön ulkopuolelle.
+ */
+const CAMERA_Z_NEAR = 1.55
 
 type Props = {
   data: GlobeData
@@ -502,6 +510,12 @@ export default function GlobeScene({
     renderer.domElement.style.height = '100%'
     renderer.domElement.style.cursor = 'grab'
     renderer.domElement.style.touchAction = 'none'
+    // Kuva rajataan ympyräksi, jotta maapallo pysyy maapallon näköisenä myös
+    // lähelle zoomattuna. Ilman tätä pallo täyttää neliömäisen canvasin ja
+    // pyöreä silhuetti katoaa — kuva näyttää neliöltä vaikka mikään ei
+    // vääristy. Rajaus koskee vain WebGL-canvasia; kortit ja HUD-renkaat ovat
+    // omassa SVG:ssään ja saavat edelleen ulottua pallon ulkopuolelle.
+    renderer.domElement.style.clipPath = 'circle(50%)'
 
     // Kutsuviivat ja lämpötilat piirretään SVG:nä canvasin päälle, ei WebGL-
     // tekstinä: teksti pysyy tarkkana, ääkköset toimivat ilman fonttiatlasta ja
@@ -804,6 +818,18 @@ export default function GlobeScene({
       for (let pass = 0; pass < RELAX_PASSES; pass++) {
         let moved = false
 
+        // Rajaus ruudun sisään tehdään joka kierroksen aluksi eikä vasta
+        // lopuksi: jälkikäteen se voisi työntää jo eroteltuja kortteja
+        // takaisin päällekkäin reunaa vasten, eikä mikään enää korjaisi sitä.
+        // Näin seuraava kierros purkaa myös rajauksen aiheuttamat osumat.
+        for (const s of slots) {
+          s.cx = Math.min(cssSize - s.w / 2 - CARD_BOUNDS, Math.max(s.w / 2 + CARD_BOUNDS, s.cx))
+          s.cy = Math.min(
+            cssSize - CARD_HEIGHT / 2 - CARD_BOUNDS,
+            Math.max(CARD_HEIGHT / 2 + CARD_BOUNDS, s.cy),
+          )
+        }
+
         for (let i = 0; i < slots.length; i++) {
           for (let j = i + 1; j < slots.length; j++) {
             const a = slots[i]
@@ -837,12 +863,6 @@ export default function GlobeScene({
       for (const s of slots) {
         const { line, card } = s.marker
         if (!line || !card) continue
-
-        s.cx = Math.min(cssSize - s.w / 2 - CARD_BOUNDS, Math.max(s.w / 2 + CARD_BOUNDS, s.cx))
-        s.cy = Math.min(
-          cssSize - CARD_HEIGHT / 2 - CARD_BOUNDS,
-          Math.max(CARD_HEIGHT / 2 + CARD_BOUNDS, s.cy),
-        )
 
         card.setAttribute('transform', `translate(${s.cx.toFixed(1)} ${s.cy.toFixed(1)})`)
 
