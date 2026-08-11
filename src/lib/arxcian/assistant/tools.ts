@@ -37,8 +37,12 @@ const MAX_ITEMS = 20
  * Sama johtaminen kuin hubin palvelinkomponenteissa (esim. UpcomingEvents):
  * kalenterin OAuth-uudelleenohjaus rakennetaan pyynnön originista, joten sama
  * koodi toimii localhostissa ja tuotannossa.
+ *
+ * Kutsutaan pyynnön alussa eikä työkalun suorituksen aikana: suoratoistettu
+ * vastaus jatkuu ReadableStreamin sisällä, eikä pyyntökohtaisiin otsakkeisiin
+ * ole siellä syytä luottaa.
  */
-function requestOrigin(): string {
+export function requestOrigin(): string {
   const h = headers()
   const host = h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
@@ -167,8 +171,8 @@ function countInput(input: unknown, fallback: number): number {
   return Math.min(MAX_ITEMS, Math.max(1, Number.isFinite(parsed) ? parsed : fallback))
 }
 
-async function calendarResult(input: unknown, user: SessionUser): Promise<unknown> {
-  const status = await getCalendarStatus(user, requestOrigin())
+async function calendarResult(input: unknown, user: SessionUser, origin: string): Promise<unknown> {
+  const status = await getCalendarStatus(user, origin)
 
   // Ei-yhdistetty kalenteri ei ole poikkeus vaan vastaus: malli kertoo
   // käyttäjälle mitä pitää tehdä sen sijaan että työkalu kaatuisi.
@@ -201,7 +205,12 @@ async function calendarResult(input: unknown, user: SessionUser): Promise<unknow
  * Suorittaa lukutyökalun. Heittää vain odottamattomista virheistä — tyhjä
  * välimuisti palautetaan selkeänä viestinä.
  */
-export async function runReadTool(name: string, input: unknown, user: SessionUser): Promise<unknown> {
+export async function runReadTool(
+  name: string,
+  input: unknown,
+  user: SessionUser,
+  origin: string,
+): Promise<unknown> {
   switch (name) {
     case 'get_latest_news': {
       const { n, category } = newsInput(input)
@@ -228,7 +237,7 @@ export async function runReadTool(name: string, input: unknown, user: SessionUse
       }
     }
     case 'get_calendar':
-      return calendarResult(input, user)
+      return calendarResult(input, user, origin)
     case 'get_goals': {
       const goals = await getGoals(user)
       return goals.slice(0, MAX_ITEMS).map(g => ({
