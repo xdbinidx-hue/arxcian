@@ -2,9 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import type { UserId } from '@/lib/session'
 import { HUB_HREF, SECTIONS } from '@/lib/arxcian/nav'
+import { greetingText } from '@/lib/arxcian/assistant/greeting'
 import { createSpeechSplitter } from '@/lib/arxcian/speakable'
 import { SpeechQueue } from '@/lib/arxcian/speechQueue'
+import { createUnlockedAudio, type UnlockedAudio } from '@/lib/arxcian/voice/audio'
+import {
+  createRecognition,
+  isPermissionError,
+  recognitionErrorMessage,
+  type SpeechRecognitionLike,
+} from '@/lib/arxcian/voice/speechRecognition'
+import {
+  createBrowserWakeWord,
+  wakeWordSupported,
+  type WakeWordDetector,
+} from '@/lib/arxcian/voice/wakeWord'
 import { SectionIcon, IconHub, IconSearch } from './icons'
 
 type Command = {
@@ -65,7 +79,15 @@ const TOOL_LABEL: Record<string, string> = {
  * epäonnistuminen on ääniohjauksen pahin vika, koska käyttäjä ei näe
  * kuunteleeko kone, ajatteleeko se vai onko se kaatunut.
  */
-type VoiceState = 'idle' | 'ready' | 'listening' | 'processing' | 'speaking' | 'denied' | 'error'
+type VoiceState =
+  | 'idle'
+  | 'ready'
+  | 'listening'
+  | 'processing'
+  | 'speaking'
+  | 'ended'
+  | 'denied'
+  | 'error'
 
 /** Tilan selite merkissä. Virhetila näyttää virheen tekstin, ei tätä. */
 const VOICE_LABEL: Record<Exclude<VoiceState, 'error'>, string> = {
@@ -74,24 +96,19 @@ const VOICE_LABEL: Record<Exclude<VoiceState, 'error'>, string> = {
   listening: 'kuuntelee',
   processing: 'käsittelee',
   speaking: 'puhuu',
+  ended: 'keskustelu päättyi',
   denied: 'salli mikrofoni',
 }
 
 /**
- * Puheentunnistuksen virheet käyttäjän kielellä.
+ * Kenen vuoro mikrofoni on auki.
  *
- * 'aborted' ja 'no-speech' puuttuvat tarkoituksella: edellinen tulee joka
- * kerta kun kuuntelu pysäytetään normaalisti, jälkimmäinen taustakuuntelun
- * hiljaisuudesta muutaman sekunnin välein. Kumpikaan ei ole vika.
+ * 'push' on nappireitti (yksi lause kerrallaan), 'conversation' herätyssanan
+ * jälkeinen keskustelu (vuoro kerrallaan, kunnes hiljaisuus tai lopetus).
+ * 'off' tarkoittaa myös sitä hetkeä jolloin avustaja puhuu: **tunnistus on
+ * silloin kiinni**, jottei avustajan oma ääni tule takaisin kysymyksenä.
  */
-const RECOGNITION_ERROR: Partial<Record<SpeechRecognitionErrorCode, string>> = {
-  'not-allowed': 'mikrofonilupa evätty',
-  'service-not-allowed': 'selain esti puheentunnistuksen',
-  'audio-capture': 'mikrofonia ei löytynyt',
-  network: 'ei yhteyttä puheentunnistukseen',
-  'bad-grammar': 'puheentunnistus epäonnistui',
-  'language-not-supported': 'kieltä ei tueta',
-}
+type Capture = 'off' | 'push' | 'conversation'
 
 /**
  * Viimeksi kuultu lause ja se, mitä sille tapahtui. Pelkkä teksti ei riitä:
@@ -100,73 +117,13 @@ const RECOGNITION_ERROR: Partial<Record<SpeechRecognitionErrorCode, string>> = {
  */
 type Heard = {
   text: string
-  status: 'ok' | 'no-wake' | 'no-question'
+  status: 'ok' | 'no-wake'
 }
 
-/** Merkin selite kullekin lopputulokselle. */
+/** Merkin selite kummallekin lopputulokselle. */
 const HEARD_PREFIX: Record<Heard['status'], string> = {
   ok: 'kuulin',
   'no-wake': 'ei herätesanaa',
-  'no-question': 'sano kysymys perään',
-}
-
-/* ---------------------------------------------------------------
-   Web Speech API -tyypit. Ei standardi eikä TypeScriptin lib.dom:ssa
-   (Chrome/Safari-vain, webkit-etuliitteinen versio yhä laajimmin tuettu),
-   joten tyypit määritellään tässä minimissään sen sijaan että tuotaisiin
-   koko riippuvuus jota tarvitaan vain yhdessä paikassa.
-   --------------------------------------------------------------- */
-
-type SpeechRecognitionErrorCode =
-  | 'no-speech'
-  | 'aborted'
-  | 'audio-capture'
-  | 'network'
-  | 'not-allowed'
-  | 'service-not-allowed'
-  | 'bad-grammar'
-  | 'language-not-supported'
-
-interface SpeechRecognitionResultLike {
-  readonly isFinal: boolean
-  readonly length: number
-  [index: number]: { readonly transcript: string }
-}
-
-interface SpeechRecognitionResultListLike {
-  readonly length: number
-  [index: number]: SpeechRecognitionResultLike
-}
-
-interface SpeechRecognitionEventLike {
-  readonly resultIndex: number
-  readonly results: SpeechRecognitionResultListLike
-}
-
-interface SpeechRecognitionErrorEventLike {
-  readonly error: SpeechRecognitionErrorCode
-}
-
-interface SpeechRecognitionLike extends EventTarget {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start: () => void
-  stop: () => void
-  abort: () => void
-  onstart: (() => void) | null
-  onend: (() => void) | null
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor
-    webkitSpeechRecognition?: SpeechRecognitionConstructor
-  }
 }
 
 /**
@@ -175,142 +132,63 @@ declare global {
  */
 export const OPEN_PALETTE_EVENT = 'arxcian:open-palette'
 
-/** Herätesana joka avaa paletin ja lähettää loppuosan kysymyksenä avustajalle. */
-const WAKE_WORD = 'arxcian'
+/** Valmiiksi syntetisoitu tervehdys. Esiladataan kun kuuntelu käynnistyy. */
+const GREETING_URL = '/api/arxcian/tts/greeting'
 
 /**
- * Kuinka monta muokkausta (lisäys/poisto/korvaus) sallitaan ehdokkaan ja
- * herätesanan **äänneasun** välillä. Vertailu tehdään taitettuun muotoon
- * (ks. foldPhonetic), joten kynnys ei kulu enää x:n ja c:n korjaamiseen:
- * havaitut väärinkuulemat ovat taitettuina "arksian" 0, "arksi" 2,
- * "arction" 3. Löysempi kynnys alkaisi osua tavallisiin lyhyisiin sanoihin.
+ * Herätyssanan kytkin säilyy yli sivulatauksen. **Oletus on pois päältä**:
+ * jatkuva mikrofonin kuuntelu on asia jonka käyttäjä ottaa käyttöön
+ * tietoisesti, ei jotain joka on päällä ensimmäisellä käynnillä.
  */
-const WAKE_WORD_MAX_DISTANCE = 3
+const WAKE_STORAGE_KEY = 'arxcian:wake-word'
 
 /**
- * Kuinka monta täytesanaa siedetään herätesanan edellä. Tunnistin liittää
- * lauseen alkuun usein oman kuulemansa aloituksen ("hei arxcian", "no
- * arxcian"), ja ilman tätä koko komento putoaisi pelkän täytesanan takia.
+ * Kuinka kauan käyttäjän vuoroa odotetaan ilman puhetta.
+ *
+ * Sama arvo molemmille reiteille: nappi palaa lepotilaan ("en kuullut mitään")
+ * ja keskustelu päättyy. Ilman selkeää loppua mikrofoni jäisi auki
+ * loputtomiin, mikä on juuri se asia jota jatkuvassa kuuntelussa pelätään.
  */
-const WAKE_WORD_MAX_LEAD = 2
+const SILENCE_TIMEOUT = 15000
 
 /**
- * Taittaa sanan karkeaan suomalaiseen äänneasuun vertailua varten.
- *
- * Tämä on koko sumean tunnistuksen ydin: suomen puheentunnistin ei tuota
- * koskaan kirjaimia x, c, z, q tai w, joten kirjaimellista "arxcian":ia
- * vastaan verrattaessa pelkkä x:n ja c:n korjaaminen maksaa aina kaksi
- * muokkausta kolmesta — kynnykseen jää yhden kirjaimen pelivara ja komento
- * putoaa. Taitto vie molemmat puolet samaan asuun: sekä "arxcian" että
- * tunnistimen "Ark Sian" päätyvät muotoon "arksian".
- *
- * c → s (ei k) siksi, että "arxcian":n c on i:n edellä ja ääntyy s:nä.
- * Kaksoiskirjaimet typistetään, koska tunnistin arpoo niiden pituuden.
- */
-function foldPhonetic(word: string): string {
-  return (
-    word
-      .toLowerCase()
-      .replace(/[äå]/g, 'a')
-      .replace(/ö/g, 'o')
-      // Välimerkit vasta ääkkösten jälkeen, muuten ä katoaisi kokonaan.
-      .replace(/[^a-z0-9]/g, '')
-      .replace(/x/g, 'ks')
-      .replace(/c/g, 's')
-      .replace(/z/g, 's')
-      .replace(/q/g, 'k')
-      .replace(/w/g, 'v')
-      .replace(/(.)\1+/g, '$1')
-  )
-}
-
-/** "arxcian" → "arksian". Lasketaan kerran, ei jokaisella tunnistuksella. */
-const WAKE_FOLDED = foldPhonetic(WAKE_WORD)
-
-/** Tavallinen Levenshtein-etäisyys, ei ulkoista riippuvuutta yhden käyttöpaikan vuoksi. */
-function levenshtein(a: string, b: string): number {
-  const rows = a.length + 1
-  const cols = b.length + 1
-  const dp: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0))
-
-  for (let i = 0; i < rows; i++) dp[i][0] = i
-  for (let j = 0; j < cols; j++) dp[0][j] = j
-
-  for (let i = 1; i < rows; i++) {
-    for (let j = 1; j < cols; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1, // poisto
-        dp[i][j - 1] + 1, // lisäys
-        dp[i - 1][j - 1] + cost, // korvaus
-      )
-    }
-  }
-  return dp[rows - 1][cols - 1]
-}
-
-/**
- * Etsii herätesanan lauseen alusta sumealla vertailulla — suomen
- * puheentunnistus ei kirjoita "arxcian":ia koskaan täysin oikein.
- *
- * Kaksi vapausastetta, koska ne eivät ole toisensa poissulkevia: väärin
- * kuultu herätesana voi jakautua useaksi sanaksi ("arksi on"), ja sen edellä
- * voi olla tunnistimen keksimä täytesana ("hei arxcian"). Siksi käydään läpi
- * aloituskohdat 0…WAKE_WORD_MAX_LEAD ja kunkin kohdalta 1–3 sanan ikkunat.
- *
- * Palauttaa indeksin josta kysymys alkaa — eli montako sanaa alusta kuluu
- * täytesanoihin ja herätesanaan yhteensä — tai null jos mikään ei täsmää.
- */
-function matchWakeWord(words: string[]): number | null {
-  let bestEnd: number | null = null
-  let bestDistance = Infinity
-
-  for (let start = 0; start <= WAKE_WORD_MAX_LEAD && start < words.length; start++) {
-    for (let size = 1; size <= 3 && start + size <= words.length; size++) {
-      const candidate = foldPhonetic(words.slice(start, start + size).join(''))
-
-      // Herätesanan a on alussa tai heti yhden konsonantin jälkeen
-      // ("marxian"), ja sanassa on r tai k. Ilman r/k-ehtoa kynnyksen sisään
-      // mahtuisi tavallisia suomen sanoja — "asian" on taitettuna vain kahden
-      // muokkauksen päässä — ja paletti avautuisi kesken tavallisen puheen.
-      if (!/^.?a/.test(candidate) || !/[rk]/.test(candidate)) continue
-
-      const distance = levenshtein(candidate, WAKE_FOLDED)
-      if (distance <= WAKE_WORD_MAX_DISTANCE && distance < bestDistance) {
-        bestDistance = distance
-        bestEnd = start + size
-      }
-    }
-  }
-  return bestEnd
-}
-
-/**
- * Kuuntelun tila ja katkaisin. Näkyy myös kun paletti on kiinni — juuri
+ * Kuuntelun tila ja katkaisimet. Näkyvät myös kun paletti on kiinni — juuri
  * silloin kuuntelu on merkityksellistä.
  *
- * Tämä on nappi eikä koriste kahdesta syystä: Safari (sekä Macilla että
- * iOS:llä) käynnistää puheentunnistuksen vain käyttäjän eleestä, ja evätty
- * mikrofonilupa tarvitsee tavan yrittää uudelleen ilman sivun uudelleen-
- * latausta. Klikkaus antaa sivulle myös käyttäjäaktivoinnin, jota selain
- * vaatii vastauksen toistamiseen ääneen.
+ * Kolme erillistä hallintaa, koska ne vastaavat kolmeen eri kysymykseen:
+ * kuunteleeko herätyssana taustalla (kytkin), otetaanko kysymys vastaan nyt
+ * (mikrofoninappi), ja onko keskustelu yhä käynnissä (lopetus).
  *
- * Viimeksi kuultu lause näytetään muutaman sekunnin ajan selitteineen: ilman
- * sitä herätesanan ohi menevä tunnistus näyttää täsmälleen samalta kuin
- * rikki oleva mikrofoni.
+ * Mikrofoninappi on nappi eikä koriste kahdesta syystä: Safari (sekä Macilla
+ * että iOS:llä) käynnistää puheentunnistuksen vain käyttäjän eleestä, ja
+ * evätty mikrofonilupa tarvitsee tavan yrittää uudelleen ilman sivun
+ * uudelleenlatausta. Klikkaus antaa sivulle myös käyttäjäaktivoinnin, jota
+ * selain vaatii vastauksen toistamiseen ääneen.
  */
-function MicStatus({
+function VoiceControls({
   state,
   micAvailable,
   error,
   heard,
+  wakeSupported,
+  wakeEnabled,
+  wakeListening,
+  conversation,
   onAsk,
+  onToggleWake,
+  onEndConversation,
 }: {
   state: VoiceState
   micAvailable: boolean
   error: string | null
   heard: Heard | null
+  wakeSupported: boolean
+  wakeEnabled: boolean
+  wakeListening: boolean
+  conversation: boolean
   onAsk: () => void
+  onToggleWake: () => void
+  onEndConversation: () => void
 }) {
   if (!micAvailable) return null
 
@@ -320,6 +198,7 @@ function MicStatus({
     listening: 'ax-pulse bg-ax-accent',
     processing: 'ax-pulse bg-ax-warn',
     speaking: 'ax-pulse bg-ax-up',
+    ended: 'bg-ax-faint',
     denied: 'bg-ax-warn',
     error: 'bg-ax-down',
   }
@@ -330,6 +209,7 @@ function MicStatus({
     listening: 'text-ax-accent',
     processing: 'text-ax-warn',
     speaking: 'text-ax-up',
+    ended: 'text-ax-dim',
     denied: 'text-ax-warn',
     error: 'text-ax-down',
   }
@@ -340,29 +220,68 @@ function MicStatus({
   // puhuessa merkki kertoo tuoreempaa asiaa, eikä lappu mahdu kahdesti.
   const showHeard = heard && (state === 'idle' || state === 'ready')
 
+  // Merkkivalo kytkimessä kertoo eron kolmen tilan välillä: pois päältä,
+  // päällä ja kuuntelee, päällä mutta tauolla (avustaja puhuu tai keskustelu
+  // on käynnissä). Ilman keskimmäistä käyttäjä ei tietäisi kuuleeko kone.
+  const wakeDot = !wakeEnabled ? 'bg-ax-faint' : wakeListening ? 'ax-pulse bg-ax-accent' : 'bg-ax-warn'
+
   return (
-    <button
-      type="button"
-      onClick={onAsk}
-      aria-label={state === 'listening' ? 'Lopeta kuuntelu' : 'Kysy puheella'}
-      aria-live="polite"
-      className={`fixed bottom-16 right-3 z-40 flex max-w-[70vw] items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi lg:bottom-3 ${
-        state === 'listening' ? 'ring-1 ring-ax-accent' : ''
-      }`}
-    >
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[state]}`} />
-      <span className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${text[state]}`}>
-        {label}
-      </span>
-      {showHeard && (
-        <span
-          className={`truncate text-[9px] ${heard.status === 'ok' ? 'text-ax-dim' : 'text-ax-warn'}`}
-          title={heard.text}
+    <div className="fixed bottom-16 right-3 z-40 flex max-w-[80vw] flex-col items-end gap-1.5 lg:bottom-3">
+      {conversation && (
+        <button
+          type="button"
+          onClick={onEndConversation}
+          className="flex items-center gap-1.5 rounded-full border border-ax-down/50 bg-ax-down/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-ax-down transition-colors hover:bg-ax-down/20"
         >
-          {HEARD_PREFIX[heard.status]}: {heard.text}
-        </span>
+          Lopeta keskustelu
+        </button>
       )}
-    </button>
+
+      {wakeSupported && (
+        <button
+          type="button"
+          onClick={onToggleWake}
+          aria-pressed={wakeEnabled}
+          aria-label={wakeEnabled ? 'Sammuta herätyssana' : 'Kytke herätyssana päälle'}
+          title={'Herätyssana: sano "arxcian"'}
+          className={`flex items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi ${
+            wakeEnabled ? 'ring-1 ring-ax-accent/50' : ''
+          }`}
+        >
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${wakeDot}`} />
+          <span
+            className={`font-mono text-[9px] uppercase tracking-wider ${
+              wakeEnabled ? 'text-ax-accent' : 'text-ax-faint'
+            }`}
+          >
+            herätyssana {wakeEnabled ? 'päällä' : 'pois'}
+          </span>
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={onAsk}
+        aria-label={state === 'listening' ? 'Lopeta kuuntelu' : 'Kysy puheella'}
+        aria-live="polite"
+        className={`flex max-w-full items-center gap-1.5 rounded-full ax-glass px-2.5 py-1 transition-colors hover:bg-ax-panel-hi ${
+          state === 'listening' ? 'ring-1 ring-ax-accent' : ''
+        }`}
+      >
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[state]}`} />
+        <span className={`shrink-0 font-mono text-[9px] uppercase tracking-wider ${text[state]}`}>
+          {label}
+        </span>
+        {showHeard && (
+          <span
+            className={`truncate text-[9px] ${heard.status === 'ok' ? 'text-ax-dim' : 'text-ax-warn'}`}
+            title={heard.text}
+          >
+            {HEARD_PREFIX[heard.status]}: {heard.text}
+          </span>
+        )}
+      </button>
+    </div>
   )
 }
 
@@ -442,19 +361,33 @@ function ProposalPanel({
 }
 
 /** Komentopaletti nopeaan siirtymiseen — ja kun mikään komento ei osu, kysymys AI-avustajalle samassa ikkunassa. */
-export function CommandPalette() {
+export function CommandPalette({ user }: { user: UserId }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const [mode, setMode] = useState<Mode>('search')
   const [answer, setAnswer] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isListening, setIsListening] = useState(false)
   /** Selain tukee puheentunnistusta. */
   const [micAvailable, setMicAvailable] = useState(false)
   /** ...ja mikrofonilupa on voimassa. Erillään tuesta, jotta evätyn luvan
    *  jälkeen merkki jää näkyviin ja tarjoaa uuden yrityksen. */
   const [micAllowed, setMicAllowed] = useState(false)
+  /** Selain tukee herätyssanaa. Tilana eikä suorana kutsuna, koska
+   *  palvelinrenderöinnissä selainrajapintoja ei ole eikä hydraatio saa erota. */
+  const [wakeSupported, setWakeSupported] = useState(false)
+  /** Herätyssana kytketty päälle (säilyy localStoragessa). */
+  const [wakeEnabled, setWakeEnabled] = useState(false)
+  /** Herätyssanan tunnistin kuuntelee juuri nyt. */
+  const [wakeListening, setWakeListening] = useState(false)
+  /** Kenen vuoro mikrofoni on auki. */
+  const [capture, setCapture] = useState<Capture>('off')
+  /** Keskustelu käynnissä: mikrofoni palaa auki vastauksen jälkeen. */
+  const [conversation, setConversation] = useState(false)
+  /** Keskustelu päättyi juuri — näytetään hetken, ettei loppu jää arvailun varaan. */
+  const [conversationEnded, setConversationEnded] = useState(false)
+  /** Välilehti taustalla: taustalla ei kuunnella. */
+  const [hidden, setHidden] = useState(false)
   /** Viimeksi kuultu lause ja sen lopputulos, näytetään hetken merkissä. */
   const [heard, setHeard] = useState<Heard | null>(null)
   /** Selain esti äänen automaattisen toiston — tarjotaan nappi. */
@@ -465,14 +398,34 @@ export function CommandPalette() {
   const [speechError, setSpeechError] = useState<string | null>(null)
   /** Mikrofonin tai puheentunnistuksen virhe, näkyy merkissä. */
   const [voiceError, setVoiceError] = useState<string | null>(null)
-  /** Suora kysymystila: seuraava kuultu lause menee assistentille ilman
-   *  herätesanaa. Käynnistyy vain napista, ei koskaan itsestään. */
-  const [directMode, setDirectMode] = useState(false)
   /** Vahvistusta odottava kirjoitustoimi. */
   const [proposal, setProposal] = useState<ProposalCard | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const router = useRouter()
+
+  /** Käyttäjän vuoron kuuntelija. Eri instanssi kuin herätyssanan tunnistin. */
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  /** Herätyssanan tunnistin rajapinnan takana (voice/wakeWord.ts). */
+  const wakeRef = useRef<WakeWordDetector | null>(null)
+  /** Jaettu, käyttäjän eleellä avattu äänielementti (voice/audio.ts). */
+  const audioRef = useRef<UnlockedAudio | null>(null)
+  /** Esiladatun tervehdyksen objectURL, tai null jos esilataus ei onnistunut. */
+  const greetingUrlRef = useRef<string | null>(null)
+
+  const captureRef = useRef<Capture>('off')
+  const conversationRef = useRef(false)
+  const micAllowedRef = useRef(false)
+  /** Puhejono soi. Refinä, koska kuuntelun jatko päätetään käsittelijöissä. */
+  const speakingRef = useRef(false)
+  /** Assistentin vastaus on yhä matkalla: kuuntelua ei saa avata kesken sen. */
+  const streamingRef = useRef(false)
+  /** Hiljaisuuden ajastin: päättää vuoron ja keskustelun. */
+  const silenceRef = useRef<number | null>(null)
+
+  const getAudio = useCallback(() => {
+    if (!audioRef.current) audioRef.current = createUnlockedAudio()
+    return audioRef.current
+  }, [])
 
   /**
    * Puhejono. Elää renderöinnin ulkopuolella refissä, koska sen tila (mikä
@@ -483,13 +436,22 @@ export function CommandPalette() {
   const getSpeech = useCallback(() => {
     if (!speechRef.current) {
       speechRef.current = new SpeechQueue({
-        onSpeakingChange: setSpeaking,
+        onSpeakingChange: value => {
+          speakingRef.current = value
+          setSpeaking(value)
+          // Vuoro palaa käyttäjälle vasta kun jono on tyhjä: muuten avustaja
+          // kuulisi oman äänensä ja vastaisi itselleen.
+          if (!value) apiRef.current.maybeResume()
+        },
         onBlocked: () => setSpeechBlocked(true),
         onError: message => setSpeechError(message),
+        // Kaikki toisto samalla elementillä, joka on avattu käyttäjän eleellä
+        // — herätyssana ei ole ele, joten uusi elementti olisi estetty.
+        audio: () => getAudio().element(),
       })
     }
     return speechRef.current
-  }, [])
+  }, [getAudio])
 
   // Komponentin purku ei saa jättää ääntä soimaan.
   useEffect(() => () => speechRef.current?.cancel(), [])
@@ -504,6 +466,20 @@ export function CommandPalette() {
   /** Ehdotus myös refissä: käsittelijät ovat vakaita eivätkä näe tuoreinta tilaa. */
   const proposalRef = useRef<ProposalCard | null>(null)
 
+  /**
+   * Tuoreimmat käsittelijät refissä. Puheentunnistuksen ja herätyssanan
+   * kuuntelijat luodaan kerran mount-effectissä, joten ne eivät näkisi
+   * tuoreinta Reactin tilaa sulkeumasta — sama kuvio kuin GlobeScenessä.
+   */
+  const apiRef = useRef({
+    ask: (_prompt: string) => {},
+    stopCapture: () => {},
+    endConversation: (_reason: 'silence' | 'user') => {},
+    maybeResume: () => {},
+    armSilence: () => {},
+    onWake: (_rest: string) => {},
+  })
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return COMMANDS
@@ -515,30 +491,6 @@ export function CommandPalette() {
   const askVisible = mode === 'search' && results.length === 0 && query.trim() !== ''
   const selectableCount = results.length > 0 ? results.length : askVisible ? 1 : 0
 
-  // mode-arvo tallennetaan refiin puheentunnistuksen onend/onerror-käsittelijöitä
-  // varten: ne luodaan kerran mount-effectissä eivätkä siksi näkisi tuoreinta
-  // Reactin tilaa suoraan sulkeumasta — sama kuvio kuin GlobeScenessä.
-  const modeRef = useRef(mode)
-  useEffect(() => {
-    modeRef.current = mode
-  }, [mode])
-
-  const micAllowedRef = useRef(false)
-  const directModeRef = useRef(false)
-
-  // Kuuntelu ei jää päälle jos käyttäjä painoi nappia vahingossa. Syy
-  // näytetään: hiljainen paluu lepotilaan näyttäisi samalta kuin rikki oleva
-  // mikrofoni, ja juuri sitä ääniohjauksessa ei saa joutua arvaamaan.
-  useEffect(() => {
-    if (!directMode) return
-    const timer = setTimeout(() => {
-      directModeRef.current = false
-      setDirectMode(false)
-      setVoiceError('en kuullut mitään')
-    }, 15000)
-    return () => clearTimeout(timer)
-  }, [directMode])
-
   // Virheilmoitus katoaa itsestään kuten kuultu lausekin. Evätty mikrofonilupa
   // näkyy tämän jälkeenkin 'salli mikrofoni' -tilana, joten tieto ei katoa.
   useEffect(() => {
@@ -546,6 +498,14 @@ export function CommandPalette() {
     const timer = setTimeout(() => setVoiceError(null), 8000)
     return () => clearTimeout(timer)
   }, [voiceError])
+
+  // "Keskustelu päättyi" on ilmoitus eikä tila: se katoaa itsestään, jottei
+  // merkki jää kertomaan jostain joka tapahtui viisi minuuttia sitten.
+  useEffect(() => {
+    if (!conversationEnded) return
+    const timer = setTimeout(() => setConversationEnded(false), 6000)
+    return () => clearTimeout(timer)
+  }, [conversationEnded])
 
   // Kuultu lause katoaa itsestään, jottei merkki jää roikkumaan vanhaan.
   // Ohi mennyt komento näkyy pidempään: siinä on käyttäjälle luettavaa,
@@ -555,6 +515,109 @@ export function CommandPalette() {
     const timer = setTimeout(() => setHeard(null), heard.status === 'ok' ? 6000 : 10000)
     return () => clearTimeout(timer)
   }, [heard])
+
+  /* --- Vuoron hallinta: hiljaisuus, kuuntelu, keskustelun loppu --- */
+
+  const clearSilence = useCallback(() => {
+    if (silenceRef.current === null) return
+    clearTimeout(silenceRef.current)
+    silenceRef.current = null
+  }, [])
+
+  const stopCapture = useCallback(() => {
+    clearSilence()
+    captureRef.current = 'off'
+    setCapture('off')
+    try {
+      recognitionRef.current?.stop()
+    } catch {
+      // Ei käynnissä — ei mitään pysäytettävää.
+    }
+  }, [clearSilence])
+
+  /**
+   * Päättää keskustelun ja kertoo siitä.
+   *
+   * Kaksi reittiä: hiljaisuus (mikrofoni ei jää auki loputtomiin) ja käyttäjän
+   * nimenomainen lopetus. Jälkimmäinen vaientaa myös kesken olevan vastauksen
+   * — "lopeta" tarkoittaa myös "ole hiljaa".
+   */
+  const endConversation = useCallback(
+    (reason: 'silence' | 'user') => {
+      const wasActive = conversationRef.current
+      conversationRef.current = false
+      setConversation(false)
+      stopCapture()
+      if (reason === 'user') {
+        requestRef.current?.abort()
+        speechRef.current?.cancel()
+      }
+      if (wasActive) setConversationEnded(true)
+    },
+    [stopCapture],
+  )
+
+  const armSilence = useCallback(() => {
+    clearSilence()
+    silenceRef.current = window.setTimeout(() => {
+      silenceRef.current = null
+      // Vuoro on jo avustajalla: se saa puhua niin kauan kuin vastaus kestää,
+      // eikä hiljaisuus tarkoita tässä mitään.
+      if (captureRef.current === 'off') return
+
+      if (conversationRef.current) {
+        apiRef.current.endConversation('silence')
+        return
+      }
+      // Nappireitti: kuuntelu ei jää päälle jos käyttäjä painoi vahingossa.
+      // Syy näytetään — hiljainen paluu lepotilaan näyttäisi samalta kuin
+      // rikki oleva mikrofoni.
+      apiRef.current.stopCapture()
+      setVoiceError('en kuullut mitään')
+    }, SILENCE_TIMEOUT)
+  }, [clearSilence])
+
+  /**
+   * Avaa mikrofonin käyttäjän vuorolle.
+   *
+   * start() heittää jos edellinen pysäytys on vielä kesken (onend ei ole
+   * ehtinyt laueta), joten yritystä toistetaan pari kertaa. Ilman sitä
+   * keskustelu voisi jäädä hiljaiseksi kesken vuoron vaihdon eikä käyttäjä
+   * näkisi mitään syytä.
+   */
+  const startCapture = useCallback(
+    (kind: Exclude<Capture, 'off'>) => {
+      const recognition = recognitionRef.current
+      if (!recognition || !micAllowedRef.current) return
+
+      captureRef.current = kind
+      setCapture(kind)
+      armSilence()
+
+      const attempt = (retries: number) => {
+        if (captureRef.current !== kind) return
+        try {
+          recognition.start()
+        } catch {
+          if (retries > 0) window.setTimeout(() => attempt(retries - 1), 300)
+        }
+      }
+      attempt(2)
+    },
+    [armSilence],
+  )
+
+  /**
+   * Palauttaa vuoron käyttäjälle, jos keskustelu on yhä käynnissä eikä
+   * avustaja enää puhu tai kirjoita. Kutsutaan sekä puhejonon tyhjentyessä
+   * että vastauksen loputtua — kumpi tahansa voi olla jälkimmäinen.
+   */
+  const maybeResume = useCallback(() => {
+    if (!conversationRef.current) return
+    if (streamingRef.current || speakingRef.current) return
+    if (captureRef.current !== 'off') return
+    startCapture('conversation')
+  }, [startCapture])
 
   /**
    * Sulkee vahvistusta odottavan ehdotuksen näkyvistä.
@@ -625,133 +688,219 @@ export function CommandPalette() {
     }
   }, [])
 
-  const askAssistant = useCallback(async (prompt: string) => {
-    // Edellinen kysymys vaikenee ja katkeaa ennen uuden aloittamista: sekä
-    // puhejono että virta ovat renderöinnin ulkopuolista tilaa, joka jatkaisi
-    // muuten uuden vastauksen päälle.
-    requestRef.current?.abort()
-    const speech = getSpeech()
-    speech.cancel()
-    // Edellinen ehdotus pois ennen uutta kysymystä: vanha kortti ei saa jäädä
-    // roikkumaan uuden vastauksen viereen eikä ehdotus palvelimelle.
-    dropProposal()
+  const askAssistant = useCallback(
+    async (prompt: string) => {
+      // Edellinen kysymys vaikenee ja katkeaa ennen uuden aloittamista: sekä
+      // puhejono että virta ovat renderöinnin ulkopuolista tilaa, joka jatkaisi
+      // muuten uuden vastauksen päälle.
+      requestRef.current?.abort()
+      // Lippu ennen cancel()-kutsua: cancel kertoo jonon tyhjenneen, ja ilman
+      // lippua keskustelu avaisi mikrofonin juuri kun vastaus on lähdössä.
+      streamingRef.current = true
+      const speech = getSpeech()
+      speech.cancel()
+      // Edellinen ehdotus pois ennen uutta kysymystä: vanha kortti ei saa jäädä
+      // roikkumaan uuden vastauksen viereen eikä ehdotus palvelimelle.
+      dropProposal()
 
-    const controller = new AbortController()
-    requestRef.current = controller
+      const controller = new AbortController()
+      requestRef.current = controller
 
-    setMode('asking')
-    setQuery('')
-    setAnswer(null)
-    setErrorMessage(null)
-    setSpeechBlocked(false)
-    setSpeechError(null)
-    setVoiceError(null)
+      setMode('asking')
+      setQuery('')
+      setAnswer(null)
+      setErrorMessage(null)
+      setSpeechBlocked(false)
+      setSpeechError(null)
+      setVoiceError(null)
 
-    // Pilkkoja on kysymyskohtainen: se pitää sisällään keskeneräisen lauseen
-    // ja palojen järjestysnumeron, jotka eivät saa vuotaa seuraavaan vastaukseen.
-    const splitter = createSpeechSplitter()
-    const speakPieces = (pieces: string[]) => {
-      if (controller.signal.aborted) return
-      for (const piece of pieces) speech.push(piece)
-    }
+      // Pilkkoja on kysymyskohtainen: se pitää sisällään keskeneräisen lauseen
+      // ja palojen järjestysnumeron, jotka eivät saa vuotaa seuraavaan vastaukseen.
+      const splitter = createSpeechSplitter()
+      const speakPieces = (pieces: string[]) => {
+        if (controller.signal.aborted) return
+        for (const piece of pieces) speech.push(piece)
+      }
 
-    try {
-      const res = await fetch('/api/arxcian/assistant', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Pyytää suoratoiston. Ilman tätä palvelin palauttaa entisen
-          // kertavastauksen, mikä pitää deployn jälkeen vielä auki olevan
-          // vanhan asiakkaan toimintakuntoisena.
-          Accept: 'application/x-ndjson',
-        },
-        body: JSON.stringify({ prompt }),
-        signal: controller.signal,
-      })
+      try {
+        const res = await fetch('/api/arxcian/assistant', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Pyytää suoratoiston. Ilman tätä palvelin palauttaa entisen
+            // kertavastauksen, mikä pitää deployn jälkeen vielä auki olevan
+            // vanhan asiakkaan toimintakuntoisena.
+            Accept: 'application/x-ndjson',
+          },
+          body: JSON.stringify({ prompt }),
+          signal: controller.signal,
+        })
 
-      // Virheet ennen suoratoiston alkua (401, 429, virheellinen pyyntö) tulevat
-      // yhä tavallisena JSON-vastauksena statuskoodin kera.
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => null)
-        setErrorMessage(data?.error ?? 'Jokin meni pieleen.')
+        // Virheet ennen suoratoiston alkua (401, 429, virheellinen pyyntö) tulevat
+        // yhä tavallisena JSON-vastauksena statuskoodin kera.
+        if (!res.ok || !res.body) {
+          const data = await res.json().catch(() => null)
+          setErrorMessage(data?.error ?? 'Jokin meni pieleen.')
+          setMode('error')
+          return
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let full = ''
+        let gotProposal = false
+
+        // NDJSON: yksi tapahtuma per rivi. Verkkopala voi katketa keskeltä riviä,
+        // joten vajaa loppu jää puskuriin seuraavaa lukukierrosta varten.
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (controller.signal.aborted) return
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (!line.trim()) continue
+            const event = JSON.parse(line) as AssistantEvent
+
+            if (event.type === 'error') {
+              setErrorMessage(event.value)
+              setMode('error')
+              return
+            }
+
+            // Ehdotus omana haaranaan **ennen** tekstin kertymistä: value on
+            // olio, joten yhteinen käsittely liimasi vastaukseen merkkijonon
+            // "[object Object]" ja luki senkin ääneen. Summaryä ei lueta
+            // erikseen — malli selostaa saman asian heti perään, ja kortti on
+            // joka tapauksessa se mitä käyttäjä vahvistaa.
+            if (event.type === 'proposal') {
+              gotProposal = true
+              const card: ProposalCard = { ...event.value, status: 'pending' }
+              proposalRef.current = card
+              setProposal(card)
+              setMode('answered')
+              continue
+            }
+
+            full += event.value
+            setAnswer(full)
+            // Ensimmäinen pala vaihtaa näkymän, jotta käyttäjä näkee vastauksen
+            // syntyvän sen sijaan että tuijottaisi "Kysytään assistentilta…" -
+            // tekstiä koko generoinnin ajan.
+            setMode('answered')
+            // Ääni lähtee liikkeelle heti ensimmäisestä valmiista lauseesta,
+            // ei vasta generoinnin päätyttyä.
+            speakPieces(splitter.push(event.value))
+          }
+        }
+
+        if (controller.signal.aborted) return
+
+        // Virran loppu: keskeneräinen viimeinen lause luetaan sellaisenaan.
+        speakPieces(splitter.flush())
+
+        // Pelkkä ehdotus ilman sanallista selostusta on kelvollinen vastaus.
+        if (!full && !gotProposal) {
+          setErrorMessage('Jokin meni pieleen.')
+          setMode('error')
+        }
+      } catch {
+        // Keskeytys on oma valinta eikä vika — käyttäjä kysyi uutta tai sulki paletin.
+        if (controller.signal.aborted) return
+        // Verkkovirhe tms. — ilman tätä käyttäjä jäisi 'asking'-tilaan
+        // loputtomiin, koska Escape ei tee siinä mitään.
+        setErrorMessage('Jokin meni pieleen.')
         setMode('error')
+      } finally {
+        // Vain oma pyyntö saa nollata lipun: keskeytetty vanha virta pääsee
+        // tänne vasta kun uusi on jo asettanut sen, ja nollaus avaisi
+        // mikrofonin kesken tuoreen vastauksen.
+        if (requestRef.current === controller) {
+          requestRef.current = null
+          streamingRef.current = false
+          apiRef.current.maybeResume()
+        }
+      }
+    },
+    [getSpeech, dropProposal],
+  )
+
+  /** Esilataa tervehdyksen, jotta herätesanan jälkeen ei odoteta verkkoa. */
+  const prefetchGreeting = useCallback(async () => {
+    if (greetingUrlRef.current) return
+    try {
+      const res = await fetch(GREETING_URL)
+      if (!res.ok) return
+      greetingUrlRef.current = URL.createObjectURL(await res.blob())
+    } catch {
+      // Tervehdys ei ole pakollinen: ilman esilatausta soitetaan suoraan
+      // reitiltä, jolloin alkuun tulee verkon verran viivettä.
+    }
+  }, [])
+
+  /**
+   * Herätesana kuultiin: keskustelu alkaa.
+   *
+   * Tervehdys soitetaan **heti ja ilman mallikutsua** — se on koko syy sille,
+   * että se on syntetisoitu ja esiladattu valmiiksi. Poikkeus on lause jossa
+   * käyttäjä ehti jo kysyä ("arxcian, mikä on sää"): silloin tervehdys vain
+   * viivyttäisi vastausta, joka on itsessään sama kuittaus siitä että
+   * herätesana kuultiin.
+   */
+  const startConversation = useCallback(
+    (rest: string) => {
+      // Tunnistin kiinni heti: se ei saa kuulla tervehdystä eikä vastausta.
+      // Sync-effect pitää sen kiinni koko keskustelun ajan.
+      wakeRef.current?.stop()
+
+      // Edellinen ääni vaiennetaan **ennen** kuin keskustelu merkitään
+      // käynnissä olevaksi: cancel() ilmoittaa jonon tyhjenneen, ja käynnissä
+      // olevassa keskustelussa se avaisi mikrofonin juuri ennen tervehdystä —
+      // jolloin ensimmäinen kuultu lause olisi avustajan oma tervehdys.
+      const speech = getSpeech()
+      speech.cancel()
+
+      conversationRef.current = true
+      setConversation(true)
+      setConversationEnded(false)
+      setVoiceError(null)
+      setSpeechBlocked(false)
+      setSpeechError(null)
+      setOpen(true)
+
+      const question = rest.trim()
+      if (question) {
+        void askAssistant(question)
         return
       }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let full = ''
-      let gotProposal = false
+      dropProposal()
+      setMode('answered')
+      setErrorMessage(null)
+      setAnswer(greetingText(user))
+      speech.pushAudio(greetingUrlRef.current ?? GREETING_URL)
+      // Esilataus jäi tekemättä tai epäonnistui — yritetään seuraavaa kertaa
+      // varten uudelleen taustalla.
+      if (!greetingUrlRef.current) void prefetchGreeting()
+    },
+    [askAssistant, dropProposal, getSpeech, prefetchGreeting, user],
+  )
 
-      // NDJSON: yksi tapahtuma per rivi. Verkkopala voi katketa keskeltä riviä,
-      // joten vajaa loppu jää puskuriin seuraavaa lukukierrosta varten.
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (controller.signal.aborted) return
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const event = JSON.parse(line) as AssistantEvent
-
-          if (event.type === 'error') {
-            setErrorMessage(event.value)
-            setMode('error')
-            return
-          }
-
-          // Ehdotus omana haaranaan **ennen** tekstin kertymistä: value on
-          // olio, joten yhteinen käsittely liimasi vastaukseen merkkijonon
-          // "[object Object]" ja luki senkin ääneen. Summaryä ei lueta
-          // erikseen — malli selostaa saman asian heti perään, ja kortti on
-          // joka tapauksessa se mitä käyttäjä vahvistaa.
-          if (event.type === 'proposal') {
-            gotProposal = true
-            const card: ProposalCard = { ...event.value, status: 'pending' }
-            proposalRef.current = card
-            setProposal(card)
-            setMode('answered')
-            continue
-          }
-
-          full += event.value
-          setAnswer(full)
-          // Ensimmäinen pala vaihtaa näkymän, jotta käyttäjä näkee vastauksen
-          // syntyvän sen sijaan että tuijottaisi "Kysytään assistentilta…" -
-          // tekstiä koko generoinnin ajan.
-          setMode('answered')
-          // Ääni lähtee liikkeelle heti ensimmäisestä valmiista lauseesta,
-          // ei vasta generoinnin päätyttyä.
-          speakPieces(splitter.push(event.value))
-        }
-      }
-
-      if (controller.signal.aborted) return
-
-      // Virran loppu: keskeneräinen viimeinen lause luetaan sellaisenaan.
-      speakPieces(splitter.flush())
-
-      // Pelkkä ehdotus ilman sanallista selostusta on kelvollinen vastaus.
-      if (!full && !gotProposal) {
-        setErrorMessage('Jokin meni pieleen.')
-        setMode('error')
-      }
-    } catch {
-      // Keskeytys on oma valinta eikä vika — käyttäjä kysyi uutta tai sulki paletin.
-      if (controller.signal.aborted) return
-      // Verkkovirhe tms. — ilman tätä käyttäjä jäisi 'asking'-tilaan
-      // loputtomiin, koska Escape ei tee siinä mitään.
-      setErrorMessage('Jokin meni pieleen.')
-      setMode('error')
+  // Käsittelijöiden tuorein versio kuuntelijoille, jotka luodaan kerran.
+  useEffect(() => {
+    apiRef.current = {
+      ask: askAssistant,
+      stopCapture,
+      endConversation,
+      maybeResume,
+      armSilence,
+      onWake: startConversation,
     }
-    // Molemmat ovat []-riippuvuuksisia useCallbackeja, joten askAssistantin
-    // identiteetti pysyy vakaana — puheentunnistuksen mount-effect riippuu siitä.
-  }, [getSpeech, dropProposal])
+  })
 
   // ⌘K / Ctrl+K avaa ja sulkee
   useEffect(() => {
@@ -789,6 +938,9 @@ export function CommandPalette() {
       setErrorMessage(null)
       setSpeechBlocked(false)
       setSpeechError(null)
+      // Paletin sulkeminen on myös keskustelun lopetus: mikrofoni ei jää auki
+      // näkymään jota käyttäjä ei enää katso.
+      endConversation('user')
       // Kesken oleva virta katkaistaan ja puhejono vaikenee: kumpikin jatkaisi
       // muuten näkymättömissä, ja ääni puhuisi suljetun paletin jälkeen.
       requestRef.current?.abort()
@@ -797,45 +949,45 @@ export function CommandPalette() {
       // vanhenemistaan — sulkeminen ei ole hyväksyntä, mutta se on päätös.
       dropProposal()
     }
-  }, [open, dropProposal])
+  }, [open, dropProposal, endConversation])
 
   useEffect(() => {
     setIndex(0)
   }, [query])
 
-  /* --- Puheentunnistus: luodaan kerran, puretaan unmountissa --- */
+  /* --- Käyttäjän vuoron kuuntelija: luodaan kerran, puretaan unmountissa --- */
   useEffect(() => {
-    const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition
-    if (!SpeechRecognitionCtor) return
+    const recognition = createRecognition()
+    if (!recognition) return
 
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = false
-    recognition.lang = 'fi-FI'
-
-    recognition.onstart = () => setIsListening(true)
+    recognition.onspeechstart = () => {
+      // Käyttäjä alkoi puhua: laskuri alkaa alusta, jottei pitkä lause katkea
+      // kesken. Laskuri viritetään uudelleen eikä pelkästään pysäytetä —
+      // pysäytetty laskuri jättäisi mikrofonin auki loputtomiin siinä
+      // tapauksessa ettei puheesta koskaan valmistu lopullista tulosta.
+      if (captureRef.current !== 'off') apiRef.current.armSilence()
+    }
 
     recognition.onend = () => {
-      setIsListening(false)
       // Selain katkaisee tunnistuksen ajoittain itsestään (esim. hiljaisuuden
-      // jälkeen) vaikka continuous on true — käynnistetään uudelleen jos
-      // mikään ei estä sitä. Pieni viive ettei uudelleenkäynnistys osu
-      // täsmälleen samaan hetkeen kuin selaimen oma sulkeminen.
-      if (document.visibilityState === 'visible' && modeRef.current === 'search' && micAllowedRef.current) {
-        setTimeout(() => {
-          if (document.visibilityState === 'visible' && modeRef.current === 'search' && micAllowedRef.current) {
-            try {
-              recognition.start()
-            } catch {
-              // jo käynnissä tms. — ei kriittistä, onend laukeaa taas jos tarpeen
-            }
-          }
-        }, 300)
-      }
+      // jälkeen) vaikka continuous on true. Jos vuoro on yhä käyttäjällä,
+      // kuuntelu käynnistetään uudelleen — pieni viive, ettei uudelleen-
+      // käynnistys osu täsmälleen samaan hetkeen kuin selaimen oma sulkeminen.
+      const kind = captureRef.current
+      if (kind === 'off') return
+      window.setTimeout(() => {
+        if (captureRef.current !== kind) return
+        if (streamingRef.current || speakingRef.current) return
+        try {
+          recognition.start()
+        } catch {
+          // Jo käynnissä tms. — onend laukeaa taas jos tarpeen.
+        }
+      }, 300)
     }
 
     recognition.onerror = event => {
-      if (event.error === 'not-allowed') {
+      if (isPermissionError(event.error)) {
         // Käyttäjä kielsi mikrofonin — ei yritetä automaattisesti uudelleen.
         // Asetetaan myös ref suoraan tässä, ettei onend ehdi käynnistää
         // uudelleen ennen kuin Reactin tila on ehtinyt päivittyä. Merkki jää
@@ -845,17 +997,13 @@ export function CommandPalette() {
       }
 
       // 'aborted' seuraa jokaisesta tavallisesta pysäytyksestä ja 'no-speech'
-      // taustakuuntelun hiljaisuudesta: kumpikaan ei ole käyttäjälle
-      // kerrottava vika. Muut virheet näkyviin — mikrofonivika ei saa jäädä
-      // pelkäksi hiljaisuudeksi. 'no-speech' kuitataan puhekysymyksen
-      // aikakatkaisulla, ei täällä, koska kuuntelu jatkuu vielä sen jälkeen.
-      if (event.error !== 'aborted' && event.error !== 'no-speech') {
-        setVoiceError(RECOGNITION_ERROR[event.error] ?? 'puheentunnistus epäonnistui')
-        if (directModeRef.current) {
-          directModeRef.current = false
-          setDirectMode(false)
-        }
-      }
+      // hiljaisuudesta: kumpikaan ei ole käyttäjälle kerrottava vika.
+      // 'no-speech' kuitataan vuoron aikakatkaisulla, ei täällä.
+      if (event.error === 'aborted' || event.error === 'no-speech') return
+
+      setVoiceError(recognitionErrorMessage(event.error))
+      apiRef.current.stopCapture()
+      apiRef.current.endConversation('user')
     }
 
     recognition.onresult = event => {
@@ -863,46 +1011,19 @@ export function CommandPalette() {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) finalTranscript = event.results[i][0].transcript
       }
-      if (!finalTranscript) return
+      const question = finalTranscript.trim()
+      if (!question) return
 
-      // Suora tila: käyttäjä painoi nappia, joten koko lause on kysymys.
-      // Tämä reitti ei riipu herätesanan tunnistuksesta lainkaan.
-      if (directModeRef.current) {
-        directModeRef.current = false
-        setDirectMode(false)
-        const question = finalTranscript.trim()
-        if (!question) return
-        setHeard({ text: finalTranscript, status: 'ok' })
-        setOpen(true)
-        askAssistant(question)
-        return
-      }
+      // Vuoro on avustajalla (se puhuu tai vastaa): kuultu lause on lähes
+      // varmasti sen omaa ääntä, joten se ohitetaan.
+      if (captureRef.current === 'off') return
 
-      // Sumea vertailu tarkan indexOf:n sijaan: suomen puheentunnistus ei
-      // kirjoita "arxcian":ia koskaan täysin oikein (havaittu mm. "arksian",
-      // "arksi on", "arction"). Sanat pilkotaan alkuperäisestä transkriptista
-      // — vain vertailua varten tehdään taitettu kopio kustakin ehdokkaasta,
-      // jottei käyttäjän oma ä/ö/å korruptoidu itse kysymyksessä.
-      const words = finalTranscript.split(/[\s,]+/).filter(Boolean)
-      const matchedWords = matchWakeWord(words)
-
-      // Molemmissa hylkäyshaaroissa kerrotaan syy: hiljainen paluu jätti
-      // käyttäjän arvaamaan, oliko vika herätesanassa, kysymyksessä vai
-      // mikrofonissa.
-      if (matchedWords === null) {
-        setHeard({ text: finalTranscript, status: 'no-wake' })
-        return
-      }
-
-      const rest = words.slice(matchedWords).join(' ').trim()
-      if (!rest || !/[a-zA-Z0-9äöåÄÖÅ]/.test(rest)) {
-        setHeard({ text: finalTranscript, status: 'no-question' })
-        return
-      }
-
+      // Kuuntelu kiinni ennen kysymystä: vastaus luetaan ääneen, eikä sitä
+      // saa poimia takaisin uudeksi kysymykseksi.
+      apiRef.current.stopCapture()
       setHeard({ text: finalTranscript, status: 'ok' })
       setOpen(true)
-      askAssistant(rest)
+      void apiRef.current.ask(question)
     }
 
     recognitionRef.current = recognition
@@ -910,83 +1031,161 @@ export function CommandPalette() {
     setMicAvailable(true)
     setMicAllowed(true)
 
-    try {
-      recognition.start()
-    } catch {
-      // Harvinainen — esim. jos sivu on jo taustalla ensimmäisellä renderillä.
-      // mode/visibility-effektit käynnistävät kuuntelun heti kun mahdollista.
-    }
-
     return () => {
       recognition.onstart = null
       recognition.onend = null
+      recognition.onspeechstart = null
       recognition.onerror = null
       recognition.onresult = null
-      recognition.stop()
       recognition.abort()
       recognitionRef.current = null
     }
-  }, [askAssistant])
+  }, [])
 
-  // Käynnistys/pysäytys mode-tilan mukaan: kuuntelu on päällä vain kun
-  // paletti ei ole kysymys- tai vastausnäkymässä.
+  /* --- Herätyssana: oma tunnistimensa rajapinnan takana --- */
   useEffect(() => {
-    const recognition = recognitionRef.current
-    if (!recognition || !micAllowed) return
-    if (mode === 'search') {
-      if (document.visibilityState === 'visible') {
-        try {
-          recognition.start()
-        } catch {
-          // jo käynnissä
-        }
-      }
-    } else {
-      recognition.stop()
-    }
-  }, [mode, micAllowed])
+    if (!wakeWordSupported()) return
 
-  // Välilehden näkyvyys: taustalla ei kuunnella, takaisin tullessa jatketaan
-  // jos paletti on yhä haku-tilassa.
+    const detector = createBrowserWakeWord({
+      onDetected: rest => apiRef.current.onWake(rest),
+      onStateChange: setWakeListening,
+      onError: message => setVoiceError(message),
+      onHeard: (text, matched) => setHeard({ text, status: matched ? 'ok' : 'no-wake' }),
+      onDenied: () => {
+        // Ilman lupaa herätyssana ei voi toimia. Kytkin pois päältä, jottei
+        // se jää valehtelemaan kuuntelevansa — käyttäjä kytkee sen takaisin
+        // annettuaan luvan.
+        micAllowedRef.current = false
+        setMicAllowed(false)
+        setWakeEnabled(false)
+        window.localStorage.setItem(WAKE_STORAGE_KEY, 'off')
+      },
+    })
+
+    wakeRef.current = detector
+    setWakeSupported(true)
+    return () => {
+      detector.stop()
+      wakeRef.current = null
+    }
+  }, [])
+
+  // Kytkimen tila muistista. Effectissä eikä alkuarvona, koska localStorage ei
+  // ole olemassa palvelimella ja hydraatio hajoaisi.
+  useEffect(() => {
+    if (window.localStorage.getItem(WAKE_STORAGE_KEY) === 'on') setWakeEnabled(true)
+  }, [])
+
+  /**
+   * Herätyssana päällä: tervehdys esiladataan, ja jos ääntä ei ole vielä
+   * avattu käyttäjän eleellä (kytkin palautui muistista sivulatauksessa),
+   * avataan se ensimmäisestä eleestä. Muuten selain estäisi tervehdyksen —
+   * herätesana ei ole ele.
+   */
+  useEffect(() => {
+    if (!wakeEnabled) return
+    void prefetchGreeting()
+    if (getAudio().unlocked) return
+
+    const unlock = () => getAudio().unlock()
+    window.addEventListener('pointerdown', unlock, { once: true })
+    window.addEventListener('keydown', unlock, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [wakeEnabled, prefetchGreeting, getAudio])
+
+  /**
+   * Herätyssanan kuuntelu päälle ja pois yhdestä paikasta.
+   *
+   * Ehtoja on monta, mutta ne kaikki tarkoittavat samaa: **kaksi tunnistinta
+   * ei kuuntele samaa mikrofonia yhtä aikaa, eikä herätesanaa etsitä
+   * avustajan omasta puheesta.** Yksi effect yhden totuuden kanssa on
+   * luotettavampi kuin start/stop-kutsut siellä täällä.
+   */
+  useEffect(() => {
+    const detector = wakeRef.current
+    if (!detector) return
+
+    const shouldListen =
+      wakeEnabled &&
+      micAllowed &&
+      !hidden &&
+      !conversation &&
+      capture === 'off' &&
+      !speaking &&
+      mode !== 'asking'
+
+    if (shouldListen) detector.start()
+    else detector.stop()
+  }, [wakeEnabled, micAllowed, hidden, conversation, capture, speaking, mode])
+
+  // Välilehden näkyvyys. Taustalla ei kuunnella, ja kesken jäänyt keskustelu
+  // päättyy: mikrofoni ei saa jäädä auki näkymään jota ei katsota.
   useEffect(() => {
     const onVisibilityChange = () => {
-      const recognition = recognitionRef.current
-      if (!recognition || !micAllowedRef.current) return
-      if (document.visibilityState === 'hidden') {
-        recognition.stop()
-      } else if (modeRef.current === 'search') {
-        try {
-          recognition.start()
-        } catch {
-          // jo käynnissä
-        }
-      }
+      const isHidden = document.visibilityState === 'hidden'
+      setHidden(isHidden)
+      if (isHidden && conversationRef.current) apiRef.current.endConversation('user')
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
+
+  // Ajastimet eivät saa jäädä elämään komponentin purun yli.
+  useEffect(() => () => clearSilence(), [clearSilence])
+
+  /**
+   * Herätyssanan kytkin.
+   *
+   * Päälle kytkeminen on **käyttäjän ele** ja siksi ainoa hetki jolloin äänen
+   * voi avata: samalla painalluksella soitetaan äänetön puskuri, ja sen jälkeen
+   * tervehdys saa soida ilman uutta elettä.
+   */
+  const toggleWakeWord = () => {
+    const next = !wakeEnabled
+    setWakeEnabled(next)
+    window.localStorage.setItem(WAKE_STORAGE_KEY, next ? 'on' : 'off')
+
+    if (!next) {
+      wakeRef.current?.stop()
+      return
+    }
+
+    getAudio().unlock()
+    void prefetchGreeting()
+    setVoiceError(null)
+    micAllowedRef.current = true
+    setMicAllowed(true)
+    // Varsinainen käynnistys tapahtuu sync-effectissä.
+  }
 
   /**
    * Puhu-painike (push-to-talk): painallus aloittaa kuuntelun, seuraava kuultu
    * lause menee suoraan assistentille ilman herätesanaa. Uusi painallus
    * lopettaa kuuntelun, ja niin tekee myös lauseen päättyminen.
    *
-   * Tämä on ääniohjauksen luotettava reitti. Herätesana "arxcian" on
-   * suomenkieliselle puheentunnistukselle vaikea, ja jos se kuullaan väärin,
-   * mikään ei tapahdu eikä käyttäjä saa mitään palautetta. Nappi ohittaa koko
-   * ongelman. Klikkaus on samalla se käyttäjän ele jota Safari vaatii
-   * tunnistuksen käynnistämiseen ja selain vastauksen toistamiseen ääneen.
+   * Tämä on ääniohjauksen luotettava reitti, ja se toimii myös silloin kun
+   * herätyssana on pois päältä. Herätesana "arxcian" on suomenkieliselle
+   * puheentunnistukselle vaikea, ja jos se kuullaan väärin, mikään ei tapahdu.
+   * Nappi ohittaa koko ongelman. Klikkaus on samalla se käyttäjän ele jota
+   * Safari vaatii tunnistuksen käynnistämiseen ja selain äänen toistamiseen.
    */
   const askByVoice = () => {
-    const recognition = recognitionRef.current
-    if (!recognition) return
-
-    if (directModeRef.current) {
-      directModeRef.current = false
-      setDirectMode(false)
-      recognition.stop()
+    // Keskustelun aikana sama nappi lopettaa sen: kaksi eri kuuntelutilaa
+    // yhtä aikaa samalla tunnistimella ei ole tila jota kannattaa rakentaa.
+    if (conversationRef.current) {
+      endConversation('user')
       return
     }
+
+    if (captureRef.current === 'push') {
+      stopCapture()
+      return
+    }
+
+    if (!recognitionRef.current) return
 
     // Edellinen vastaus vaikenee heti kun käyttäjä alkaa puhua päälle:
     // avustajan puhe kuuluisi muuten mikrofoniin ja jatkuisi uuden kysymyksen
@@ -995,17 +1194,18 @@ export function CommandPalette() {
     setSpeechBlocked(false)
     setSpeechError(null)
     setVoiceError(null)
+    setHeard(null)
+
+    // Painallus on käyttäjän ele: avataan ääni samalla, jotta vastaus voi soida
+    // myös iOS:ssä ilman erillistä "toista ääneen" -painallusta.
+    getAudio().unlock()
+    // Herätyssanan tunnistin pois päältä vuoron ajaksi — sync-effect hoitaa
+    // sen capturen muuttuessa, mutta se ei saa kuulla tätäkään lausetta.
+    wakeRef.current?.stop()
 
     micAllowedRef.current = true
     setMicAllowed(true)
-    directModeRef.current = true
-    setDirectMode(true)
-    setHeard(null)
-    try {
-      recognition.start()
-    } catch {
-      // Jo käynnissä taustakuuntelussa — lippu poimii seuraavan lauseen.
-    }
+    startCapture('push')
   }
 
   /**
@@ -1016,6 +1216,8 @@ export function CommandPalette() {
     const speech = getSpeech()
     setSpeechBlocked(false)
     setSpeechError(null)
+    // Painallus on ele: avataan ääni samalla, jotta seuraavakin pala soi.
+    getAudio().unlock()
 
     // Selaimen esto: jono on tallella ja tämä painallus on juuri se ele jota
     // selain vaati, joten jatketaan siitä mihin jäätiin.
@@ -1080,37 +1282,46 @@ export function CommandPalette() {
     if (e.key === 'Enter') {
       e.preventDefault()
       if (results[index]) return go(results[index].href)
-      if (askVisible && index === 0) askAssistant(query.trim())
+      if (askVisible && index === 0) void askAssistant(query.trim())
     }
   }
 
   /**
-   * Yksi tila neljästä näkyvissä kerrallaan, tässä järjestyksessä: virhe menee
-   * kaiken edelle (sitä ei saa piilottaa), sitten kuuntelu, käsittely ja puhe
-   * — se mitä kone juuri nyt tekee käyttäjän puolesta.
+   * Yksi tila kerrallaan näkyvissä, tässä järjestyksessä: virhe menee kaiken
+   * edelle (sitä ei saa piilottaa), sitten se mitä kone juuri nyt tekee
+   * käyttäjän puolesta — kuuntelee, käsittelee, puhuu — ja vasta lopuksi
+   * lepotilat.
    */
   const voiceState: VoiceState = voiceError
     ? 'error'
     : !micAllowed
       ? 'denied'
-      : directMode
+      : capture !== 'off'
         ? 'listening'
         : mode === 'asking'
           ? 'processing'
           : speaking
             ? 'speaking'
-            : isListening
-              ? 'ready'
-              : 'idle'
+            : conversationEnded
+              ? 'ended'
+              : wakeListening
+                ? 'ready'
+                : 'idle'
 
   return (
     <>
-      <MicStatus
+      <VoiceControls
         state={voiceState}
         micAvailable={micAvailable}
         error={voiceError}
         heard={heard}
+        wakeSupported={wakeSupported}
+        wakeEnabled={wakeEnabled}
+        wakeListening={wakeListening}
+        conversation={conversation}
         onAsk={askByVoice}
+        onToggleWake={toggleWakeWord}
+        onEndConversation={() => endConversation('user')}
       />
 
       {open && (
@@ -1169,7 +1380,7 @@ export function CommandPalette() {
                 {askVisible && (
                   <li>
                     <button
-                      onClick={() => askAssistant(query.trim())}
+                      onClick={() => void askAssistant(query.trim())}
                       onMouseEnter={() => setIndex(0)}
                       className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors ${
                         index === 0 ? 'bg-ax-panel-hi text-ax-text' : 'text-ax-dim'
@@ -1205,13 +1416,21 @@ export function CommandPalette() {
 
                 <div
                   className={`mt-3 flex items-center gap-2 ${
-                    speaking || speechBlocked || speechError ? '' : 'hidden'
+                    speaking || speechBlocked || speechError || conversation ? '' : 'hidden'
                   }`}
                 >
                   {speaking && (
                     <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-ax-up">
                       <span className="ax-pulse h-1.5 w-1.5 rounded-full bg-ax-up" />
                       puhuu
+                    </span>
+                  )}
+                  {/* Keskustelutilassa kerrotaan kenen vuoro on: mikrofoni on
+                      auki vain silloin kun avustaja ei puhu. */}
+                  {conversation && !speaking && capture === 'conversation' && (
+                    <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-ax-accent">
+                      <span className="ax-pulse h-1.5 w-1.5 rounded-full bg-ax-accent" />
+                      kuuntelee
                     </span>
                   )}
                   {(speechBlocked || speechError) && answer && (
@@ -1224,6 +1443,15 @@ export function CommandPalette() {
                     </button>
                   )}
                   {speechError && <span className="text-[11px] text-ax-warn">{speechError}</span>}
+                  {conversation && (
+                    <button
+                      type="button"
+                      onClick={() => endConversation('user')}
+                      className="ml-auto rounded-md border border-ax-line px-2.5 py-1 text-[11px] text-ax-dim transition-colors hover:bg-ax-panel-hi"
+                    >
+                      Lopeta
+                    </button>
+                  )}
                 </div>
               </div>
             )}

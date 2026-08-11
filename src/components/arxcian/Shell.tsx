@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { UserId } from '@/lib/session'
 import { HUB_HREF, SECTIONS, activeSection } from '@/lib/arxcian/nav'
 import { SectionIcon, IconHub } from './icons'
 import { Ticker } from './Ticker'
@@ -12,8 +13,12 @@ import { CommandPalette } from './CommandPalette'
 /**
  * arxcianin kehys: ylänauha, navigaatio ja komentopaletti.
  * Desktopissa navigaatio on kapea vasen palkki, mobiilissa alapalkki.
+ *
+ * `user` on UserId eikä string, koska komentopaletti tervehtii käyttäjää
+ * nimeltä (greetingText). Tyyppi tuodaan `import type`illa, joka katoaa
+ * käännöksessä — session.ts itse ei kelpaisi selainniputukseen.
  */
-export function Shell({ user, children }: { user: string; children: ReactNode }) {
+export function Shell({ user, children }: { user: UserId; children: ReactNode }) {
   const pathname = usePathname()
   const active = activeSection(pathname)
   const onHub = pathname === HUB_HREF
@@ -113,7 +118,7 @@ export function Shell({ user, children }: { user: string; children: ReactNode })
         ))}
       </nav>
 
-      <CommandPalette />
+      <CommandPalette user={user} />
     </div>
   )
 }
