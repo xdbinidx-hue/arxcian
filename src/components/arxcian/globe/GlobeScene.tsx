@@ -387,8 +387,6 @@ type Marker = {
   point: GlobePoint
   anchor: THREE.Object3D
   dot: SVGCircleElement
-  /** Lyhyt yhdysviiva kortista pisteeseen — vain pisteillä joilla on callout. */
-  line: SVGLineElement | null
   /** Kortti: tausta, nimi ja arvo yhtenä ryhmänä. */
   card: SVGGElement | null
   /** Kortin leveys pikseleinä, mitattuna kerran luonnin yhteydessä. */
@@ -919,24 +917,10 @@ export default function GlobeScene({
       }
 
       for (const s of slots) {
-        const { line, card } = s.marker
-        if (!line || !card) continue
+        const { card } = s.marker
+        if (!card) continue
 
         card.setAttribute('transform', `translate(${s.cx.toFixed(1)} ${s.cy.toFixed(1)})`)
-
-        // Viiva päättyy kortin reunaan eikä sen keskelle, jottei se piirry
-        // taustan päälle. Suhde kertoo kuinka pitkälle kortin keskeltä
-        // pisteen suuntaan päästään ennen reunaa.
-        const dx = s.sx - s.cx
-        const dy = s.sy - s.cy
-        const tx = dx === 0 ? Infinity : s.w / 2 / Math.abs(dx)
-        const ty = dy === 0 ? Infinity : CARD_HEIGHT / 2 / Math.abs(dy)
-        const edge = Math.min(tx, ty, 1)
-
-        line.setAttribute('x1', String(s.sx))
-        line.setAttribute('y1', String(s.sy))
-        line.setAttribute('x2', String(s.cx + dx * edge))
-        line.setAttribute('y2', String(s.cy + dy * edge))
       }
     }
 
@@ -956,7 +940,6 @@ export default function GlobeScene({
         const fade = Math.min(1, Math.max(0, (facing - 0.04) / 0.18))
 
         marker.dot.style.opacity = String(fade)
-        if (marker.line) marker.line.style.opacity = String(fade * 0.55)
         if (marker.card) marker.card.style.opacity = String(fade)
 
         if (fade <= 0) {
@@ -981,7 +964,7 @@ export default function GlobeScene({
           String(selected ? base * (1.6 + 0.2 * Math.sin(t * 3)) : base),
         )
 
-        if (marker.line) slots.push({ marker, sx, sy, cx: sx, cy: sy, w: marker.width })
+        if (marker.card) slots.push({ marker, sx, sy, cx: sx, cy: sy, w: marker.width })
       }
 
       layoutCards()
@@ -1110,15 +1093,10 @@ export default function GlobeScene({
       }
       calloutSvg.appendChild(dot)
 
-      let line: SVGLineElement | null = null
       let card: SVGGElement | null = null
       let width = 0
 
       if (point.callout) {
-        line = document.createElementNS(ns, 'line')
-        line.style.cssText = 'stroke:rgb(var(--ax-accent)/0.5);stroke-width:0.75;opacity:0'
-        calloutSvg.appendChild(line)
-
         // Kortti on oma ryhmänsä, jotta koko lappu siirtyy yhdellä
         // transformilla eikä jokaista tekstiä tarvitse sijoittaa erikseen
         // joka ruudussa.
@@ -1165,7 +1143,7 @@ export default function GlobeScene({
         value.setAttribute('text-anchor', 'end')
       }
 
-      markersRef.current.push({ point, anchor, dot, line, card, width, sx: null, sy: null })
+      markersRef.current.push({ point, anchor, dot, card, width, sx: null, sy: null })
     }
   }, [data])
 

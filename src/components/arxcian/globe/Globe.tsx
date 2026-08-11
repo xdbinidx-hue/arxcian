@@ -30,7 +30,7 @@ const ZOOM_STEP = 0.25
  *
  * Loitontaminen on yhä mahdollista, jos koko planeetan haluaa nähdä.
  */
-const INITIAL_ZOOM = 0.86
+const INITIAL_ZOOM = 0.61
 
 export function Globe({ data, className = '' }: { data: GlobeData; className?: string }) {
   const [selected, setSelected] = useState<GlobePoint | null>(null)
