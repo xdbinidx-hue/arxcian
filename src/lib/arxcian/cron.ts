@@ -5,6 +5,7 @@ import { getSentiment } from './trading/sentiment'
 import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
+import { refreshCalendar } from './trading/calendar'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummary, RJMOB_SUMMARY_KEY } from './rjmobSummary'
@@ -55,6 +56,14 @@ const tradingJobs: CronJob[] = [
     run: async () => {
       const result = await getIctVideos()
       return { key: 'trading:ict-videos', items: result.data.length }
+    },
+  },
+  {
+    id: 'trading-calendar',
+    description: 'Trading: talouskalenteri (ForexFactory)',
+    run: async () => {
+      const events = await refreshCalendar()
+      return { key: 'trading:calendar', items: events.length }
     },
   },
   {
