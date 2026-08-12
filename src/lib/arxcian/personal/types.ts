@@ -31,6 +31,23 @@ export type Habit = {
   completedDates: string[]
 }
 
+export type Todo = {
+  id: string
+  owner: Owner
+  title: string
+  /** YYYY-MM-DD jolle tehtävä on ajoitettu, `null` = jonossa ilman päivää.
+   *  Päivä on selaimen paikallinen kalenteripäivä, ei UTC: palvelin ajaa
+   *  UTC:ssa, joten "tänään" laskettuna palvelimella olisi Suomen aikaa
+   *  klo 00–03 väärä päivä. Siksi päivä valitaan ja tulkitaan selaimessa. */
+  date: string | null
+  /** HH:MM paikallista aikaa. Vaatii `date`n — ilman päivää kellonajalla ei
+   *  ole ankkuria mihin muistutus kiinnittyisi. */
+  remindAt: string | null
+  done: boolean
+  createdAt: number
+  completedAt: number | null
+}
+
 export type Note = {
   id: string
   owner: Owner
