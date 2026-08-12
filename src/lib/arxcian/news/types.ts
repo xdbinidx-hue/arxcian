@@ -1,21 +1,21 @@
-export type Category = 'bisnes' | 'ai' | 'sijoittaminen' | 'terveys' | 'teknologia' | 'historia'
+export type Category = 'maailma' | 'konfliktit' | 'bisnes' | 'sijoittaminen' | 'teknologia' | 'ai'
 
 export const CATEGORIES: readonly Category[] = [
+  'maailma',
+  'konfliktit',
   'bisnes',
-  'ai',
   'sijoittaminen',
-  'terveys',
   'teknologia',
-  'historia',
+  'ai',
 ]
 
 export const CATEGORY_LABELS: Record<Category, string> = {
+  maailma: 'Maailma',
+  konfliktit: 'Konfliktit',
   bisnes: 'Bisnes',
-  ai: 'AI',
   sijoittaminen: 'Sijoittaminen',
-  terveys: 'Terveys',
   teknologia: 'Teknologia',
-  historia: 'Historia',
+  ai: 'AI',
 }
 
 export type FeedFormat = 'rss2' | 'atom'

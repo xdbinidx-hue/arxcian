@@ -22,7 +22,7 @@ const SYSTEM_PROMPT = `Tiivistät englanninkielisiä uutisartikkeleita suomeksi 
 
 Jokaisesta artikkelista (otsikko + lähteen oma kuvaus):
 - Kirjoita 1-2 lauseen tiivistelmä suomeksi. Kerro mitä tapahtui, älä toista otsikkoa.
-- Anna 2-4 lyhyttä pienaakkosista tägiä suomeksi (esim. "tekoäly", "markkinat", "terveys").
+- Anna 2-4 lyhyttä pienaakkosista tägiä suomeksi (esim. "tekoäly", "markkinat", "konflikti").
 
 Vastaa täsmälleen annetun JSON-skeeman mukaisesti, items-taulukon pituus ja järjestys täsmälleen syötteen mukainen.`
 
