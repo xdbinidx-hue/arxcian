@@ -3,7 +3,7 @@ import { sourcesFor } from './sources'
 import { curateArticles, CANDIDATE_LIMIT } from './summarize'
 import { readCached, writeCached } from '../cache'
 import { isoDateHelsinki } from '../time'
-import type { Article, Category, RawItem } from './types'
+import { CATEGORY_FOCUS, type Article, type Category, type RawItem } from './types'
 
 /** Montako uutista poimitaan yhdellä hakukerralla. Neljä ajoa/vrk = 20 per aihe. */
 export const PER_RUN = 5
@@ -92,7 +92,7 @@ export async function refreshCategory(category: Category): Promise<{ total: numb
     .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
     .slice(0, CANDIDATE_LIMIT)
 
-  const curated = await curateArticles(candidates, PER_RUN)
+  const curated = await curateArticles(candidates, PER_RUN, CATEGORY_FOCUS[category])
   const newArticles: Article[] = curated.map(pick => {
     const item = candidates[pick.index]
     return {

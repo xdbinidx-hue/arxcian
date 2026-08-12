@@ -25,10 +25,13 @@ function getClient() {
   return client
 }
 
-function systemPrompt(limit: number): string {
+function systemPrompt(limit: number, focus: string): string {
   return `Valitset ja tiivistät englanninkielisiä uutisartikkeleita suomeksi arxcian-uutiskoosteeseen.
 
+Tämän kategorian rajaus: ${focus}
+
 Saat numeroidun listan ehdokkaita. Valitse niistä ${limit} tärkeintä:
+- Pysy kategorian rajauksessa. Ehdokkaissa on myös muualle kuuluvia juttuja.
 - Painota laajaa vaikutusta ja merkittävyyttä: mitä lukija haluaa tietää tänään.
 - Ohita rutiinipäivitykset, mielipidekirjoitukset, listajutut, arvostelut ja mainokset.
 - Älä valitse kahta juttua samasta tapahtumasta — valitse niistä kattavin.
@@ -109,7 +112,7 @@ function newestWithoutSummary(candidateCount: number, limit: number): Curated[] 
  * kutsuja on yksi per kategoria per haku eikä kymmeniä. Kutsujan on annettava
  * ehdokkaat tuoreimmasta vanhimpaan — varasuunnitelma nojaa siihen.
  */
-export async function curateArticles(candidates: RawItem[], limit: number): Promise<Curated[]> {
+export async function curateArticles(candidates: RawItem[], limit: number, focus: string): Promise<Curated[]> {
   if (candidates.length === 0) return []
 
   // Ehdokkaita voi olla vähemmän kuin poimittavia. Silloin valittavaa ei ole,
@@ -120,7 +123,7 @@ export async function curateArticles(candidates: RawItem[], limit: number): Prom
     const response = await getClient().messages.create({
       model: MODEL_NEWS_SUMMARY,
       max_tokens: 4096,
-      system: systemPrompt(take),
+      system: systemPrompt(take, focus),
       messages: [{ role: 'user', content: buildUserPrompt(candidates, take) }],
       output_config: { format: { type: 'json_schema', schema: SCHEMA } },
     })
