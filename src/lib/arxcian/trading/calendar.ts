@@ -99,6 +99,14 @@ async function fetchCalendar(): Promise<CalendarEvent[]> {
   // Cloudflaren takana oleva lähde kohtelee konesalista tulevaa bottikutsua
   // eri tavalla kuin selainta.
   const res = await fetch(FEED_URL, {
+    // Nextin 14:n fetch on oletuksena force-cache, joten ilman tätä vastaus
+    // jäisi Data Cacheen ja cron kirjoittaisi Redisiin joka kerta saman
+    // jäätyneen viikon — viikonvaihteen jälkeen jo menneitä tapahtumia.
+    // Cron-reitin `dynamic = 'force-dynamic'` estää sen tällä hetkellä, mutta
+    // se takuu on toisessa tiedostossa: kutsu mistä tahansa muualta menisi
+    // välimuistiin hiljaa, kirjaamatta virhettä. Sama vika kuin @vercel/kv:n
+    // oletusasiakkaassa (ks. lib/arxcian/kv.ts).
+    cache: 'no-store',
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
