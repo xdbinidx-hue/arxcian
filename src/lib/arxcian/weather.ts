@@ -15,11 +15,29 @@ export type WeatherNow = {
   isDay: boolean
 }
 
+export type SunDay = {
+  /** YYYY-MM-DD paikallista aikaa */
+  date: string
+  /** Paikallisaika ilman vyöhykemerkintää, esim. 2026-08-12T05:12 */
+  sunrise: string
+  sunset: string
+  /** Päivän pituus sekunteina */
+  daylightSeconds: number
+}
+
 export type WeatherData = {
   location: typeof DEFAULT_LOCATION
   current: WeatherNow
   /** Seuraavat 24h, tunneittain */
   hourly: { time: string; temperature: number; precipitationProbability: number }[]
+  /**
+   * Auringonnousu ja -lasku, tänään ja huomenna.
+   *
+   * Valinnainen tarkoituksella: kenttä lisättiin jälkikäteen, ja välimuistissa
+   * ehtii olla vanhan muotoisia merkintöjä TTL:n loppuun asti. Lukija ei siis
+   * saa olettaa sitä olemassa olevaksi.
+   */
+  daily?: SunDay[]
 }
 
 const CACHE_KEY = 'weather:current'
@@ -39,6 +57,14 @@ type OpenMeteoResponse = {
     temperature_2m: number[]
     precipitation_probability: number[]
   }
+  /** Puuttuu jos Open-Meteo ei palauta daily-lohkoa. */
+  daily?: {
+    time: string[]
+    /** null napapäivänä ja -yönä — Helsingissä ei tapahdu, mutta tyyppi kertoo sen. */
+    sunrise: (string | null)[]
+    sunset: (string | null)[]
+    daylight_duration: (number | null)[]
+  }
 }
 
 async function fetchFromOpenMeteo(): Promise<WeatherData> {
@@ -46,7 +72,8 @@ async function fetchFromOpenMeteo(): Promise<WeatherData> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,apparent_temperature,wind_speed_10m,precipitation,weather_code,is_day` +
-    `&hourly=temperature_2m,precipitation_probability&forecast_days=2&timezone=Europe%2FHelsinki`
+    `&hourly=temperature_2m,precipitation_probability` +
+    `&daily=sunrise,sunset,daylight_duration&forecast_days=2&timezone=Europe%2FHelsinki`
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`)
@@ -62,6 +89,14 @@ async function fetchFromOpenMeteo(): Promise<WeatherData> {
     .filter(h => new Date(h.time) >= now)
     .slice(0, 24)
 
+  const daily = (data.daily?.time ?? []).flatMap<SunDay>((date, i) => {
+    const sunrise = data.daily?.sunrise[i]
+    const sunset = data.daily?.sunset[i]
+    const daylight = data.daily?.daylight_duration[i]
+    if (typeof sunrise !== 'string' || typeof sunset !== 'string') return []
+    return [{ date, sunrise, sunset, daylightSeconds: daylight ?? 0 }]
+  })
+
   return {
     location: DEFAULT_LOCATION,
     current: {
@@ -73,11 +108,48 @@ async function fetchFromOpenMeteo(): Promise<WeatherData> {
       isDay: data.current.is_day === 1,
     },
     hourly,
+    daily,
   }
 }
 
+export const WEATHER_CACHE_KEY = CACHE_KEY
+
 export async function getWeather() {
   return fetchAndCache({ key: CACHE_KEY, ttl: TTL_SECONDS }, fetchFromOpenMeteo)
+}
+
+/* ---------------------------------------------------------------
+   Auringonnousun ja -laskun apurit.
+   --------------------------------------------------------------- */
+
+/**
+ * Päivän auringonnousu ja -lasku. Palauttaa ensisijaisesti annetun päivän
+ * merkinnän; jos sitä ei ole, ensimmäisen tulevan. Open-Meteon daily-lohko
+ * alkaa aina tästä päivästä, joten paluuarvo on null vain jos välimuistissa
+ * on vanhan muotoinen merkintä ilman daily-kenttää.
+ */
+export function pickSunDay(daily: SunDay[] | undefined, isoDate: string): SunDay | null {
+  if (!daily || daily.length === 0) return null
+  return daily.find(d => d.date === isoDate) ?? daily.find(d => d.date > isoDate) ?? null
+}
+
+/**
+ * "05:12" Open-Meteon paikallisajasta.
+ *
+ * Merkkijono luetaan sellaisenaan eikä Daten kautta: Open-Meteo palauttaa
+ * timezone=Europe/Helsinki -parametrilla jo Suomen ajan ilman vyöhykemerkintää
+ * ("2026-08-12T05:12"), jolloin new Date() tulkitsisi sen palvelimen omalla
+ * vyöhykkeellä ja Vercelin UTC-ympäristössä kello siirtyisi kolme tuntia.
+ */
+export function sunClock(localIso: string): string {
+  const match = /T(\d{2}):(\d{2})/.exec(localIso)
+  return match ? `${match[1]}:${match[2]}` : '—'
+}
+
+/** "16 h 19 min" — päivän pituus luettavana. */
+export function daylightLabel(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds / 60))
+  return `${Math.floor(total / 60)} h ${total % 60} min`
 }
 
 /* ---------------------------------------------------------------

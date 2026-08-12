@@ -5,7 +5,8 @@ import { getSentiment } from './trading/sentiment'
 import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
-import { getCityWeather, CITIES_CACHE_KEY } from './weather'
+import { getCityWeather, getWeather, CITIES_CACHE_KEY, WEATHER_CACHE_KEY } from './weather'
+import { getPrayerTimes, PRAYER_CACHE_KEY } from './prayer'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 
@@ -86,6 +87,22 @@ const hubJobs: CronJob[] = [
     run: async () => {
       const result = await getChannelVideos()
       return { key: CHANNELS_CACHE_KEY, items: result.data.length }
+    },
+  },
+  {
+    id: 'hub-weather',
+    description: 'Hub: Helsingin sää ja auringonnousu/-lasku',
+    run: async () => {
+      await getWeather()
+      return { key: WEATHER_CACHE_KEY }
+    },
+  },
+  {
+    id: 'hub-prayer',
+    description: 'Hub: rukousajat (tänään + huomenna)',
+    run: async () => {
+      const result = await getPrayerTimes()
+      return { key: PRAYER_CACHE_KEY, items: result.data.length }
     },
   },
   {
