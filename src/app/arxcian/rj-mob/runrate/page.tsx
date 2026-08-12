@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
 
 interface SellerRunRate {
   nimi: string
@@ -61,35 +62,6 @@ function parsePrefix(name: string): number {
   const year = yearMatch ? Number(yearMatch[1]) : 0
   const month = numMatch ? Number(numMatch[1]) : 0
   return year * 100 + month
-}
-
-// Laske ma-la työpäivät kuukaudessa ilman pyhiä
-function laskeTyopaivat(vuosi: number, kuukausi: number, loppuPaiva?: number): number {
-  // Suomalaiset arkipyhät 2025-2027
-  const pyhat: Record<string, boolean> = {
-    '2025-1-1': true, '2025-1-6': true, '2025-4-18': true, '2025-4-19': true,
-    '2025-4-21': true, '2025-5-1': true, '2025-5-29': true, '2025-6-19': true,
-    '2025-6-20': true, '2025-11-1': true, '2025-12-6': true, '2025-12-24': true,
-    '2025-12-25': true, '2025-12-26': true,
-    '2026-1-1': true, '2026-1-6': true, '2026-4-3': true, '2026-4-4': true,
-    '2026-4-6': true, '2026-5-1': true, '2026-5-14': true, '2026-6-19': true,
-    '2026-6-20': true, '2026-11-7': true, '2026-12-6': true, '2026-12-24': true,
-    '2026-12-25': true, '2026-12-26': true,
-    '2027-1-1': true, '2027-1-6': true, '2027-3-26': true, '2027-3-27': true,
-    '2027-3-29': true, '2027-5-1': true, '2027-5-6': true, '2027-6-25': true,
-    '2027-6-26': true, '2027-11-6': true, '2027-12-6': true, '2027-12-24': true,
-    '2027-12-25': true, '2027-12-26': true,
-  }
-  const paiviaKuukaudessa = new Date(vuosi, kuukausi, 0).getDate()
-  const loppu = loppuPaiva ?? paiviaKuukaudessa
-  let count = 0
-  for (let p = 1; p <= loppu; p++) {
-    const d = new Date(vuosi, kuukausi - 1, p)
-    const viikonpaiva = d.getDay() // 0=su, 6=la
-    const avain = `${vuosi}-${kuukausi}-${p}`
-    if (viikonpaiva !== 0 && !pyhat[avain]) count++
-  }
-  return count
 }
 
 function fmt(n: number, dec = 0) {
