@@ -8,6 +8,7 @@ import { checkAlerts } from './trading/alerts'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummary, RJMOB_SUMMARY_KEY } from './rjmobSummary'
+import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -98,8 +99,19 @@ const hubJobs: CronJob[] = [
   },
 ]
 
+const rjmobJobs: CronJob[] = [
+  {
+    id: 'rjmob-insights',
+    description: 'RJ-Mob: tilanneyhteenveto ja poikkeamat',
+    run: async () => {
+      const result = await refreshRjMobInsights()
+      return { key: RJMOB_INSIGHTS_KEY, items: result.data.huomiot.length }
+    },
+  },
+]
+
 /** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
-export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs, ...hubJobs]
+export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs, ...hubJobs, ...rjmobJobs]
 
 export function jobsFor(schedule: string | null): readonly CronJob[] {
   if (!schedule) return JOBS
