@@ -83,6 +83,91 @@ Ajastetut haut: työt lisätään `JOBS`-rekisteriin [src/lib/arxcian/cron.ts](s
 
 Redis on Upstash-resurssi `upstash-kv-amethyst-river`, liitetty vakionimillä kaikkiin kolmeen ympäristöön. Paikallinen kehitys käyttää samaa kantaa — aja `vercel env pull .env.local --environment development` kun tunnukset vaihtuvat.
 
+## Uuden sisällön seuranta (watch)
+
+"Seuraa lähdelistaa ja tee jotain uusille" on sama tarve kolmessa osiossa: Tradingin YouTube-kanavat, Personalin self-growth-kanavat ja osittain Uutiset. Se rakennetaan **kerran** hakemistoon `src/lib/arxcian/watch/` samaan tapaan kuin `fetchAndCache` — osiot käyttävät sitä, eivät toteuta omaansa. Suunniteltu 13.8.2026, ei vielä toteutettu.
+
+| Tiedosto | Vastuu |
+|---|---|
+| `sources.ts` | lähdelistan luku Drive-taulukosta |
+| `feed.ts` | yksi normalisoitu syötteenhakija (YouTube-Atom, RSS2) |
+| `seen.ts` | nähtyjen tunnisteiden rekisteri |
+| `watch.ts` | hae → erota uudet → aja listan toiminto |
+
+**Lähdelista on Drive-taulukossa, ei koodissa.** Palvelutilillä on jo `spreadsheets.readonly` RJ-Mobia varten, joten uutta tunnistautumista ei tarvita. Sarakkeet: `lista` (`trading` | `personal` | `uutiset`), `nimi`, `tyyppi` (`youtube` | `rss`), `tunniste` (kanava-ID tai syöte-URL), `toiminto` (`tiivista` | `ilmoita` | `ei mitään`), `omistaja` (`albin` | `arbnor` | `shared`), `aktiivinen`. Yksi taulukko kaikille osioille — `lista`-sarake on juuri se mikä tekee tästä yhden mekanismin eikä kolmea.
+
+**Tyhjä lähdelista on virhe, ei tulos.** Jos taulukko katoaa, nimetään uudelleen tai sarakeotsikko kirjoitetaan väärin, haun on heitettävä — muuten watch näyttää "ei uutta sisältöä" ikuisesti sen sijaan että kertoisi olevansa rikki. Heitto vie `fetchAndCache`n vanhentuneeseen listaan, ja jos sitäkään ei ole, koodiin käännettyyn varalistaan. Sama päättely kuin [channels.ts](src/lib/arxcian/channels.ts):n `videos.length === 0` -heitossa.
+
+**Nähtyjen rekisteri on eri avain kuin sisältövälimuisti.** `watch:seen:<lista>` on Redis-joukko jossa on vain tunnisteita, ja sen elinikä on pidempi kuin minkään sisältöavaimen. Uutuus ei saa johtua sisältövälimuistista: [fetchNews.ts](src/lib/arxcian/news/fetchNews.ts) päättelee sen nykyään 60 artikkelin listasta jolla on 5 h TTL, joten avaimen kadotessa kaikki näyttää uudelta. Tiivistyksessä se maksaa vain tokeneita, ilmoituksissa se olisi ilmoitusryöppy. `sadd` palauttaa lisättyjen määrän, joten erotus ja merkintä tapahtuvat yhdellä atomisella kutsulla.
+
+**Uutuus ja ilmoitus ovat eri asioita.** `watch` kertoo mikä on uutta; mitä sille tehdään, on listan oma `toiminto`. ICT-videot pidetään vain tuoreina, self-growth-kanavat ilmoitetaan, uutiset tiivistetään. Ilmoitukset menevät yhteen `watch:inbox`-avaimeen eivätkä osiokohtaisiin, jotta hub näyttää yhden merkin. Inbox on omistajatietoinen ja suodatetaan `visibleTo()`llä palvelimella — Personalin kanavat ovat henkilökohtaisia.
+
+**YouTube-haku yhteen paikkaan.** Sama Atom-syöte haetaan nyt kolmesti eri koodilla: [ict.ts](src/lib/arxcian/trading/ict.ts), [channels.ts](src/lib/arxcian/channels.ts) ja Uutisten `MARK_MOSS_SOURCE`. Selainmaisten otsakkeiden kiertotie on kopioituna kahteen niistä — kun YouTube rikkoo sen seuraavan kerran (rikkoi jo 11.8.2026), toinen jää korjaamatta. `feed.ts` on ainoa paikka jossa otsakkeet elävät.
+
+**Uutiset siirretään watchin päälle vasta erikseen, ei samalla kertaa.** `refreshCategory` toimii ja sisältää jo erotuksen, tiivistyksen ja yhdistämisen. Siirto varmistetaan vertaamalla tulostetta ennen ja jälkeen, kuten `rjmob-summary`-siirrossa.
+
+**Ei PubSubHubbubia.** YouTube tukee WebSub-työntöä, mutta tilaukset vanhenevat muutamassa päivässä ja vaativat uusinnan, julkisen callback-reitin ja HMAC-tarkistuksen — eli toisen toimitustien joka voi kuolla hiljaa. Sisältö on "katso myöhemmin" -tavaraa, ei aikakriittistä, joten neljä cron-ajoa vuorokaudessa riittää. Reitti vaatisi lisäksi kolmannen poikkeuksen middlewaren julkiseen listaan, joka on tarkoituksella rajattu kahteen.
+
+Yksi cron-työ per lista (`watch-trading`, `watch-personal`), jotta yhden listan kaatuminen ei vie muita — sama jako kuin uutisten kategoriatöissä.
+
+## Ulkoiset riippuvuudet: päätökset 13.8.2026
+
+Selvitys tehtiin ennen kuin osiot alkavat rakentaa näiden varaan.
+
+| Lähde | Tila | Lyhyesti |
+|---|---|---|
+| YouTube-kanavat | 🟢 | Julkinen Atom-syöte, ei avainta eikä kiintiötä. Vain uutuustunnistus puuttuu. |
+| ForexFactory-kalenteri | 🟡 | Epävirallinen JSON toimii, mutta vain viikko eteenpäin eikä toteutuneita lukuja. |
+| Gmail | 🟡 | Sama OAuth-kuvio kuin kalenterissa, mutta restricted-scope — riski on käytäntö, ei tekniikka. |
+| WhatsApp | 🟡 | Toimii vain erilliseen yritysnumeroon, ei omaan WhatsAppiin. |
+| NotebookLM | 🔴 | Ei julkista API:a. Sama työ tehdään jo Anthropic-SDK:lla. |
+| Memorae | 🔴 | Ei API:a, ei webhookeja. Ei mitään mihin integroida. |
+
+### ForexFactory
+
+ForexFactoryn oma sivu on Cloudflaren takana eikä sitä raavita. Kalenterin vientisyöte on kuitenkin avoinna Faireconomyllä: `https://nfs.faireconomy.media/ff_calendar_thisweek.json`. Varmistettu 13.8.2026 — HTTP 200, 74 tapahtumaa, ei avainta eikä tunnistautumista.
+
+**Kentät ovat `title, country, date, impact, forecast, previous` — `actual` puuttuu**, ja `ff_calendar_lastweek.json` sekä `nextweek.json` vastaavat 404. Syöte kertoo siis mitä on tulossa tällä viikolla, ei mitä luvuksi tuli eikä mitään menneestä. "Torstaina 15:30 USD CPI, High, ennuste 2.9 %" onnistuu; toteutumien näyttäminen, historia tai backtestaus ei — ne vaatisivat maksullisen lähteen (Finnhub, FXStreet, Trading Economics). Älä lupaa niitä tämän syötteen varassa.
+
+Syöte on dokumentoimaton eikä sillä ole palvelulupausta. Kulkee `fetchAndCache`n läpi pitkällä stale-ikkunalla, ja hakuaika näytetään käyttöliittymässä.
+
+### Gmail
+
+Teknisesti helppo: sama käyttäjäkohtainen OAuth kuin kalenterissa, ja [oauth.ts](src/lib/arxcian/personal/calendar/oauth.ts):n monen tilin rakenne kantaa sellaisenaan.
+
+Riski on käytännöissä. Gmailin lukuscopet ovat Googlen **restricted**-luokkaa, tiukempi kuin `calendar.readonly`. Restricted-scope vaatii lähtökohtaisesti vuosittaisen CASA-tietoturva-arvioinnin (self-serve tier 2 noin 540–1000 $, käsittely 4–12 viikkoa). Googlen oma dokumentaatio antaa **henkilökohtaisen käytön poikkeuksen** ("only you or a few people you know"), johon kaksi käyttäjää mahtuu — hintana sama vahvistamattoman sovelluksen varoitusnäyttö ja 100 käyttäjän katto, jotka on jo hyväksytty kalenterin kohdalla.
+
+Poikkeus on käytäntö, ei tekninen takuu, ja Gmail on tarkemmassa valvonnassa kuin Calendar. Lisäksi restricted-scopen lisääminen pakottaa **uuden suostumuksen jo liitetyille kalenteritileille**. Älä lupaa Gmailia mihinkään osioon ennen kuin suostumusnäyttö on kertaalleen viety läpi scopen kanssa.
+
+### WhatsApp
+
+Virallinen tie on WhatsApp Business Cloud API. Alusta itsessään on maksuton, hinnoittelu on ollut viestikohtainen 1.7.2025 alkaen ja 24 tunnin palveluikkunan sisällä vastaukset ovat ilmaisia — kahdelle käyttäjälle kustannus on käytännössä nolla, ja vahvistamattomankin numeron 250 aloitettua keskustelua vuorokaudessa riittää moninkertaisesti.
+
+**Este ei ole hinta vaan malli.** Cloud API toimii erikseen varatulla yritysnumerolla, jota ei saa olla rekisteröitynä henkilökohtaiseen WhatsAppiin. Se ei siis lue eikä lähetä Albinin omasta WhatsAppista: "arxcian ilmoittaa WhatsAppiin" tarkoittaa, että perustetaan yritysnumero, jolle lähetetään viesti ja joka vastaa. Yrityksen aloittamat viestit vaativat lisäksi hyväksytyn mallipohjan.
+
+Epäviralliset kirjastot (whatsapp-web.js, Baileys) ajavat kuluttajasovellusta, rikkovat käyttöehtoja ja johtavat oman numeron porttikieltoon. Ei käytetä.
+
+Jos tavoite on "ilmoita puhelimeeni", Telegramin Bot API tekee saman ilmaiseksi, ilman yritystiliä, mallipohjia tai erillistä numeroa, ja voi lähettää suoraan omaan chattiin. **Ilmoituskanavan valinta on avoin** — siihen asti watch kirjoittaa vain sovelluksen sisäiseen `watch:inbox`iin, joka ei riipu kanavavalinnasta.
+
+### NotebookLM
+
+Kuluttaja-NotebookLM:llä ei ole julkista API:a. Yritystason Gemini Notebook -API on preview ja vain Enterprise-asiakkaille, erillinen Podcast-API on merkitty vanhentuneeksi eikä ota uusia asiakkaita, ja kolmansien osapuolten "NotebookLM API" -palvelut ovat epävirallisia välikäsiä.
+
+Tärkeämpi huomio: **arxcian ei tarvitse sitä.** `ANTHROPIC_API_KEY`, [summarize.ts](src/lib/arxcian/news/summarize.ts):n JSON-skeemavastaukset, nimetyt mallivakiot ja pyyntörajoitin ovat jo paikallaan, ja tiivistys tehdään niillä paremmin kuin ulkoisen tuotteen kautta. NotebookLM:n oma anti on käyttöliittymä ja audio overview; jos varsinainen halu on "viikon kooste kuunneltavana", se on TTS-tehtävä olemassa olevan [tts.ts](src/lib/arxcian/tts.ts):n päälle, ei uusi riippuvuus.
+
+### Memorae
+
+Kuluttajatuote WhatsAppin päällä. Ei julkista API:a, ei kehittäjädokumentaatiota, ei webhookeja eikä Zapier/Make/n8n-integraatioita (tarkistettu memorae.ai 13.8.2026). Ei siis mitään mihin integroida, ja toiminnallisuus — muistutukset, listat, kalenteri — on päällekkäinen sen kanssa mitä Personal ja Google Calendar jo tekevät. Jos vetovoima on "juttelen avustajalle puhelimen chatista", se on sama ilmoituskanavapäätös kuin WhatsAppin kohdalla, osoitettuna arxcianin omaan avustajaan.
+
+### Käyttöönottojärjestys
+
+1. **Watch-mekanismi**, Drive-lähdelista ja yhdistetty YouTube-haku. Ei uusia riippuvuuksia eikä tilejä, poistaa kolmen kopion ongelman ja avaa Tradingin ja Personalin kanavaseurannan yhdellä kertaa.
+2. **ForexFactoryn viikkokalenteri** `fetchAndCache`n läpi, merkittynä epäviralliseksi.
+3. **Ilmoituskanavan päätös** (Telegram / WhatsApp-yritysnumero / vain sovelluksen sisäinen). Vaatii käyttäjän valinnan ja tilin perustamisen.
+4. **Gmail-OAuth** vasta kun suostumusnäyttö on testattu restricted-scopella.
+
+Kohdat 1–2 eivät vaadi käyttäjältä mitään, joten ne eivät saa jäädä odottamaan kohtia 3–4. NotebookLM ja Memorae eivät ole jonossa lainkaan.
+
 ## Google Calendar
 
 Käyttäjäkohtainen OAuth, erillään sovelluksen PIN-kirjautumisesta: [oauth.ts](src/lib/arxcian/personal/calendar/oauth.ts) hoitaa luvan, [accounts.ts](src/lib/arxcian/personal/calendar/accounts.ts) tilit ja tokenit, [events.ts](src/lib/arxcian/personal/calendar/events.ts) haun.
