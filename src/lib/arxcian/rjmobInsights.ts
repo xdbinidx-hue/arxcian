@@ -57,9 +57,16 @@ const VAUHTI_EDELLA = 15
 
 /**
  * Osa-aikaisuuden vaimennus: jos myyjän omat toteutuneet työpäivät jäävät
- * alle tämän osuuden kuukauden kuluneista työpäivistä, vauhtia ei nosteta
- * poikkeamaksi. Muuten jokainen osa-aikainen ja sairauslomalla ollut näkyisi
- * joka kuukausi jäljessä, ja oikeat poikkeamat hukkuisivat siihen kohinaan.
+ * alle tämän osuuden **tiimin mediaanista**, vauhtia ei nosteta poikkeamaksi.
+ * Muuten sairauslomalla ollut ja muutaman vuoron tehnyt näkyisivät joka
+ * kuukausi jäljessä, ja oikeat poikkeamat hukkuisivat siihen kohinaan.
+ *
+ * Vertailukohta on tiimin mediaani eikä myymälän työpäivät, koska ne eivät
+ * ole sama asia: myymälä on auki kuutena päivänä viikossa mutta kukaan ei tee
+ * kuutta vuoroa, joten kokoaikainenkin yltää vain noin 60 %:iin myymälän
+ * päivistä. Myymälän päivillä mitattuna puolet tiimistä leimautuisi
+ * osa-aikaiseksi. Elokuussa 2026 myymäläpäiviä oli kertynyt 10 ja tiimin
+ * mediaani oli 6.
  */
 const OMAT_PAIVAT_MIN_OSUUS = 0.6
 
@@ -315,6 +322,14 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
   // ylipäätään olemassa ennen kuin sitä käytetään suodattimena.
   const paivatSaatavilla = targetRows.some(t => t.paivat > 0)
 
+  // Tiimin mediaanipäivät vertailukohdaksi. Mediaani eikä keskiarvo, koska
+  // yhden vuoron tehnyt vetäisi keskiarvoa alas ja nostaisi rimaa juuri
+  // niille joita vaimennuksen pitäisi suojella.
+  const paivatJarjestetty = targetRows.map(t => t.paivat).filter(p => p > 0).sort((a, b) => a - b)
+  const paivatMediaani = paivatJarjestetty.length > 0
+    ? paivatJarjestetty[Math.floor(paivatJarjestetty.length / 2)]
+    : 0
+
   // ---- Myyjät ----
 
   const myyjat: MyyjaTila[] = current.sellers
@@ -329,9 +344,9 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
         if (paivat <= 0) {
           vertailukelpoinen = false
           vertailuSyy = 'ei kirjattuja työpäiviä'
-        } else if (paivat < aika.tyopaiviaKulunut * OMAT_PAIVAT_MIN_OSUUS) {
+        } else if (paivatMediaani > 0 && paivat < paivatMediaani * OMAT_PAIVAT_MIN_OSUUS) {
           vertailukelpoinen = false
-          vertailuSyy = `vähän työpäiviä (${fmtKpl(paivat)}/${aika.tyopaiviaKulunut})`
+          vertailuSyy = `vähän työpäiviä (${fmtKpl(paivat)}, tiimin mediaani ${fmtKpl(paivatMediaani)})`
         }
       }
 
@@ -376,10 +391,16 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
     .sort((a, b) => a.teho - b.teho)
 
   for (const m of myyjat) {
+    // Teho ja leikkuri kertovat samasta asiasta ja osuvat lähes aina samalle
+    // myyjälle — kaksi erillistä riviä samasta henkilöstä pidentäisi listaa
+    // ilman että se kertoisi enempää.
     if (m.tehoTila === 'alle') {
+      const kulut = m.leikkuri
+        ? ` Työkulu ylittää RJ-Mobin tuoton${m.roi !== null ? ` (ROI ${fmtPct(m.roi)})` : ''}.`
+        : ''
       huomiot.push({
         vakavuus: 'korkea', kohde: m.nimi, laji: 'teho',
-        teksti: `${m.nimi} on alle tehojen: ${m.teho.toLocaleString('fi-FI', { maximumFractionDigits: 2 })} €/h, raja ${TEHO_HEIKKO} €/h (${fmtKpl(m.tunnit)} h).`,
+        teksti: `${m.nimi} on alle tehojen: ${m.teho.toLocaleString('fi-FI', { maximumFractionDigits: 2 })} €/h, raja ${TEHO_HEIKKO} €/h (${fmtKpl(m.tunnit)} h).${kulut}`,
       })
     } else if (m.tehoTila === 'rajalla') {
       huomiot.push({
@@ -393,10 +414,12 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
       })
     }
 
-    if (m.leikkuri) {
+    // Leikkuri ilman tehopoikkeamaa on oma havaintonsa: tuotto tunnille on
+    // kunnossa mutta palkka ja provisiot silti syövät sen.
+    if (m.leikkuri && m.tehoTila !== 'alle') {
       huomiot.push({
         vakavuus: 'korkea', kohde: m.nimi, laji: 'kannattavuus',
-        teksti: `${m.nimi}: työkulu ylittää RJ-Mobin tuoton${m.roi !== null ? ` (ROI ${fmtPct(m.roi)})` : ''}.`,
+        teksti: `${m.nimi}: työkulu ylittää RJ-Mobin tuoton${m.roi !== null ? ` (ROI ${fmtPct(m.roi)})` : ''}, vaikka teho on ${m.teho.toLocaleString('fi-FI', { maximumFractionDigits: 2 })} €/h.`,
       })
     }
 
@@ -487,11 +510,20 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
   // Kentät ovat samat joita hubin RJ-Mob-paneeli näyttää (liittKpl, kassa,
   // fsecKpl), jotta yhteenveto ja hub eivät voi kertoa eri lukua samasta
   // kuukaudesta.
+  //
+  // **Kassaluku on kassaprovisio, ei kassakate.** `totals.kassa` on myyjien
+  // kassaprovisiosarakkeen summa, kun taas myymälärivin `kassa` on siitä
+  // kymmenellä kerrottu kassakate ja myyjärivin tavoitemittari tulee
+  // Kassakate-välilehdeltä. Nämä ovat eri suureita noin kymmenkertaisella
+  // erolla, joten yritysrivi nimetään sen mukaan mitä se on — muuten sivu
+  // näyttäisi koko yrityksen kassakatteen kymmenesosana yhden myymälän
+  // luvusta. Hubin paneeli kutsuu samaa lukua kassakatteeksi; sitä ei
+  // muuteta täältä, mutta luku on sama.
 
   const yritys: Vertailu[] = [
     vertailu('liittymat', 'Liittymät', 'kpl', current.totals.liittKpl, previous?.totals.liittKpl ?? null, kerroin, vauhtiLuotettava),
     vertailu('fsecure', 'F-Secure', 'kpl', current.totals.fsecKpl, previous?.totals.fsecKpl ?? null, kerroin, vauhtiLuotettava),
-    vertailu('kassakate', 'Kassakate', 'eur', current.totals.kassa, previous?.totals.kassa ?? null, kerroin, vauhtiLuotettava),
+    vertailu('kassakate', 'Kassaprovisio', 'eur', current.totals.kassa, previous?.totals.kassa ?? null, kerroin, vauhtiLuotettava),
   ]
 
   for (const v of yritys) {
