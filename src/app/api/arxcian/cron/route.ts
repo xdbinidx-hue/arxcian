@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCron, jobsFor } from '@/lib/arxcian/cron'
 
-// Ulkoiset lähteet ja AI-tiivistys ovat hitaita — ensimmäinen ajo per
-// kategoria voi tiivistää kymmeniä artikkeleita ja kestää yli minuutin.
-// 280 s jättää marginaalia alustan 300 s -kattoon.
+// Ulkoiset lähteet ja AI-valinta ovat hitaita: kategoria hakee viisi
+// syötettä ja tekee niiden päälle yhden mallikutsun, ja kategorioita on
+// kuusi. 280 s jättää marginaalia alustan 300 s -kattoon.
 export const maxDuration = 280
 export const dynamic = 'force-dynamic'
 

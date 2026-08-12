@@ -36,7 +36,7 @@ export default async function UutisetPage() {
     <div className="mx-auto max-w-6xl">
       <header className="ax-rise pb-6 pt-2">
         <h1 className="text-2xl font-light tracking-tight text-ax-text">Uutiset</h1>
-        <p className="mt-1 text-[13px] text-ax-dim">Kategorioidut koosteet ja AI-tiivistelmät</p>
+        <p className="mt-1 text-[13px] text-ax-dim">Päivän kirjasto — 5 tärkeintä per aihe klo 8, 12, 16 ja 20</p>
       </header>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[280px_1fr]">
