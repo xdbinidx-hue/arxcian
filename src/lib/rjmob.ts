@@ -16,10 +16,13 @@ export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
 
-// F-Secure provisiot (myyjä). RJ-Mob saa saman verran provisiota+bonusta kuin myyjä,
-// ja lisäksi passiivitulon (ks. laskeMyyja: rjmobFsec).
+// F-Secure kertaprovisiot. Myyjän ja RJ-Mobin luvut ovat eri (ohjeet):
+// myyntiseuranta_ohje antaa myyjälle internet 3,50 € ja total 7,00 €,
+// tuottoseuranta_ohje RJ-Mobille internet 5 € ja total 10 €.
 export const FSEC_TOTAL_SELLER = 7
 export const FSEC_INTERNET_SELLER = 3.5
+export const FSEC_TOTAL_RJMOB = 10
+export const FSEC_INTERNET_RJMOB = 5
 
 /**
  * F-Secure-leikkuri: alle kuuden F-Securen kuukaudesta myyjän provisioista
@@ -209,9 +212,25 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
 
   const bonus = fsecBonus(fsecKpl)
   const dnaBonusEur = dnaBonus(dnaUusmyyntiKpl)
-  // RJ-Mob saa F-Securesta saman verran provisiota+bonusta kuin myyjä, ja lisäksi
-  // passiivitulon (kk-tulo × 12 kk) tämän kuukauden uusista asiakkuuksista.
-  const rjmobFsec = fsecEur + bonus + (fsecKpl * FSEC_RECURRING * 12)
+
+  // RJ-Mobin F-Secure-tulo on kaksiosainen (tuottoseuranta_ohje): kertaprovisio
+  // omilla luvuillaan (internet 5 €, total 10 €) ja passiivitulo 1,50 € per
+  // asiakkuus. Passiivitulossa ei ole ×12: se oli koodissa vuosiarvona, mutta
+  // ohje laskee kuukauden tuloon vain kertakorvauksen. Vuosiarvo on edelleen
+  // omana lukunaan `fsecFV`, jota tuottoseuranta näyttää erikseen.
+  //
+  // Bonus on mukana molemmissa päissä tarkoituksella: RJ-Mob saa sen
+  // mobiilipisteeltä ja maksaa sen kokonaan myyjälle, joten se kasvattaa sekä
+  // tuloa että työkulua eikä vaikuta nettoon.
+  //
+  // Kun total/internet-jakoa ei ole (vanha formaatti lukee vain valmiin
+  // provision), kertaprovisio johdetaan myyjän provisiosta: RJ-Mobin ja myyjän
+  // suhde on sama molemmissa tuotteissa (10/7 = 5/3,5), joten skaalaus on tarkka.
+  const fsecKplTiedossa = fsecTotalKpl + fsecInternetKpl > 0
+  const rjmobFsecKerta = fsecKplTiedossa
+    ? (fsecTotalKpl * FSEC_TOTAL_RJMOB) + (fsecInternetKpl * FSEC_INTERNET_RJMOB)
+    : fsecEur * (FSEC_TOTAL_RJMOB / FSEC_TOTAL_SELLER)
+  const rjmobFsec = rjmobFsecKerta + bonus + (fsecKpl * FSEC_RECURRING)
 
   if (tyyppi === 'ref' || tyyppi === 'standi') {
     return {

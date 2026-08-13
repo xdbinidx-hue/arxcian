@@ -253,13 +253,14 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
           if (isRJStore) {
             const normalizedName = normalizeStoreName(kusta)
 
-            // Ständin osuus vähennetään myymälän luvuista: ständi ei ole
-            // myymälän oma myynti eikä myymälän oma työvoima. Tunnit oli
-            // jätetty vähentämättä, jolloin myymälän tuotto tunnille laskettiin
-            // osoittajalla josta ständi on poistettu ja nimittäjällä jossa se
-            // on yhä mukana — luku painui alaspäin sitä enemmän mitä enemmän
-            // ständituntreja myymälällä oli.
+            // "Ständimyyjät Jussi Kanerva ja Esa Peltola poistetaan aina
+            // myymälän tuloksista" (myyntiseuranta_ohje). Kaikista tuloksista,
+            // ei vain liittymistä: myös tunnit, kassa ja F-Secure. Aiemmin
+            // vähennys koski vain liittymiä, jolloin myymälän tuotto tunnille
+            // laskettiin osoittajalla josta ständi on poistettu ja
+            // nimittäjällä jossa se on yhä mukana.
             let standiLiittKpl = 0, standiLiittEur = 0, standiTunnit = 0
+            let standiKassa = 0, standiFsecTotal = 0, standiFsecInternet = 0, standiFsecKpl = 0
             for (let j = i + 1; j < myymalaRows.length; j++) {
               const jr = myymalaRows[j]
               const jkusta = jr[0]?.trim() ?? ''
@@ -269,13 +270,19 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
                 standiLiittKpl += parseNum(jr[mIdxLiittKpl])
                 standiLiittEur += parseNum(jr[mIdxLiittEur])
                 if (mIdxTunnit >= 0) standiTunnit += parseNum(jr[mIdxTunnit])
+                if (mIdxKassa >= 0) standiKassa += parseNum(jr[mIdxKassa])
+                if (mIdxFsecTotal >= 0) standiFsecTotal += parseNum(jr[mIdxFsecTotal])
+                if (mIdxFsecInternet >= 0) standiFsecInternet += parseNum(jr[mIdxFsecInternet])
+                if (mIdxFsecKpl >= 0) standiFsecKpl += parseNum(jr[mIdxFsecKpl])
               }
             }
 
-            const kassaRaw = parseNum(row[mIdxKassa])
-            const mFsecTotalKpl = mIdxFsecTotal >= 0 ? parseNum(row[mIdxFsecTotal]) : 0
-            const mFsecInternetKpl = mIdxFsecInternet >= 0 ? parseNum(row[mIdxFsecInternet]) : 0
-            const mFsecKpl = (mFsecTotalKpl + mFsecInternetKpl) > 0 ? mFsecTotalKpl + mFsecInternetKpl : parseNum(row[mIdxFsecKpl])
+            const kassaRaw = Math.max(0, parseNum(row[mIdxKassa]) - standiKassa)
+            const mFsecTotalKpl = mIdxFsecTotal >= 0 ? Math.max(0, parseNum(row[mIdxFsecTotal]) - standiFsecTotal) : 0
+            const mFsecInternetKpl = mIdxFsecInternet >= 0 ? Math.max(0, parseNum(row[mIdxFsecInternet]) - standiFsecInternet) : 0
+            const mFsecKpl = (mFsecTotalKpl + mFsecInternetKpl) > 0
+              ? mFsecTotalKpl + mFsecInternetKpl
+              : Math.max(0, parseNum(row[mIdxFsecKpl]) - standiFsecKpl)
             const mFsecEur = (mFsecTotalKpl * FSEC_TOTAL_SELLER) + (mFsecInternetKpl * FSEC_INTERNET_SELLER)
 
             storeResults[normalizedName] = {
