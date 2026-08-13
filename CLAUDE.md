@@ -147,7 +147,9 @@ Virallinen tie on WhatsApp Business Cloud API. Alusta itsessään on maksuton, h
 
 Epäviralliset kirjastot (whatsapp-web.js, Baileys) ajavat kuluttajasovellusta, rikkovat käyttöehtoja ja johtavat oman numeron porttikieltoon. Ei käytetä.
 
-Jos tavoite on "ilmoita puhelimeeni", Telegramin Bot API tekee saman ilmaiseksi, ilman yritystiliä, mallipohjia tai erillistä numeroa, ja voi lähettää suoraan omaan chattiin. **Ilmoituskanavan valinta on avoin** — siihen asti watch kirjoittaa vain sovelluksen sisäiseen `watch:inbox`iin, joka ei riipu kanavavalinnasta.
+Jos tavoite on "ilmoita puhelimeeni", Telegramin Bot API tekee saman ilmaiseksi, ilman yritystiliä, mallipohjia tai erillistä numeroa, ja voi lähettää suoraan omaan chattiin.
+
+**Ilmoituskanavaksi valittiin 13.8.2026 pelkkä sovelluksen sisäinen `watch:inbox` ja merkki hubissa.** Ei ulospäin lähtevää kanavaa: ei uutta riippuvuutta, tiliä eikä ympäristömuuttujaa, ja `watch` pysyy testattavana ilman ulkoista palvelua. Ulkoinen kanava — Telegram, WhatsApp-yritysnumero tai Web Push — on myöhemmin oma erillinen lukijansa saman inboxin päällä, joten sen lisääminen ei muuta `watch`in omaa logiikkaa. **Älä siis kirjoita ilmoituksen lähetystä `watch.ts`:ään**, vaan pidä inbox ainoana kirjoituskohteena.
 
 ### NotebookLM
 
@@ -163,10 +165,9 @@ Kuluttajatuote WhatsAppin päällä. Ei julkista API:a, ei kehittäjädokumentaa
 
 1. **Watch-mekanismi**, Drive-lähdelista ja yhdistetty YouTube-haku. Ei uusia riippuvuuksia eikä tilejä, poistaa kolmen kopion ongelman ja avaa Tradingin ja Personalin kanavaseurannan yhdellä kertaa.
 2. **ForexFactoryn viikkokalenteri** `fetchAndCache`n läpi, merkittynä epäviralliseksi.
-3. **Ilmoituskanavan päätös** (Telegram / WhatsApp-yritysnumero / vain sovelluksen sisäinen). Vaatii käyttäjän valinnan ja tilin perustamisen.
-4. **Gmail-OAuth** vasta kun suostumusnäyttö on testattu restricted-scopella.
+3. **Gmail-OAuth** vasta kun suostumusnäyttö on testattu restricted-scopella.
 
-Kohdat 1–2 eivät vaadi käyttäjältä mitään, joten ne eivät saa jäädä odottamaan kohtia 3–4. NotebookLM ja Memorae eivät ole jonossa lainkaan.
+Kohdat 1–2 eivät vaadi käyttäjältä mitään, joten ne eivät saa jäädä odottamaan kohtaa 3. Ilmoituskanava ei ole jonossa: sovelluksen sisäinen inbox syntyy kohdan 1 mukana, ja ulkoinen kanava on oma päätöksensä sitten kun sellaista halutaan. NotebookLM ja Memorae eivät ole jonossa lainkaan.
 
 ## Google Calendar
 
