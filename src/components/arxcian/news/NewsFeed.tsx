@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, type Article, type Category } from '@/lib/arxcian/news/types'
+import { isoDateHelsinki, todayISOHelsinki } from '@/lib/arxcian/time'
 import { ArticleCard } from './ArticleCard'
 
 type Props = {
@@ -49,10 +50,46 @@ export function NewsFeed({ articlesByCategory, initialReadLater }: Props) {
 
   const filtered = activeTag ? currentArticles.filter(a => a.tags.includes(activeTag)) : currentArticles
 
+  /**
+   * Uutiset ryhmitellään sen mukaan minä päivänä ne poimittiin, jotta aamun
+   * poiminnat löytyvät illallakin omana kokonaisuutenaan. Lue myöhemmin
+   * -lista jää ryhmittelemättä: siihen tallennetut jutut ovat miltä päivältä
+   * tahansa, eikä poimintapäivä kerro niistä mitään.
+   */
+  const groups = useMemo(() => {
+    const today = todayISOHelsinki()
+    const yesterday = isoDateHelsinki(new Date(Date.now() - 24 * 60 * 60 * 1000))
+
+    const byDay = new Map<string, Article[]>()
+    filtered.forEach(article => {
+      const day = isoDateHelsinki(new Date(article.summarizedAt))
+      const list = byDay.get(day)
+      if (list) list.push(article)
+      else byDay.set(day, [article])
+    })
+
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([day, items]) => ({
+        day,
+        label: day === today ? 'Tänään' : day === yesterday ? 'Eilen' : day,
+        items,
+      }))
+  }, [filtered])
+
   const selectTab = (t: Tab) => {
     setTab(t)
     setActiveTag(null)
   }
+
+  const renderCard = (article: Article) => (
+    <ArticleCard
+      key={article.id}
+      article={article}
+      saved={savedIds.has(article.id)}
+      onToggleSaved={toggleSaved}
+    />
+  )
 
   return (
     <div>
@@ -100,21 +137,26 @@ export function NewsFeed({ articlesByCategory, initialReadLater }: Props) {
         </div>
       )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.length === 0 && (
-          <p className="col-span-full py-8 text-center text-[13px] text-ax-faint">
-            {tab === READ_LATER_TAB ? 'Ei tallennettuja uutisia.' : 'Ei vielä uutisia tässä kategoriassa.'}
-          </p>
-        )}
-        {filtered.map(article => (
-          <ArticleCard
-            key={article.id}
-            article={article}
-            saved={savedIds.has(article.id)}
-            onToggleSaved={toggleSaved}
-          />
-        ))}
-      </div>
+      {filtered.length === 0 && (
+        <p className="py-8 text-center text-[13px] text-ax-faint">
+          {tab === READ_LATER_TAB ? 'Ei tallennettuja uutisia.' : 'Ei vielä uutisia tässä kategoriassa.'}
+        </p>
+      )}
+
+      {tab === READ_LATER_TAB ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{filtered.map(renderCard)}</div>
+      ) : (
+        groups.map(group => (
+          <section key={group.day} className="mt-5">
+            <h2 className="flex items-baseline gap-2 text-[11px] uppercase tracking-[0.14em] text-ax-faint">
+              {group.label}
+              <span className="text-ax-line">·</span>
+              <span className="tracking-normal">{group.items.length} uutista</span>
+            </h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{group.items.map(renderCard)}</div>
+          </section>
+        ))
+      )}
     </div>
   )
 }

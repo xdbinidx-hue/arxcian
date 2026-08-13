@@ -1,21 +1,43 @@
-export type Category = 'bisnes' | 'ai' | 'sijoittaminen' | 'terveys' | 'teknologia' | 'historia'
+export type Category = 'maailma' | 'konfliktit' | 'bisnes' | 'sijoittaminen' | 'teknologia' | 'ai'
 
 export const CATEGORIES: readonly Category[] = [
+  'maailma',
+  'konfliktit',
   'bisnes',
-  'ai',
   'sijoittaminen',
-  'terveys',
   'teknologia',
-  'historia',
+  'ai',
 ]
 
 export const CATEGORY_LABELS: Record<Category, string> = {
+  maailma: 'Maailma',
+  konfliktit: 'Konfliktit',
   bisnes: 'Bisnes',
-  ai: 'AI',
   sijoittaminen: 'Sijoittaminen',
-  terveys: 'Terveys',
   teknologia: 'Teknologia',
-  historia: 'Historia',
+  ai: 'AI',
+}
+
+/**
+ * Kategorian rajaus mallille, kun se valitsee tärkeimmät uutiset.
+ *
+ * Pelkkä lähdevalinta ei riitä pitämään kategorioita erillään: sama
+ * teknologiajuttu voi tulla ehdokkaaksi neljään kategoriaan, jolloin
+ * tekoälyuutiset valtaavat myös Bisneksen ja Sijoittamisen. Tässä kerrotaan
+ * mikä kuuluu mihinkin ja mikä on jonkun toisen kategorian asia.
+ */
+export const CATEGORY_FOCUS: Record<Category, string> = {
+  maailma:
+    'Maailmanlaajuisesti merkittävät tapahtumat: politiikka, yhteiskunta, onnettomuudet ja ihmiset. Talous ja teknologia käsitellään omissa kategorioissaan — valitse niistä vain se mikä on iso uutinen myös niistä riippumatta.',
+  konfliktit:
+    'Aseelliset konfliktit, sotarikokset, humanitaariset kriisit ja luonnonkatastrofit. Valitse tapahtumia ja käänteitä, älä taustoittavia esseitä tai vuosipäiväjuttuja.',
+  bisnes:
+    'Yritys- ja talousuutiset: tulokset, yritysjärjestelyt, kiinteistömarkkinat, varallisuus ja makrotalous. Teknologiayhtiöistä valitse vain se mikä on olennaista liiketoiminnan tai talouden kannalta — tuotelanseeraukset ja mallijulkaisut kuuluvat Teknologiaan ja tekoälyyn.',
+  sijoittaminen:
+    'Sijoittajan näkökulma: osakkeet, korot, markkinaliikkeet ja sijoitusstrategia. Ohita yleiset yritysuutiset joista sijoittaja ei saa mitään uutta.',
+  teknologia:
+    'Teknologiatuotteet, -yhtiöt, tietoturva ja tutkimus. Tekoälymallit ja niiden ympärillä käytävä keskustelu kuuluvat AI-kategoriaan — valitse tänne muu teknologia.',
+  ai: 'Tekoäly: mallit, tutkimus, sääntely, käyttöönotto ja vaikutukset.',
 }
 
 export type FeedFormat = 'rss2' | 'atom'

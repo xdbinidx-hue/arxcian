@@ -6,8 +6,16 @@
 /** Vapaamuotoinen tekstigenerointi, esim. /api/ai:n WhatsApp-viestit. */
 export const MODEL_ASSISTANT = 'claude-sonnet-4-6'
 
-/** Uutisartikkelien tiivistäminen, ks. lib/arxcian/news/summarize.ts. */
-export const MODEL_NEWS_SUMMARY = 'claude-haiku-4-5'
+/**
+ * Uutisten valinta ja tiivistäminen, ks. lib/arxcian/news/summarize.ts.
+ *
+ * Haiku hoiti valinnan hyvin mutta kirjoitti kömpelöä suomea ("hitaa
+ * yritysotantaa") ja sekosi ajoittain asiassa — luki esimerkiksi Grokin
+ * SpaceX:n tuotteeksi. Kutsuja on 24 vuorokaudessa (kuusi kategoriaa,
+ * neljä ajoa), joten järeämmän mallin hintaero on olematon suhteessa
+ * siihen että tiivistelmät ovat luettavia.
+ */
+export const MODEL_NEWS_SUMMARY = 'claude-sonnet-4-6'
 
 /**
  * ElevenLabsin puhemalli, ks. lib/arxcian/tts.ts.

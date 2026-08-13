@@ -2,12 +2,19 @@ import Anthropic from '@anthropic-ai/sdk'
 import { MODEL_NEWS_SUMMARY } from '@/lib/arxcian/models'
 import type { RawItem } from './types'
 
-// Yksi kutsu tiivistää enintään tämän verran artikkeleita kerralla, jotta
-// yksittäinen pyyntö ei kasva liian isoksi kun uutta sisältöä on paljon
-// (esim. ensimmäinen ajo, jolloin mikään ei ole vielä välimuistissa).
-const BATCH_SIZE = 12
+/**
+ * Montako tuoreinta ehdokasta malli arvioi yhdellä hakukerralla. Rajaa
+ * kehotteen koon: viisi lähdettä tuottaa helposti toistasataa riviä, eikä
+ * vanhimpien joukosta enää löydy "tärkeintä tänään" -uutista.
+ */
+export const CANDIDATE_LIMIT = 40
 
-export type Summarized = {
+/** Ehdokkaan kuvaus katkaistaan tähän — riittää tärkeyden arviointiin. */
+const DESCRIPTION_CHARS = 300
+
+export type Curated = {
+  /** Ehdokkaan indeksi siinä taulukossa joka annettiin curateArticles-kutsulle. */
+  index: number
   summary: string
   tags: string[]
 }
@@ -18,13 +25,24 @@ function getClient() {
   return client
 }
 
-const SYSTEM_PROMPT = `Tiivistät englanninkielisiä uutisartikkeleita suomeksi arxcian-uutiskoosteeseen.
+function systemPrompt(limit: number, focus: string): string {
+  return `Valitset ja tiivistät englanninkielisiä uutisartikkeleita suomeksi arxcian-uutiskoosteeseen.
 
-Jokaisesta artikkelista (otsikko + lähteen oma kuvaus):
-- Kirjoita 1-2 lauseen tiivistelmä suomeksi. Kerro mitä tapahtui, älä toista otsikkoa.
-- Anna 2-4 lyhyttä pienaakkosista tägiä suomeksi (esim. "tekoäly", "markkinat", "terveys").
+Tämän kategorian rajaus: ${focus}
 
-Vastaa täsmälleen annetun JSON-skeeman mukaisesti, items-taulukon pituus ja järjestys täsmälleen syötteen mukainen.`
+Saat numeroidun listan ehdokkaita. Valitse niistä ${limit} tärkeintä:
+- Pysy kategorian rajauksessa. Ehdokkaissa on myös muualle kuuluvia juttuja.
+- Painota laajaa vaikutusta ja merkittävyyttä: mitä lukija haluaa tietää tänään.
+- Ohita rutiinipäivitykset, mielipidekirjoitukset, listajutut, arvostelut ja mainokset.
+- Älä valitse kahta juttua samasta tapahtumasta — valitse niistä kattavin.
+
+Jokaisesta valitsemastasi:
+- index: ehdokkaan numero listalta
+- summary: 1-2 lauseen tiivistelmä suomeksi. Kerro mitä tapahtui, älä toista otsikkoa.
+- tags: 2-4 lyhyttä pienaakkosista tägiä suomeksi (esim. "tekoäly", "markkinat", "konflikti").
+
+Palauta täsmälleen ${limit} kohtaa tärkeysjärjestyksessä, tärkein ensin.`
+}
 
 const SCHEMA = {
   type: 'object' as const,
@@ -34,10 +52,11 @@ const SCHEMA = {
       items: {
         type: 'object' as const,
         properties: {
+          index: { type: 'integer' as const },
           summary: { type: 'string' as const },
           tags: { type: 'array' as const, items: { type: 'string' as const } },
         },
-        required: ['summary', 'tags'],
+        required: ['index', 'summary', 'tags'],
         additionalProperties: false,
       },
     },
@@ -46,47 +65,81 @@ const SCHEMA = {
   additionalProperties: false,
 }
 
-function buildUserPrompt(items: RawItem[]): string {
+function buildUserPrompt(items: RawItem[], limit: number): string {
   const numbered = items
-    .map((item, i) => `${i + 1}. OTSIKKO: ${item.title}\n   KUVAUS: ${item.description || '(ei kuvausta)'}`)
+    .map((item, i) => {
+      const description = item.description.slice(0, DESCRIPTION_CHARS) || '(ei kuvausta)'
+      return `${i + 1}. OTSIKKO: ${item.title}\n   LÄHDE: ${item.sourceName}\n   KUVAUS: ${description}`
+    })
     .join('\n\n')
-  return `Tiivistä nämä ${items.length} artikkelia:\n\n${numbered}`
+  return `Valitse ja tiivistä ${limit} tärkeintä näistä ${items.length} ehdokkaasta:\n\n${numbered}`
 }
 
-async function summarizeBatch(items: RawItem[]): Promise<Summarized[]> {
-  const response = await getClient().messages.create({
-    model: MODEL_NEWS_SUMMARY,
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(items) }],
-    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-  })
+/**
+ * Malli voi palauttaa saman numeron kahdesti tai numeron listan ulkopuolelta,
+ * jolloin väärä artikkeli saisi väärän tiivistelmän. Siivotaan siksi ennen
+ * kuin tulosta käytetään: vain kelvolliset ja uniikit indeksit läpi.
+ */
+function sanitize(raw: Curated[], candidateCount: number, limit: number): Curated[] {
+  const seen = new Set<number>()
+  const clean: Curated[] = []
 
-  const block = response.content.find(b => b.type === 'text')
-  if (!block || block.type !== 'text') throw new Error('Ei tekstivastausta tiivistäjältä')
-
-  const parsed = JSON.parse(block.text) as { items: Summarized[] }
-  if (parsed.items.length !== items.length) {
-    throw new Error(`Tiivistäjä palautti ${parsed.items.length} riviä, odotettiin ${items.length}`)
+  for (const item of raw) {
+    const index = Math.trunc(item.index) - 1 // kehotteessa numerointi alkaa ykkösestä
+    if (!Number.isFinite(index) || index < 0 || index >= candidateCount) continue
+    if (seen.has(index)) continue
+    seen.add(index)
+    clean.push({ index, summary: item.summary ?? '', tags: Array.isArray(item.tags) ? item.tags : [] })
+    if (clean.length === limit) break
   }
-  return parsed.items
+
+  return clean
 }
 
-/** Tiivistää artikkelit erissä. Yhden artikkelin epäonnistuminen ei kaada koko työtä. */
-export async function summarizeArticles(items: RawItem[]): Promise<Summarized[]> {
-  const results: Summarized[] = []
+/** Varasuunnitelma: ilman mallia otetaan tuoreimmat, ilman tiivistelmää. */
+function newestWithoutSummary(candidateCount: number, limit: number): Curated[] {
+  return Array.from({ length: Math.min(limit, candidateCount) }, (_, index) => ({
+    index,
+    summary: '',
+    tags: [],
+  }))
+}
 
-  for (let i = 0; i < items.length; i += BATCH_SIZE) {
-    const batch = items.slice(i, i + BATCH_SIZE)
-    try {
-      results.push(...(await summarizeBatch(batch)))
-    } catch (error) {
-      console.error(`[summarize] erä epäonnistui (${batch.length} artikkelia)`, error)
-      // Varmistetaan silti oikea pituus: tyhjä tiivistelmä on parempi kuin
-      // koko työn kaatuminen yhden erän takia.
-      results.push(...batch.map(() => ({ summary: '', tags: [] as string[] })))
-    }
+/**
+ * Valitsee ehdokkaista tärkeimmät ja tiivistää ne samalla kutsulla.
+ *
+ * Yhdistäminen on tarkoituksellista: tiivistys tehdään vain valituille, joten
+ * kutsuja on yksi per kategoria per haku eikä kymmeniä. Kutsujan on annettava
+ * ehdokkaat tuoreimmasta vanhimpaan — varasuunnitelma nojaa siihen.
+ */
+export async function curateArticles(candidates: RawItem[], limit: number, focus: string): Promise<Curated[]> {
+  if (candidates.length === 0) return []
+
+  // Ehdokkaita voi olla vähemmän kuin poimittavia. Silloin valittavaa ei ole,
+  // mutta tiivistelmä halutaan silti koko joukolle.
+  const take = Math.min(limit, candidates.length)
+
+  try {
+    const response = await getClient().messages.create({
+      model: MODEL_NEWS_SUMMARY,
+      max_tokens: 4096,
+      system: systemPrompt(take, focus),
+      messages: [{ role: 'user', content: buildUserPrompt(candidates, take) }],
+      output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+    })
+
+    const block = response.content.find(b => b.type === 'text')
+    if (!block || block.type !== 'text') throw new Error('Ei tekstivastausta tiivistäjältä')
+
+    const parsed = JSON.parse(block.text) as { items: Curated[] }
+    const clean = sanitize(parsed.items ?? [], candidates.length, take)
+    if (clean.length === 0) throw new Error('Malli ei palauttanut yhtään kelvollista indeksiä')
+
+    return clean
+  } catch (error) {
+    console.error(`[summarize] valinta epäonnistui (${candidates.length} ehdokasta)`, error)
+    // Tyhjä tiivistelmä on parempi kuin tyhjä kategoria: kutsuja käyttää
+    // silloin lähteen omaa kuvausta.
+    return newestWithoutSummary(candidates.length, take)
   }
-
-  return results
 }
