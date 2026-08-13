@@ -1,17 +1,17 @@
 // RJ-Mob laskentasäännöt
 export const LAPIMENO = 0.65
 export const NORMAL_MULT = 5.0
-// Krenarin sopimus: liittymäprovisiosta hän saa nelinkertaisen, ja RJ-Mob saa
-// siitä neljäsosan. Kun liittymäprovisio on 100 €, Krenar saa 400 € ja RJ-Mob
-// 100 €. Tavallisella myyjällä sama 100 € tuottaa myyjälle 100 € ja RJ-Mobille
-// viisinkertaisen (NORMAL_MULT) — Krenar on siis RJ-Mobille selvästi kalliimpi.
+// Krenarin erikoismalli (tuottoseuranta_ohje):
 //
-// Ohjeen "jaettuna neljällä" tarkoittaa neljäsosaa **Krenarin provisiosta**,
-// ei neljäsosaa liittymä€:sta. Aiemmin se oli luettu jälkimmäisellä tavalla,
-// jolloin RJ-Mobin tulo Krenarin liittymistä laskettiin nelinkertaisesti liian
-// pieneksi (100 € myynnistä 25 € eikä 100 €).
+//   "RJ-Mob-liittymätulo lasketaan kaavalla liittymä euroa kertaa 0,65 kertaa 5.
+//    Krenarille on erikois malli. Krenar saa liittymä euroa kertaa 0,65 kertaa 4."
+//
+// RJ-Mobin puolella vaihtuu siis vain kerroin 5 → 4; läpimeno 0,65 on mukana
+// kuten tavallisillakin myyjillä. Krenarin oma provisio on liittymäprovisio
+// kertaa 4 ilman läpimenoa, ja hänen työkulussaan ei ole sivukulukerrointa
+// eikä tuntipalkkaa — ne ovat saman ohjeen työkulu-osiossa.
 export const KRENAR_SELLER_MULT = 4.0
-export const KRENAR_RJMOB_MULT = KRENAR_SELLER_MULT / 4
+export const KRENAR_RJMOB_MULT = 4.0
 export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
@@ -228,7 +228,8 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
   let myyjaProv: number
 
   if (tyyppi === 'krenar') {
-    rjmobLiitt = liittEur * KRENAR_RJMOB_MULT
+    // Läpimeno koskee Krenariakin — vain kerroin on 4 eikä 5.
+    rjmobLiitt = liittEur * LAPIMENO * KRENAR_RJMOB_MULT
     myyjaProv = liittEur * KRENAR_SELLER_MULT
   } else {
     rjmobLiitt = liittEur * LAPIMENO * NORMAL_MULT
