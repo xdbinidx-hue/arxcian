@@ -5,6 +5,7 @@ import { SentimentGauge } from '@/components/arxcian/trading/SentimentGauge'
 import { IctFeed } from '@/components/arxcian/trading/IctFeed'
 import { AlertsPanel } from '@/components/arxcian/trading/AlertsPanel'
 import { EconomicCalendar } from '@/components/arxcian/trading/EconomicCalendar'
+import { MarketSessions } from '@/components/arxcian/trading/MarketSessions'
 import { ChartPanel } from '@/components/arxcian/trading/ChartPanel'
 import { WatchlistTable } from '@/components/arxcian/trading/WatchlistTable'
 
@@ -27,14 +28,19 @@ export default async function TradingPage() {
         <p className="mt-1 text-[13px] text-ax-dim">Markkinat, watchlist ja ICT</p>
       </header>
 
-      {/* Punaiset uutiset ensimmäisenä: hälytys jonka luo pitää vierittää ei
-          ehdi vaikuttaa siihen mitä käyttäjä tekee ennen julkaisua. */}
-      <div className="mb-4">
-        <EconomicCalendar
-          events={calendar ? highImpactEvents(calendar.data, now) : []}
-          now={now}
-          fetchedAt={calendar?.fetchedAt ?? null}
-        />
+      {/* Milloin-paneelit ensimmäisenä: hälytys jonka luo pitää vierittää ei
+          ehdi vaikuttaa siihen mitä käyttäjä tekee ennen julkaisua. Kalenteri
+          saa kaksi kolmasosaa, koska sen rivit ovat leveitä (aika, valuutta,
+          nimi, ennuste); istunnoille riittää kapea sarake. */}
+      <div className="mb-4 grid gap-3 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <EconomicCalendar
+            events={calendar ? highImpactEvents(calendar.data, now) : []}
+            now={now}
+            fetchedAt={calendar?.fetchedAt ?? null}
+          />
+        </div>
+        <MarketSessions now={now} />
       </div>
 
       <div className="mb-4">
