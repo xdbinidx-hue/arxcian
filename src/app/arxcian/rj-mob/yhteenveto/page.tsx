@@ -244,7 +244,7 @@ export default async function YhteenvetoPage() {
                         </td>
                         <TehoSolu teho={m.teho} tila={m.tehoTila} />
                         <td style={{ ...td, fontSize: 11, color: '#888' }}>
-                          {m.tyyppi === 'normal' ? TEHO_TEKSTI[m.tehoTila] : 'ei arvioida'}
+                          {m.tyyppi !== 'owner' ? TEHO_TEKSTI[m.tehoTila] : 'ei arvioida'}
                         </td>
                         <td style={td}>{fmt(m.tunnit)}</td>
                         <td style={{ ...td, fontSize: 11, color: m.vertailukelpoinen ? '#1a1a1a' : '#f97316' }}>

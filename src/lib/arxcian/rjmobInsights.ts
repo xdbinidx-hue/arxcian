@@ -371,8 +371,10 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
           })
         : []
 
-      // Teho on jo laskettu laskeMyyja:ssa normaalityötunneista — ei lasketa uudelleen.
-      const tehoTila: TehoTila = s.tyyppi === 'normal' ? tehoTilasta(s.teho, s.tunnit) : 'ei-arviota'
+      // Teho on jo laskettu laskeMyyja:ssa normaalityötunneista — ei lasketa
+      // uudelleen. Krenar arvioidaan kuten muutkin; vain omistajat jäävät pois,
+      // koska heillä ei ole provisiopohjaista palkkaa lainkaan.
+      const tehoTila: TehoTila = s.tyyppi !== 'owner' ? tehoTilasta(s.teho, s.tunnit) : 'ei-arviota'
 
       return {
         nimi: s.nimi,

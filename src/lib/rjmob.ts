@@ -1,10 +1,17 @@
 // RJ-Mob laskentasäännöt
 export const LAPIMENO = 0.65
 export const NORMAL_MULT = 5.0
+// Krenarin sopimus: liittymäprovisiosta hän saa nelinkertaisen, ja RJ-Mob saa
+// siitä neljäsosan. Kun liittymäprovisio on 100 €, Krenar saa 400 € ja RJ-Mob
+// 100 €. Tavallisella myyjällä sama 100 € tuottaa myyjälle 100 € ja RJ-Mobille
+// viisinkertaisen (NORMAL_MULT) — Krenar on siis RJ-Mobille selvästi kalliimpi.
+//
+// Ohjeen "jaettuna neljällä" tarkoittaa neljäsosaa **Krenarin provisiosta**,
+// ei neljäsosaa liittymä€:sta. Aiemmin se oli luettu jälkimmäisellä tavalla,
+// jolloin RJ-Mobin tulo Krenarin liittymistä laskettiin nelinkertaisesti liian
+// pieneksi (100 € myynnistä 25 € eikä 100 €).
 export const KRENAR_SELLER_MULT = 4.0
-// RJ-Mob saa Krenarin liittymistä liittymä€ jaettuna neljällä (ohje: tuottoseuranta_ohje) —
-// ei sama NORMAL_MULT-kerroin kuin muilla myyjillä.
-export const KRENAR_RJMOB_MULT = 0.25
+export const KRENAR_RJMOB_MULT = KRENAR_SELLER_MULT / 4
 export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
@@ -234,7 +241,11 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     if (tyokulu > rjmobTulo) leikkuri = true
   }
 
-  const tehoStatus = tyyppi === 'owner' || tyyppi === 'krenar' ? 'special'
+  // Krenarin teho lasketaan ja arvioidaan kuten muillakin. Se mittaa myyjän
+  // omaa ansiota tunnille, ja Krenarin nelinkertainen provisio on hänen
+  // todellinen ansionsa — ei siis erikoistapaus. Omistajilla arviota ei tehdä,
+  // koska heillä ei ole provisiopohjaista palkkaa lainkaan.
+  const tehoStatus = tyyppi === 'owner' ? 'special'
     : teho >= 9 ? 'green'
     : teho >= 7 ? 'amber'
     : 'red'

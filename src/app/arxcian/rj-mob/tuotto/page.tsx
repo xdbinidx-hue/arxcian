@@ -82,7 +82,8 @@ function inferYear(monthNum: number): number {
 
 function TehoLabel({ teho, tyyppi }: { teho: number; tyyppi: string }) {
   if (tyyppi === 'owner') return <span style={{color:'#185FA5',fontWeight:500}}>Owner</span>
-  if (tyyppi === 'krenar') return <span style={{color:'#185FA5'}}>{fmt(teho, 1)}</span>
+  // Krenarilla ei ole enää omaa neutraalia väriään: hänen tehonsa arvioidaan
+  // samalla portaikolla kuin muidenkin.
   if (teho >= 9) return <span style={{color:'#3B6D11',fontWeight:500}}>{fmt(teho, 1)}</span>
   if (teho >= 7) return <span style={{color:'#854F0B',fontWeight:500}}>{fmt(teho, 1)}</span>
   return <span style={{color:'#A32D2D',fontWeight:500}}>{fmt(teho, 1)}</span>

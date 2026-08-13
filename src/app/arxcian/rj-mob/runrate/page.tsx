@@ -173,7 +173,7 @@ export default function RunRatePage() {
   const totL = {...tot, textAlign:'left' as const}
 
   const tehoColor = (teho: number, tyyppi: string) => {
-    if (tyyppi === 'owner' || tyyppi === 'krenar') return '#185FA5'
+    if (tyyppi === 'owner') return '#185FA5'
     return teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
   }
 
