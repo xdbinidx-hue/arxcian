@@ -252,7 +252,13 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
           if (isRJStore) {
             const normalizedName = normalizeStoreName(kusta)
 
-            let standiLiittKpl = 0, standiLiittEur = 0
+            // Ständin osuus vähennetään myymälän luvuista: ständi ei ole
+            // myymälän oma myynti eikä myymälän oma työvoima. Tunnit oli
+            // jätetty vähentämättä, jolloin myymälän tuotto tunnille laskettiin
+            // osoittajalla josta ständi on poistettu ja nimittäjällä jossa se
+            // on yhä mukana — luku painui alaspäin sitä enemmän mitä enemmän
+            // ständituntreja myymälällä oli.
+            let standiLiittKpl = 0, standiLiittEur = 0, standiTunnit = 0
             for (let j = i + 1; j < myymalaRows.length; j++) {
               const jr = myymalaRows[j]
               const jkusta = jr[0]?.trim() ?? ''
@@ -261,6 +267,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               if (jmyyjä && isStandi(cleanUnmatchedName(jmyyjä))) {
                 standiLiittKpl += parseNum(jr[mIdxLiittKpl])
                 standiLiittEur += parseNum(jr[mIdxLiittEur])
+                if (mIdxTunnit >= 0) standiTunnit += parseNum(jr[mIdxTunnit])
               }
             }
 
@@ -276,7 +283,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               fsecKpl: mFsecKpl, fsecEur: mFsecEur,
               kassa: kassaRaw * 10,
               kassaRjmob: kassaRaw * 1,
-              tunnit: parseNum(row[mIdxTunnit]),
+              tunnit: Math.max(0, parseNum(row[mIdxTunnit]) - standiTunnit),
             }
           }
         }
