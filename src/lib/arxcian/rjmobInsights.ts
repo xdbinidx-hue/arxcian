@@ -2,7 +2,7 @@ import { listSeurantaFiles, monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDriv
 import { loadDashData, type DashData } from '@/lib/rjmobSheets'
 import { loadTargets, type TargetRow } from '@/lib/rjmobTargets'
 import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
-import type { SellerResult } from '@/lib/rjmob'
+import { FSEC_LEIKKURI_RAJA, type SellerResult } from '@/lib/rjmob'
 import { fetchAndCache, type Fetched } from './cache'
 
 /**
@@ -115,7 +115,11 @@ export type MyyjaTila = {
   tehoTila: TehoTila
   tunnit: number
   /** Työkulu ylittää RJ-Mobin tuoton. */
-  leikkuri: boolean
+  tappiollinen: boolean
+  /** F-Secure-leikkuri osui: alle kuuden F-Securen jäätiin ja provisioista leikattiin 30 %. */
+  fsecLeikkuri: boolean
+  fsecLeikkuriEur: number
+  fsecKpl: number
   roi: number | null
   /** Myyjän omat toteutuneet työpäivät (data-välilehti). */
   paivat: number
@@ -382,7 +386,10 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
         teho: s.teho,
         tehoTila,
         tunnit: s.tunnit,
-        leikkuri: s.leikkuri,
+        tappiollinen: s.tappiollinen,
+        fsecLeikkuri: s.fsecLeikkuri,
+        fsecLeikkuriEur: s.fsecLeikkuriEur,
+        fsecKpl: s.fsecKpl,
         roi: s.roi,
         paivat,
         vertailukelpoinen,
@@ -397,7 +404,7 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
     // myyjälle — kaksi erillistä riviä samasta henkilöstä pidentäisi listaa
     // ilman että se kertoisi enempää.
     if (m.tehoTila === 'alle') {
-      const kulut = m.leikkuri
+      const kulut = m.tappiollinen
         ? ` Työkulu ylittää RJ-Mobin tuoton${m.roi !== null ? ` (ROI ${fmtPct(m.roi)})` : ''}.`
         : ''
       huomiot.push({
@@ -418,7 +425,7 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
 
     // Leikkuri ilman tehopoikkeamaa on oma havaintonsa: tuotto tunnille on
     // kunnossa mutta palkka ja provisiot silti syövät sen.
-    if (m.leikkuri && m.tehoTila !== 'alle') {
+    if (m.tappiollinen && m.tehoTila !== 'alle') {
       huomiot.push({
         vakavuus: 'korkea', kohde: m.nimi, laji: 'kannattavuus',
         teksti: `${m.nimi}: työkulu ylittää RJ-Mobin tuoton${m.roi !== null ? ` (ROI ${fmtPct(m.roi)})` : ''}, vaikka teho on ${m.teho.toLocaleString('fi-FI', { maximumFractionDigits: 2 })} €/h.`,
@@ -449,6 +456,19 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
         })
       }
     }
+  }
+
+  // F-Secure-leikkuri koontina eikä rivi per myyjä: se osuu tyypillisesti
+  // suureen osaan tiimistä, jolloin erilliset rivit hukuttaisivat muut
+  // huomiot alleen. Kuka tahansa yksittäinen tapaus näkyy taulukon
+  // merkinnässä.
+  const leikatut = myyjat.filter(m => m.fsecLeikkuri)
+  if (leikatut.length > 0) {
+    const summa = leikatut.reduce((s, m) => s + m.fsecLeikkuriEur, 0)
+    huomiot.push({
+      vakavuus: 'keskitaso', kohde: 'RJ-Mob', laji: 'kannattavuus',
+      teksti: `F-Secure-leikkuri osui ${fmtKpl(leikatut.length)} myyjään (alle ${FSEC_LEIKKURI_RAJA} kpl): provisioista leikattiin yhteensä ${fmtEur(summa)}. Eniten ${leikatut.slice().sort((a, b) => b.fsecLeikkuriEur - a.fsecLeikkuriEur)[0].nimi}.`,
+    })
   }
 
   // ---- Myymälät ----

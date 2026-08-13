@@ -21,6 +21,32 @@ export const PAYOUT_DELAY_MONTHS = 3
 export const FSEC_TOTAL_SELLER = 7
 export const FSEC_INTERNET_SELLER = 3.5
 
+/**
+ * F-Secure-leikkuri: alle kuuden F-Securen kuukaudesta myyjän provisioista
+ * leikataan 30 %.
+ *
+ * Leikkaus osuu liittymä-, kassa- ja F-Secure-provisioon. **Bonuksiin se ei
+ * osu** — ei F-Secure-portaisiin eikä DNA-uusmyyntibonukseen.
+ *
+ * Leikkuri pienentää sitä mitä myyjälle maksetaan, ei sitä mitä RJ-Mob
+ * liittymistä ja kassasta saa: `rjmobTulo` lasketaan leikkaamattomista
+ * luvuista ja vain `provisioYhteensa`, palkka ja teho pienenevät.
+ *
+ * Voimassa elokuusta 2026 alkaen. Sitä vanhemmat kuukaudet lasketaan ilman
+ * leikkuria, jottei historia muutu takautuvasti — kuukausi tunnistetaan
+ * myyntiseurantatiedoston nimestä samalla `vuosi × 100 + kuukausi`
+ * -järjestyksellä jota käytetään muuallakin.
+ */
+export const FSEC_LEIKKURI_RAJA = 6
+export const FSEC_LEIKKURI_OSUUS = 0.3
+export const FSEC_LEIKKURI_ALKAA = 202608
+
+/** Osuuko leikkuri: kuukausi voimassa ja F-Secureja alle rajan. */
+export function fsecLeikkuriOsuu(fsecKpl: number, kuukausiOrder: number | null): boolean {
+  if (kuukausiOrder === null || kuukausiOrder < FSEC_LEIKKURI_ALKAA) return false
+  return fsecKpl < FSEC_LEIKKURI_RAJA
+}
+
 // F-Secure bonusportaat
 export function fsecBonus(kpl: number): number {
   if (kpl >= 80) return 1000
@@ -150,18 +176,29 @@ export interface SellerResult {
   rjmobFsec: number
   rjmobTulo: number
   myyjaProv: number
-  provisioYhteensa: number // myyjaProv + kassa + fsecEur + fsecBonus + dnaBonus
+  // Leikkurin jälkeen: myyjaProv + kassa + fsecEur (leikattuina) + fsecBonus + dnaBonus
+  provisioYhteensa: number
   palkkaBrutto: number
   tyokulu: number
   netto: number
   roi: number | null
-  teho: number         // laskettu normaali tunnit (myyntiseuranta)
+  teho: number         // laskettu normaali tunnit (myyntiseuranta), leikkurin jälkeen
   tehoStatus: 'green' | 'amber' | 'red' | 'special'
   fsecFV: number
-  leikkuri: boolean
+  /** F-Secure-leikkuri osui: alle rajan jääneistä provisioista leikattiin 30 %. */
+  fsecLeikkuri: boolean
+  /** Montako euroa leikkuri vei myyjän provisioista. */
+  fsecLeikkuriEur: number
+  /** Työkulu ylittää RJ-Mobin tuoton — eri asia kuin fsecLeikkuri. */
+  tappiollinen: boolean
 }
 
-export function laskeMyyja(raw: SellerRaw): SellerResult {
+/**
+ * `kuukausiOrder` on vuosi × 100 + kuukausi myyntiseurantatiedoston nimestä.
+ * Sitä tarvitaan vain F-Secure-leikkurin voimaantulon ratkaisemiseen; ilman
+ * sitä laskenta menee kuten ennen leikkuria.
+ */
+export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null): SellerResult {
   const { nimi, liittEur, liittKpl, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl } = raw
 
   const tyyppi = isOwner(nimi) ? 'owner'
@@ -182,7 +219,8 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
       fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: 0,
       rjmobLiitt: 0, rjmobKassa: 0, rjmobFsec: 0, rjmobTulo: 0,
       myyjaProv: 0, provisioYhteensa: 0, palkkaBrutto: 0, tyokulu: 0, netto: 0, roi: null,
-      teho: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12, leikkuri: false,
+      teho: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12,
+      fsecLeikkuri: false, fsecLeikkuriEur: 0, tappiollinen: false,
     }
   }
 
@@ -202,21 +240,41 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     myyjaProv = liittEur
   }
 
+  // RJ-Mobin oma tulo lasketaan aina leikkaamattomista luvuista: leikkuri
+  // pienentää myyjälle maksettavaa provisiota, ei sitä mitä liittymä tai
+  // kassatapahtuma tuo taloon.
   const rjmobKassa = kassa * 5.0
   const rjmobTulo = rjmobLiitt + rjmobKassa + rjmobFsec + dnaBonusEur
 
-  // Teho lasketaan normaali tunnit (myyntiseuranta)
-  const teho = tunnit > 0 ? (myyjaProv + kassa) / tunnit : 0
+  // F-Secure-leikkuri: liittymä-, kassa- ja F-Secure-provisiosta 30 % pois,
+  // bonuksiin ei kosketa.
+  //
+  // Omistajat jäävät ulkopuolelle: heille ei makseta provisiota vaan he saavat
+  // RJ-Mobin tuoton sellaisenaan (palkkaBrutto ja tyokulu ovat nolla), joten
+  // leikkurilla ei ole mitään mistä leikata. Ilman rajausta he näkyisivät
+  // leikattujen listalla ja vääristäisivät sekä lukumäärää että summaa.
+  const fsecLeikkuri = tyyppi !== 'owner' && fsecLeikkuriOsuu(fsecKpl, kuukausiOrder)
+  const jaljelle = fsecLeikkuri ? 1 - FSEC_LEIKKURI_OSUUS : 1
+  const myyjaProvNetto = myyjaProv * jaljelle
+  const kassaNetto = kassa * jaljelle
+  const fsecEurNetto = fsecEur * jaljelle
+  const fsecLeikkuriEur = (myyjaProv + kassa + fsecEur) - (myyjaProvNetto + kassaNetto + fsecEurNetto)
+
+  // Teho lasketaan normaali tunnit (myyntiseuranta) ja leikkurin JÄLKEEN: se
+  // kertoo mitä myyjä oikeasti ansaitsee tunnissa. Huomaa ettei teho siksi
+  // enää vastaa kaavaa (myyjaProv + kassa) / tunnit näillä kentillä — ne ovat
+  // leikkaamattomat, koska ne ovat taulukon omia lukuja.
+  const teho = tunnit > 0 ? (myyjaProvNetto + kassaNetto) / tunnit : 0
   const fsecFV = fsecKpl * FSEC_RECURRING * 12
 
   // Myyjän provisiot yhteensä (pohjapalkan päälle tuleva osuus, myös työkulun provisiopohja).
-  const provisioYhteensa = myyjaProv + kassa + fsecEur + bonus + dnaBonusEur
+  const provisioYhteensa = myyjaProvNetto + kassaNetto + fsecEurNetto + bonus + dnaBonusEur
 
   let palkkaBrutto = 0
   let tyokulu = 0
   let netto = 0
   let roi: number | null = null
-  let leikkuri = false
+  let tappiollinen = false
 
   if (tyyppi === 'owner') {
     palkkaBrutto = 0
@@ -237,8 +295,9 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     netto = rjmobTulo - tyokulu
     roi = tyokulu > 0 ? (netto / tyokulu) * 100 : 0
 
-    // Leikkuri: jos tyokulu > rjmobTulo
-    if (tyokulu > rjmobTulo) leikkuri = true
+    // Tappiollinen: työkulu ylittää RJ-Mobin tuoton. Eri asia kuin
+    // F-Secure-leikkuri, jolla on oma kenttänsä.
+    if (tyokulu > rjmobTulo) tappiollinen = true
   }
 
   // Krenarin teho lasketaan ja arvioidaan kuten muillakin. Se mittaa myyjän
@@ -255,7 +314,7 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: dnaBonusEur,
     rjmobLiitt, rjmobKassa, rjmobFsec, rjmobTulo,
     myyjaProv, provisioYhteensa, palkkaBrutto, tyokulu, netto, roi,
-    teho, tehoStatus, fsecFV, leikkuri,
+    teho, tehoStatus, fsecFV, fsecLeikkuri, fsecLeikkuriEur, tappiollinen,
   }
 }
 

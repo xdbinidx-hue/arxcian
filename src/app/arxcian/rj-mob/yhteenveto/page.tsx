@@ -236,9 +236,14 @@ export default async function YhteenvetoPage() {
                       <tr key={m.nimi}>
                         <td style={tdL}>
                           {m.nimi}
-                          {m.leikkuri && (
+                          {m.tappiollinen && (
                             <span style={{ marginLeft: 6 }}>
                               <Merkki vakavuus="korkea" teksti="kulut > tuotto" />
+                            </span>
+                          )}
+                          {m.fsecLeikkuri && (
+                            <span style={{ marginLeft: 6 }}>
+                              <Merkki vakavuus="keskitaso" teksti={`F-Sec ${fmt(m.fsecKpl)} kpl · −${fmt(m.fsecLeikkuriEur)} €`} />
                             </span>
                           )}
                         </td>

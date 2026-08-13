@@ -1,6 +1,7 @@
 import { google } from 'googleapis'
 import type { SellerResult } from '@/lib/rjmob'
 import { laskeMyyja, shouldSkip, isStandi, isRJMobSellerForMonth, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { monthOrder } from '@/lib/rjmobDrive'
 
 /**
  * Yhden kuukauden myyntiseurannan luvut. Kentät ovat samat kuin ennen
@@ -328,7 +329,9 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
   }
 
-  const results = sellers.map(s => laskeMyyja(s))
+  // Kuukausi tiedostonimestä: F-Secure-leikkuri on voimassa vasta elokuusta 2026.
+  const kuukausiOrder = monthOrder(fileName)
+  const results = sellers.map(s => laskeMyyja(s, kuukausiOrder))
   const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const tiimi = active.filter(r => r.tyyppi !== 'owner')
   // Myymälätaulukon oma rakenne (yhteenvetorivi tai kustannuspaikan sarake) vaihtelee kuukausien
@@ -443,7 +446,9 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
   }
 
-  const results = sellers.map(s => laskeMyyja(s))
+  // Kuukausi tiedostonimestä: F-Secure-leikkuri on voimassa vasta elokuusta 2026.
+  const kuukausiOrder = monthOrder(fileName)
+  const results = sellers.map(s => laskeMyyja(s, kuukausiOrder))
   const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const tiimi = active.filter(r => r.tyyppi !== 'owner')
   const storeFsecKpl = Object.values(storeResults).reduce((s, r) => s + r.fsecKpl, 0)
