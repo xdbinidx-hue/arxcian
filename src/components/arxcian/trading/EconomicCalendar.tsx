@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { CalendarEvent } from '@/lib/arxcian/trading/types'
+import { countdown } from '@/lib/arxcian/time'
 import { Panel } from '@/components/arxcian/Panel'
 
 type Props = {
@@ -49,20 +50,11 @@ const dayFormat = new Intl.DateTimeFormat('sv-SE', {
   day: '2-digit',
 })
 
-function minutesText(ms: number): string {
-  const minutes = Math.round(ms / 60_000)
-  if (minutes < 1) return 'nyt'
-  if (minutes < 60) return `${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
-}
-
 /** Milloin-sarakkeen teksti: mitä lähempänä, sitä tarkempi. */
 function whenText(time: number, now: number): string {
   const diff = time - now
-  if (diff < 0) return `julkaistu ${minutesText(-diff)} sitten`
-  if (diff <= IMMINENT_MS) return minutesText(diff)
+  if (diff < 0) return `julkaistu ${countdown(-diff)} sitten`
+  if (diff <= IMMINENT_MS) return countdown(diff)
   if (dayFormat.format(time) === dayFormat.format(now)) return `tänään ${timeFormat.format(time)}`
   return `${weekdayFormat.format(time)} ${timeFormat.format(time)}`
 }
