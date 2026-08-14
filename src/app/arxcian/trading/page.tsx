@@ -11,6 +11,7 @@ import { MarketSessions } from '@/components/arxcian/trading/MarketSessions'
 import { ChartPanel } from '@/components/arxcian/trading/ChartPanel'
 import { WatchlistTable } from '@/components/arxcian/trading/WatchlistTable'
 import { MarketAlertsSettings } from '@/components/arxcian/trading/MarketAlertsSettings'
+import { PushDevices } from '@/components/arxcian/trading/PushDevices'
 
 export const metadata = { title: 'Trading · arxcian' }
 export const dynamic = 'force-dynamic'
@@ -77,6 +78,7 @@ export default async function TradingPage() {
           initialTimes={tradingTimes}
           user={user}
         />
+        <PushDevices />
       </div>
 
       <AlertsPanel initialAlerts={alerts} />

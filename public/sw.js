@@ -117,3 +117,37 @@ self.addEventListener('notificationclick', event => {
     }),
   )
 })
+
+/**
+ * Push-viesti palvelimelta.
+ *
+ * Runko on JSON jonka [send.ts](../src/lib/arxcian/push/send.ts) muodostaa.
+ * Jäsennys on try/catchissa, koska selain voi toimittaa myös tyhjän tai
+ * ei-JSON-muotoisen push-viestin (osa push-palveluista lähettää "herätyksen"
+ * ilman sisältöä) — ja käsittelemätön poikkeus tässä tarkoittaisi että
+ * selain näyttää oman yleisilmoituksensa "Tämä sivusto päivitettiin
+ * taustalla" arxcianin ilmoituksen sijaan.
+ */
+self.addEventListener('push', event => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = {}
+  }
+
+  const title = payload.title || 'arxcian'
+  const options = {
+    body: payload.body || '',
+    tag: payload.tag || 'arxcian',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    // Ilmoitus jää näkyviin kunnes se kuitataan: markkinan avautuminen on
+    // hetkellinen tapahtuma, ja itsestään kadonnut ilmoitus olisi sama kuin
+    // ei ilmoitusta lainkaan jos katse oli muualla.
+    requireInteraction: true,
+    data: { url: payload.url || '/arxcian/trading' },
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
