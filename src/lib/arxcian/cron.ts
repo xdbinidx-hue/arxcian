@@ -10,7 +10,6 @@ import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
-import { importWinposReports } from '@/lib/winpos/kassamyynti'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -120,14 +119,10 @@ const rjmobJobs: CronJob[] = [
       return { key: RJMOB_INSIGHTS_KEY, items: result.data.huomiot.length }
     },
   },
-  {
-    id: 'winpos-import',
-    description: 'RJ-Mob: Winpos-raportit Kassamyynti-välilehdelle',
-    run: async () => {
-      const tulos = await importWinposReports()
-      return { key: 'winpos:processed', items: tulos.tuodut.length }
-    },
-  },
+  // Winpos-tuontia EI ole kytketty tähän. Se kirjoittaa elävään
+  // taulukkoon, joten ajastus otetaan käyttöön vasta kun tuonti on nähty
+  // toimivaksi oikealla raportilla. Siihen asti ajo tapahtuu käsin
+  // reitiltä /api/winpos/import (ja ?kuiva=1 näyttää mitä kirjoitettaisiin).
 ]
 
 /** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
