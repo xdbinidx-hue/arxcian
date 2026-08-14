@@ -1,18 +1,54 @@
 // RJ-Mob laskentasäännöt
 export const LAPIMENO = 0.65
 export const NORMAL_MULT = 5.0
+// Krenarin erikoismalli (tuottoseuranta_ohje):
+//
+//   "RJ-Mob-liittymätulo lasketaan kaavalla liittymä euroa kertaa 0,65 kertaa 5.
+//    Krenarille on erikois malli. Krenar saa liittymä euroa kertaa 0,65 kertaa 4."
+//
+// RJ-Mobin puolella vaihtuu siis vain kerroin 5 → 4; läpimeno 0,65 on mukana
+// kuten tavallisillakin myyjillä. Krenarin oma provisio on liittymäprovisio
+// kertaa 4 ilman läpimenoa, ja hänen työkulussaan ei ole sivukulukerrointa
+// eikä tuntipalkkaa — ne ovat saman ohjeen työkulu-osiossa.
 export const KRENAR_SELLER_MULT = 4.0
-// RJ-Mob saa Krenarin liittymistä liittymä€ jaettuna neljällä (ohje: tuottoseuranta_ohje) —
-// ei sama NORMAL_MULT-kerroin kuin muilla myyjillä.
-export const KRENAR_RJMOB_MULT = 0.25
+export const KRENAR_RJMOB_MULT = 4.0
 export const SIVU_KERROIN = 1.35
 export const FSEC_RECURRING = 1.5
 export const PAYOUT_DELAY_MONTHS = 3
 
-// F-Secure provisiot (myyjä). RJ-Mob saa saman verran provisiota+bonusta kuin myyjä,
-// ja lisäksi passiivitulon (ks. laskeMyyja: rjmobFsec).
+// F-Secure kertaprovisiot. Myyjän ja RJ-Mobin luvut ovat eri (ohjeet):
+// myyntiseuranta_ohje antaa myyjälle internet 3,50 € ja total 7,00 €,
+// tuottoseuranta_ohje RJ-Mobille internet 5 € ja total 10 €.
 export const FSEC_TOTAL_SELLER = 7
 export const FSEC_INTERNET_SELLER = 3.5
+export const FSEC_TOTAL_RJMOB = 10
+export const FSEC_INTERNET_RJMOB = 5
+
+/**
+ * F-Secure-leikkuri: alle kuuden F-Securen kuukaudesta myyjän provisioista
+ * leikataan 30 %.
+ *
+ * Leikkaus osuu liittymä-, kassa- ja F-Secure-provisioon. **Bonuksiin se ei
+ * osu** — ei F-Secure-portaisiin eikä DNA-uusmyyntibonukseen.
+ *
+ * Leikkuri pienentää sitä mitä myyjälle maksetaan, ei sitä mitä RJ-Mob
+ * liittymistä ja kassasta saa: `rjmobTulo` lasketaan leikkaamattomista
+ * luvuista ja vain `provisioYhteensa`, palkka ja teho pienenevät.
+ *
+ * Voimassa elokuusta 2026 alkaen. Sitä vanhemmat kuukaudet lasketaan ilman
+ * leikkuria, jottei historia muutu takautuvasti — kuukausi tunnistetaan
+ * myyntiseurantatiedoston nimestä samalla `vuosi × 100 + kuukausi`
+ * -järjestyksellä jota käytetään muuallakin.
+ */
+export const FSEC_LEIKKURI_RAJA = 6
+export const FSEC_LEIKKURI_OSUUS = 0.3
+export const FSEC_LEIKKURI_ALKAA = 202608
+
+/** Osuuko leikkuri: kuukausi voimassa ja F-Secureja alle rajan. */
+export function fsecLeikkuriOsuu(fsecKpl: number, kuukausiOrder: number | null): boolean {
+  if (kuukausiOrder === null || kuukausiOrder < FSEC_LEIKKURI_ALKAA) return false
+  return fsecKpl < FSEC_LEIKKURI_RAJA
+}
 
 // F-Secure bonusportaat
 export function fsecBonus(kpl: number): number {
@@ -143,18 +179,29 @@ export interface SellerResult {
   rjmobFsec: number
   rjmobTulo: number
   myyjaProv: number
-  provisioYhteensa: number // myyjaProv + kassa + fsecEur + fsecBonus + dnaBonus
+  // Leikkurin jälkeen: myyjaProv + kassa + fsecEur (leikattuina) + fsecBonus + dnaBonus
+  provisioYhteensa: number
   palkkaBrutto: number
   tyokulu: number
   netto: number
   roi: number | null
-  teho: number         // laskettu normaali tunnit (myyntiseuranta)
+  teho: number         // laskettu normaali tunnit (myyntiseuranta), leikkurin jälkeen
   tehoStatus: 'green' | 'amber' | 'red' | 'special'
   fsecFV: number
-  leikkuri: boolean
+  /** F-Secure-leikkuri osui: alle rajan jääneistä provisioista leikattiin 30 %. */
+  fsecLeikkuri: boolean
+  /** Montako euroa leikkuri vei myyjän provisioista. */
+  fsecLeikkuriEur: number
+  /** Työkulu ylittää RJ-Mobin tuoton — eri asia kuin fsecLeikkuri. */
+  tappiollinen: boolean
 }
 
-export function laskeMyyja(raw: SellerRaw): SellerResult {
+/**
+ * `kuukausiOrder` on vuosi × 100 + kuukausi myyntiseurantatiedoston nimestä.
+ * Sitä tarvitaan vain F-Secure-leikkurin voimaantulon ratkaisemiseen; ilman
+ * sitä laskenta menee kuten ennen leikkuria.
+ */
+export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null): SellerResult {
   const { nimi, liittEur, liittKpl, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl } = raw
 
   const tyyppi = isOwner(nimi) ? 'owner'
@@ -165,9 +212,25 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
 
   const bonus = fsecBonus(fsecKpl)
   const dnaBonusEur = dnaBonus(dnaUusmyyntiKpl)
-  // RJ-Mob saa F-Securesta saman verran provisiota+bonusta kuin myyjä, ja lisäksi
-  // passiivitulon (kk-tulo × 12 kk) tämän kuukauden uusista asiakkuuksista.
-  const rjmobFsec = fsecEur + bonus + (fsecKpl * FSEC_RECURRING * 12)
+
+  // RJ-Mobin F-Secure-tulo on kaksiosainen (tuottoseuranta_ohje): kertaprovisio
+  // omilla luvuillaan (internet 5 €, total 10 €) ja passiivitulo 1,50 € per
+  // asiakkuus. Passiivitulossa ei ole ×12: se oli koodissa vuosiarvona, mutta
+  // ohje laskee kuukauden tuloon vain kertakorvauksen. Vuosiarvo on edelleen
+  // omana lukunaan `fsecFV`, jota tuottoseuranta näyttää erikseen.
+  //
+  // Bonus on mukana molemmissa päissä tarkoituksella: RJ-Mob saa sen
+  // mobiilipisteeltä ja maksaa sen kokonaan myyjälle, joten se kasvattaa sekä
+  // tuloa että työkulua eikä vaikuta nettoon.
+  //
+  // Kun total/internet-jakoa ei ole (vanha formaatti lukee vain valmiin
+  // provision), kertaprovisio johdetaan myyjän provisiosta: RJ-Mobin ja myyjän
+  // suhde on sama molemmissa tuotteissa (10/7 = 5/3,5), joten skaalaus on tarkka.
+  const fsecKplTiedossa = fsecTotalKpl + fsecInternetKpl > 0
+  const rjmobFsecKerta = fsecKplTiedossa
+    ? (fsecTotalKpl * FSEC_TOTAL_RJMOB) + (fsecInternetKpl * FSEC_INTERNET_RJMOB)
+    : fsecEur * (FSEC_TOTAL_RJMOB / FSEC_TOTAL_SELLER)
+  const rjmobFsec = rjmobFsecKerta + bonus + (fsecKpl * FSEC_RECURRING)
 
   if (tyyppi === 'ref' || tyyppi === 'standi') {
     return {
@@ -175,7 +238,8 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
       fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: 0,
       rjmobLiitt: 0, rjmobKassa: 0, rjmobFsec: 0, rjmobTulo: 0,
       myyjaProv: 0, provisioYhteensa: 0, palkkaBrutto: 0, tyokulu: 0, netto: 0, roi: null,
-      teho: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12, leikkuri: false,
+      teho: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12,
+      fsecLeikkuri: false, fsecLeikkuriEur: 0, tappiollinen: false,
     }
   }
 
@@ -183,7 +247,8 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
   let myyjaProv: number
 
   if (tyyppi === 'krenar') {
-    rjmobLiitt = liittEur * KRENAR_RJMOB_MULT
+    // Läpimeno koskee Krenariakin — vain kerroin on 4 eikä 5.
+    rjmobLiitt = liittEur * LAPIMENO * KRENAR_RJMOB_MULT
     myyjaProv = liittEur * KRENAR_SELLER_MULT
   } else {
     rjmobLiitt = liittEur * LAPIMENO * NORMAL_MULT
@@ -195,21 +260,41 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     myyjaProv = liittEur
   }
 
+  // RJ-Mobin oma tulo lasketaan aina leikkaamattomista luvuista: leikkuri
+  // pienentää myyjälle maksettavaa provisiota, ei sitä mitä liittymä tai
+  // kassatapahtuma tuo taloon.
   const rjmobKassa = kassa * 5.0
   const rjmobTulo = rjmobLiitt + rjmobKassa + rjmobFsec + dnaBonusEur
 
-  // Teho lasketaan normaali tunnit (myyntiseuranta)
-  const teho = tunnit > 0 ? (myyjaProv + kassa) / tunnit : 0
+  // F-Secure-leikkuri: liittymä-, kassa- ja F-Secure-provisiosta 30 % pois,
+  // bonuksiin ei kosketa.
+  //
+  // Omistajat jäävät ulkopuolelle: heille ei makseta provisiota vaan he saavat
+  // RJ-Mobin tuoton sellaisenaan (palkkaBrutto ja tyokulu ovat nolla), joten
+  // leikkurilla ei ole mitään mistä leikata. Ilman rajausta he näkyisivät
+  // leikattujen listalla ja vääristäisivät sekä lukumäärää että summaa.
+  const fsecLeikkuri = tyyppi !== 'owner' && fsecLeikkuriOsuu(fsecKpl, kuukausiOrder)
+  const jaljelle = fsecLeikkuri ? 1 - FSEC_LEIKKURI_OSUUS : 1
+  const myyjaProvNetto = myyjaProv * jaljelle
+  const kassaNetto = kassa * jaljelle
+  const fsecEurNetto = fsecEur * jaljelle
+  const fsecLeikkuriEur = (myyjaProv + kassa + fsecEur) - (myyjaProvNetto + kassaNetto + fsecEurNetto)
+
+  // Teho lasketaan normaali tunnit (myyntiseuranta) ja leikkurin JÄLKEEN: se
+  // kertoo mitä myyjä oikeasti ansaitsee tunnissa. Huomaa ettei teho siksi
+  // enää vastaa kaavaa (myyjaProv + kassa) / tunnit näillä kentillä — ne ovat
+  // leikkaamattomat, koska ne ovat taulukon omia lukuja.
+  const teho = tunnit > 0 ? (myyjaProvNetto + kassaNetto) / tunnit : 0
   const fsecFV = fsecKpl * FSEC_RECURRING * 12
 
   // Myyjän provisiot yhteensä (pohjapalkan päälle tuleva osuus, myös työkulun provisiopohja).
-  const provisioYhteensa = myyjaProv + kassa + fsecEur + bonus + dnaBonusEur
+  const provisioYhteensa = myyjaProvNetto + kassaNetto + fsecEurNetto + bonus + dnaBonusEur
 
   let palkkaBrutto = 0
   let tyokulu = 0
   let netto = 0
   let roi: number | null = null
-  let leikkuri = false
+  let tappiollinen = false
 
   if (tyyppi === 'owner') {
     palkkaBrutto = 0
@@ -230,11 +315,16 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     netto = rjmobTulo - tyokulu
     roi = tyokulu > 0 ? (netto / tyokulu) * 100 : 0
 
-    // Leikkuri: jos tyokulu > rjmobTulo
-    if (tyokulu > rjmobTulo) leikkuri = true
+    // Tappiollinen: työkulu ylittää RJ-Mobin tuoton. Eri asia kuin
+    // F-Secure-leikkuri, jolla on oma kenttänsä.
+    if (tyokulu > rjmobTulo) tappiollinen = true
   }
 
-  const tehoStatus = tyyppi === 'owner' || tyyppi === 'krenar' ? 'special'
+  // Krenarin teho lasketaan ja arvioidaan kuten muillakin. Se mittaa myyjän
+  // omaa ansiota tunnille, ja Krenarin nelinkertainen provisio on hänen
+  // todellinen ansionsa — ei siis erikoistapaus. Omistajilla arviota ei tehdä,
+  // koska heillä ei ole provisiopohjaista palkkaa lainkaan.
+  const tehoStatus = tyyppi === 'owner' ? 'special'
     : teho >= 9 ? 'green'
     : teho >= 7 ? 'amber'
     : 'red'
@@ -244,7 +334,7 @@ export function laskeMyyja(raw: SellerRaw): SellerResult {
     fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: dnaBonusEur,
     rjmobLiitt, rjmobKassa, rjmobFsec, rjmobTulo,
     myyjaProv, provisioYhteensa, palkkaBrutto, tyokulu, netto, roi,
-    teho, tehoStatus, fsecFV, leikkuri,
+    teho, tehoStatus, fsecFV, fsecLeikkuri, fsecLeikkuriEur, tappiollinen,
   }
 }
 

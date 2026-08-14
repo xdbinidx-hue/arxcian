@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import { tyopaivaTilanne } from '@/lib/rjmobWorkdays'
 
 interface DriveFile { id: string; name: string; mimeType: string }
 interface TargetRow {
@@ -26,22 +27,6 @@ function parsePrefix(name: string): number {
   return year * 100 + month
 }
 
-// Suomalaiset pyhäpäivät 2026 (pp.kk -> "kk-pp")
-const HOLIDAYS_2026 = ['1-1', '1-6', '4-3', '4-6', '5-1', '5-14', '5-24', '6-19', '6-20', '10-31', '12-6', '12-24', '12-25', '12-26']
-
-function laskeTyopaivat(vuosi: number, kuukausi: number, loppuPaiva?: number): number {
-  const paiviaKuukaudessa = new Date(vuosi, kuukausi, 0).getDate()
-  const loppu = loppuPaiva ?? paiviaKuukaudessa
-  let count = 0
-  for (let p = 1; p <= loppu; p++) {
-    const d = new Date(vuosi, kuukausi - 1, p)
-    const viikonpaiva = d.getDay() // 0 = sunnuntai
-    const onPyha = vuosi === 2026 && HOLIDAYS_2026.includes(`${kuukausi}-${p}`)
-    if (viikonpaiva !== 0 && !onPyha) count++
-  }
-  return count
-}
-
 function RunrateColor(pct: number) {
   if (pct >= 80) return '#22c55e'
   if (pct >= 60) return '#eab308'
@@ -65,14 +50,8 @@ function PctCell({ pct }: { pct: number }) {
 }
 
 function WorkdayInfo({ kuukausi }: { kuukausi: string }) {
-  const today = new Date()
-  const vuosi = today.getFullYear()
-  const kk = today.getMonth() + 1
-  const paiva = today.getDate()
-  const paiviaKuukaudessa = new Date(vuosi, kk, 0).getDate()
-  const tyopaiviaKulunut = laskeTyopaivat(vuosi, kk, paiva)
-  const tyopaiviaYhteensa = laskeTyopaivat(vuosi, kk)
-  const kulunutPct = tyopaiviaYhteensa > 0 ? Math.round(tyopaiviaKulunut / tyopaiviaYhteensa * 100) : 0
+  const { paiva, paiviaKuukaudessa, tyopaiviaKulunut, tyopaiviaYhteensa, kulunutPct: pct } = tyopaivaTilanne()
+  const kulunutPct = Math.round(pct)
 
   return (
     <div style={{background:'#E6F1FB', borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', gap:24, fontSize:13, color:'#185FA5', flexWrap:'wrap'}}>

@@ -20,6 +20,7 @@
 type FileOption = { id: string; name: string }
 
 const ITEMS = [
+  {label:'Yhteenveto', href:'/arxcian/rj-mob/yhteenveto'},
   {label:'Tuottoseuranta', href:'/arxcian/rj-mob/tuotto'},
   {label:'Trendit', href:'/arxcian/rj-mob/trendit'},
   {label:'Kassamyynti', href:'/arxcian/rj-mob/kassamyynti'},

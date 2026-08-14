@@ -1,6 +1,7 @@
 import { google } from 'googleapis'
 import type { SellerResult } from '@/lib/rjmob'
 import { laskeMyyja, shouldSkip, isStandi, isRJMobSellerForMonth, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { monthOrder } from '@/lib/rjmobDrive'
 
 /**
  * Yhden kuukauden myyntiseurannan luvut. Kentät ovat samat kuin ennen
@@ -252,7 +253,14 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
           if (isRJStore) {
             const normalizedName = normalizeStoreName(kusta)
 
-            let standiLiittKpl = 0, standiLiittEur = 0
+            // "Ständimyyjät Jussi Kanerva ja Esa Peltola poistetaan aina
+            // myymälän tuloksista" (myyntiseuranta_ohje). Kaikista tuloksista,
+            // ei vain liittymistä: myös tunnit, kassa ja F-Secure. Aiemmin
+            // vähennys koski vain liittymiä, jolloin myymälän tuotto tunnille
+            // laskettiin osoittajalla josta ständi on poistettu ja
+            // nimittäjällä jossa se on yhä mukana.
+            let standiLiittKpl = 0, standiLiittEur = 0, standiTunnit = 0
+            let standiKassa = 0, standiFsecTotal = 0, standiFsecInternet = 0, standiFsecKpl = 0
             for (let j = i + 1; j < myymalaRows.length; j++) {
               const jr = myymalaRows[j]
               const jkusta = jr[0]?.trim() ?? ''
@@ -261,13 +269,20 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               if (jmyyjä && isStandi(cleanUnmatchedName(jmyyjä))) {
                 standiLiittKpl += parseNum(jr[mIdxLiittKpl])
                 standiLiittEur += parseNum(jr[mIdxLiittEur])
+                if (mIdxTunnit >= 0) standiTunnit += parseNum(jr[mIdxTunnit])
+                if (mIdxKassa >= 0) standiKassa += parseNum(jr[mIdxKassa])
+                if (mIdxFsecTotal >= 0) standiFsecTotal += parseNum(jr[mIdxFsecTotal])
+                if (mIdxFsecInternet >= 0) standiFsecInternet += parseNum(jr[mIdxFsecInternet])
+                if (mIdxFsecKpl >= 0) standiFsecKpl += parseNum(jr[mIdxFsecKpl])
               }
             }
 
-            const kassaRaw = parseNum(row[mIdxKassa])
-            const mFsecTotalKpl = mIdxFsecTotal >= 0 ? parseNum(row[mIdxFsecTotal]) : 0
-            const mFsecInternetKpl = mIdxFsecInternet >= 0 ? parseNum(row[mIdxFsecInternet]) : 0
-            const mFsecKpl = (mFsecTotalKpl + mFsecInternetKpl) > 0 ? mFsecTotalKpl + mFsecInternetKpl : parseNum(row[mIdxFsecKpl])
+            const kassaRaw = Math.max(0, parseNum(row[mIdxKassa]) - standiKassa)
+            const mFsecTotalKpl = mIdxFsecTotal >= 0 ? Math.max(0, parseNum(row[mIdxFsecTotal]) - standiFsecTotal) : 0
+            const mFsecInternetKpl = mIdxFsecInternet >= 0 ? Math.max(0, parseNum(row[mIdxFsecInternet]) - standiFsecInternet) : 0
+            const mFsecKpl = (mFsecTotalKpl + mFsecInternetKpl) > 0
+              ? mFsecTotalKpl + mFsecInternetKpl
+              : Math.max(0, parseNum(row[mIdxFsecKpl]) - standiFsecKpl)
             const mFsecEur = (mFsecTotalKpl * FSEC_TOTAL_SELLER) + (mFsecInternetKpl * FSEC_INTERNET_SELLER)
 
             storeResults[normalizedName] = {
@@ -276,7 +291,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
               fsecKpl: mFsecKpl, fsecEur: mFsecEur,
               kassa: kassaRaw * 10,
               kassaRjmob: kassaRaw * 1,
-              tunnit: parseNum(row[mIdxTunnit]),
+              tunnit: Math.max(0, parseNum(row[mIdxTunnit]) - standiTunnit),
             }
           }
         }
@@ -321,7 +336,9 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
   }
 
-  const results = sellers.map(s => laskeMyyja(s))
+  // Kuukausi tiedostonimestä: F-Secure-leikkuri on voimassa vasta elokuusta 2026.
+  const kuukausiOrder = monthOrder(fileName)
+  const results = sellers.map(s => laskeMyyja(s, kuukausiOrder))
   const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const tiimi = active.filter(r => r.tyyppi !== 'owner')
   // Myymälätaulukon oma rakenne (yhteenvetorivi tai kustannuspaikan sarake) vaihtelee kuukausien
@@ -436,7 +453,9 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
   }
 
-  const results = sellers.map(s => laskeMyyja(s))
+  // Kuukausi tiedostonimestä: F-Secure-leikkuri on voimassa vasta elokuusta 2026.
+  const kuukausiOrder = monthOrder(fileName)
+  const results = sellers.map(s => laskeMyyja(s, kuukausiOrder))
   const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const tiimi = active.filter(r => r.tyyppi !== 'owner')
   const storeFsecKpl = Object.values(storeResults).reduce((s, r) => s + r.fsecKpl, 0)
