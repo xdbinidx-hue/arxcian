@@ -1,3 +1,5 @@
+import type { Owner } from '@/lib/session'
+
 export type AssetClass = 'forex' | 'crypto' | 'index' | 'commodity' | 'stock'
 
 export type Quote = {
@@ -60,4 +62,70 @@ export type Alert = {
   createdBy: string
   /** Asetetaan kun hälytys on lauennut. Ei poisteta automaattisesti — käyttäjä kuittaa. */
   triggeredAt: number | null
+}
+
+/**
+ * Käyttäjän oma toistuva treidausaika, esim. "London killzone 10.00".
+ *
+ * Aika on paikallinen kellonaika `zone`ssa eikä UTC-hetki, koska treidausajat
+ * seuraavat markkinaa: killzone on kello 8 New Yorkissa riippumatta siitä onko
+ * siellä kesäaika. Sama malli kuin forex-istunnoilla, ks. sessions.ts.
+ *
+ * `owner` on mukana koska Albin ja Arbnor käyttävät samaa sovellusta eivätkä
+ * samoja aikoja — ja 'shared' on silti mahdollinen, jos jokin aika koskee
+ * molempia.
+ */
+export type TradingTime = {
+  id: string
+  owner: Owner
+  label: string
+  /** IANA-vyöhyke, esim. 'America/New_York'. */
+  zone: string
+  /** Paikallinen kellonaika minuutteina keskiyöstä. */
+  minutes: number
+  /** Viikonpäivät 1 = maanantai … 7 = sunnuntai. Tyhjä lista = ei koskaan. */
+  days: number[]
+  /** Kuinka monta minuuttia ennen aikaa ilmoitetaan. 0 = tasan silloin. */
+  leadMinutes: number
+  enabled: boolean
+  createdAt: number
+  createdBy: string
+}
+
+/**
+ * Ilmoitusasetukset. Käyttäjäkohtaiset: sama laite voi olla molempien
+ * käytössä, joten asetusta ei voi säilyttää selaimessa.
+ *
+ * Kolme kanavaa on erikseen, koska ne epäonnistuvat eri tavoin: selainilmoitus
+ * vaatii luvan ja voi olla käyttöjärjestelmän estämä, ääni vaatii käyttäjän
+ * eleen, banneri toimii aina. Yksi yhteinen kytkin piilottaisi sen että kaksi
+ * kolmesta ei tullut perille.
+ */
+export type NotifySettings = {
+  /** Selainilmoitus (Notification API, service workerin kautta). */
+  push: boolean
+  /** Sovelluksen sisäinen banneri. */
+  banner: boolean
+  /** Äänimerkki. */
+  sound: boolean
+  /** Ilmoita istunnon avautuessa. */
+  sessionOpen: boolean
+  /** Ilmoita istunnon sulkeutuessa. */
+  sessionClose: boolean
+  /** Mitkä istunnot ilmoitetaan. */
+  sessions: string[]
+  /** Kuinka monta minuuttia ennen istunnon vaihdosta ilmoitetaan. */
+  leadMinutes: number
+}
+
+export const DEFAULT_NOTIFY_SETTINGS: NotifySettings = {
+  push: true,
+  banner: true,
+  sound: true,
+  sessionOpen: true,
+  // Sulkeutuminen on oletuksena pois: avaus on se hetki jolloin pitää olla
+  // koneella, sulku vain toteaa että ei enää tarvitse.
+  sessionClose: false,
+  sessions: ['asia', 'london', 'new-york'],
+  leadMinutes: 5,
 }
