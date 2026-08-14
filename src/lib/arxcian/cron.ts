@@ -10,6 +10,7 @@ import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
+import { importWinposReports } from '@/lib/winpos/kassamyynti'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -117,6 +118,14 @@ const rjmobJobs: CronJob[] = [
     run: async () => {
       const result = await refreshRjMobInsights()
       return { key: RJMOB_INSIGHTS_KEY, items: result.data.huomiot.length }
+    },
+  },
+  {
+    id: 'winpos-import',
+    description: 'RJ-Mob: Winpos-raportit Kassamyynti-välilehdelle',
+    run: async () => {
+      const tulos = await importWinposReports()
+      return { key: 'winpos:processed', items: tulos.tuodut.length }
     },
   },
 ]
