@@ -222,6 +222,25 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
       const headers = rows[headerIdx].map(h => h.toLowerCase().trim())
       // "Myyjä"-sarake sisältää usein vain etunimen/lempinimen (esim. "Joni V", "Steven"),
       // joka ei aina normalisoidu oikein — "Virallinen nimi" on luotettava täysi nimi.
+      // ⚠️ Tämä osuu tarkoituksella sarakkeeseen A ("Nimikorjaus"), ei
+      // sarakkeeseen C ("Nimi") — `findCol` vertaa osajonolla, ja
+      // "Nimikorjaus" sisältää sanan "nimi" ja tulee ensin.
+      //
+      // Se EI ole bugi, vaan puolet tarkoituksellisesta työnjaosta:
+      //
+      //   Winpos-tuonti  kirjoittaa sarakkeeseen C myyjän RAAKANIMEN
+      //                  ("Steven"), koska taulukon oma kaava hakee sillä
+      //   sarake A       =XLOOKUP(C2; J:J; K:K; C2) kääntää sen koko
+      //                  nimeksi ("Steven Sainio") hakutaulusta J:K
+      //   tämä lukukohta lukee sarakkeen A eli valmiiksi korjatun nimen,
+      //                  joka on ainoa muoto joka matchaa RJ_MOB_SELLERS-
+      //                  listaan
+      //
+      // Jos tämän "korjaa" osumaan sarakkeeseen C, nimimatch hajoaa:
+      // lyhytnimet ("Joni V", "Kasperi K.") eivät vastaa myyjälistaa ja
+      // kassaluvut katoavat kaikilta. Toinen pää on
+      // [suunnitelma.ts](src/lib/winpos/suunnitelma.ts):n SARAKKEET —
+      // muuta molemmat tai kumpaakaan.
       const idxNimi = findCol(headers, 'virallinen nimi', 'myyjä', 'myyjat', 'nimi')
       const idxMyynti = findCol(headers, 'myynti')
       const idxPalautus = findCol(headers, 'palautus', 'palautukset')

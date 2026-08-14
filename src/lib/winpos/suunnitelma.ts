@@ -11,10 +11,33 @@ import type { WinposRivi } from './winpos-parser'
 /** Ensimmäinen datarivi; rivi 1 on otsikko. */
 export const ENSIMMAINEN_DATARIVI = 2
 
-/** Kassamyynti-välilehden sarakkeet ja mistä Winpos-rivin kentästä ne täytetään. */
+/**
+ * Kassamyynti-välilehden sarakkeet ja mistä Winpos-rivin kentästä ne
+ * täytetään.
+ *
+ * ⚠️ Nimisarakkeeseen kirjoitetaan `nimiRaaka` eikä `nimi` — tämä näyttää
+ * virheeltä jos katsoo vain tätä päätä, mutta on tahallista.
+ *
+ * Taulukossa on kaksi nimisaraketta ja kierto niiden välillä:
+ *
+ *   sarake C ("Nimi")         Winposin RAAKANIMI, esim. "Steven"
+ *                             — tämä kirjoitetaan tässä
+ *   sarake A ("Nimikorjaus")  =XLOOKUP(C2; J:J; K:K; C2) kääntää sen koko
+ *                             nimeksi "Steven Sainio" hakutaulusta J:K
+ *   lukupää                   [rjmobTargets.ts](src/lib/rjmobTargets.ts)
+ *                             lukee sarakkeen A eli korjatun nimen, joka
+ *                             on ainoa muoto joka matchaa RJ_MOB_SELLERS-
+ *                             listaan
+ *
+ * Jos tähän "korjataan" koko nimi (`r.nimi`), XLOOKUP ei löydä sitä
+ * hakutaulusta — kaava palauttaa varana saman koko nimen, joten pinnalta
+ * kaikki näyttää toimivan. Mutta samalla nimikartan ylläpito siirtyy
+ * hiljaa taulukosta koodiin ([winpos-myyjat.ts](src/lib/winpos/winpos-myyjat.ts)),
+ * ja uusi myyjä alkaa vaatia koodimuutoksen sen sijaan että Albin lisäisi
+ * rivin hakutauluun. Älä muuta toista päätä koskematta toiseen.
+ */
 export const SARAKKEET: { otsikot: string[]; arvo: (r: WinposRivi) => string | number }[] = [
   { otsikot: ['koodi'], arvo: r => r.koodi },
-  // Raakanimi, koska sarakkeen A XLOOKUP hakee juuri sillä.
   { otsikot: ['nimi'], arvo: r => r.nimiRaaka },
   { otsikot: ['myynti'], arvo: r => r.myynti },
   { otsikot: ['kate'], arvo: r => r.kate },

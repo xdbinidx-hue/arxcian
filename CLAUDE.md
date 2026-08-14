@@ -181,6 +181,33 @@ RJ-Mobin kuukausiluvut: [rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts), cron
 
 Muutosprosentti on **run rate -ennuste, ei toteuma**: hub näyttää aina kuluvaa kuukautta, joten kertymän vertaaminen edellisen kuun kokonaislukuun näyttäisi romahdusta vaikka myynti kävisi normaalisti. Kertymä projisoidaan kuukauden loppuun ja vertailu tehdään sillä. Ennustetta ei näytetä ennen kuin kuukaudesta on kulunut seitsemän päivää — sitä ennen kerroin on niin suuri (1. päivänä ×31) että yksi päivä heiluttaa prosenttia satoja yksiköitä.
 
+### Kassamyynti-välilehden kaksi nimisaraketta
+
+Winpos-tuonti kirjoittaa ja tuottoseuranta lukee **eri sarakkeesta**, ja se
+näyttää virheeltä kummasta päästä tahansa katsottuna. Se on tahallista:
+
+| | |
+|---|---|
+| sarake C `Nimi` | Winposin **raakanimi** ("Steven"). Tänne [suunnitelma.ts](src/lib/winpos/suunnitelma.ts) kirjoittaa. |
+| sarake A `Nimikorjaus` | `=XLOOKUP(C2; J:J; K:K; C2)` kääntää sen koko nimeksi hakutaulusta J:K. |
+| lukupää | [rjmobTargets.ts](src/lib/rjmobTargets.ts) lukee sarakkeen A, koska vain korjattu nimi matchaa `RJ_MOB_SELLERS`-listaan. |
+
+Lukupäässä osuma sarakkeeseen A syntyy siitä että `findCol` vertaa
+osajonolla ja "Nimikorjaus" sisältää sanan "nimi" ja tulee ensin — **älä
+"korjaa" sitä osumaan sarakkeeseen C**, koska lyhytnimet ("Joni V",
+"Kasperi K.") eivät vastaa myyjälistaa ja kassaluvut katoaisivat kaikilta.
+
+Toiseen suuntaan sama: jos tuonti alkaisi kirjoittaa koko nimen, XLOOKUP ei
+löytäisi sitä hakutaulusta ja palauttaisi varana saman nimen — pinnalta
+kaikki näyttäisi toimivan, mutta nimikartan ylläpito siirtyisi hiljaa
+taulukosta koodiin, ja uusi myyjä alkaisi vaatia koodimuutoksen sen sijaan
+että Albin lisäisi rivin hakutauluun. **Muuta molemmat päät tai kumpaakaan.**
+
+Huom. myös että tuonnin oma otsikkohaku ([suunnitelma.ts](src/lib/winpos/suunnitelma.ts))
+tarkistaa **täsmällisen osuman ennen osittaista** juuri tämän takia: pelkkä
+osajonovertailu osuisi siellä sarakkeeseen A ja keskeyttäisi jokaisen
+tuonnin turvarajaan. Lukupää käyttää tarkoituksella vanhaa `findCol`ia.
+
 **Maapallon mantereet ovat yhtä sinistä sävyä** ([GlobeScene.tsx](src/components/arxcian/globe/GlobeScene.tsx)): päivätekstuurista otetaan vain kirkkaus, ei väriä. Kaupunkivalot luetaan omasta tekstuuristaan eikä niihin kosketa, joten ne pysyvät keltaisina — se kontrasti tekee yöpuolen luettavaksi. Merillä on oma tumma sävynsä; aiemmin niissä näkyi suoraan taustan sumutekstuuri, jolloin pallo oli reikä taustaan eikä kappale.
 
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
