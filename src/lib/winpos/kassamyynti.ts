@@ -22,7 +22,7 @@ import { parseWinposReport, type WinposRaportti, type WinposRivi } from './winpo
  *
  * | Sarake | Sisältö | Kirjoitetaanko |
  * |---|---|---|
- * | A | `=XLOOKUP(C2; J:J; K:K; C2)` riveillä 2–77 | ei |
+ * | A | `=XLOOKUP(C2; J:J; K:K; C2)` | vain kaavan jatkoksi, ei koskaan dataa |
  * | B–H | Koodi, Nimi, Myynti(alv0), Kate(alv0), Palautus, Alennus, Kuittien määrä | kyllä |
  * | I–K | Nimikorjaukset-hakutaulu | ei |
  * | M–P | Myyntiseuranta-koonti, omat kaavansa | ei |
@@ -32,19 +32,22 @@ import { parseWinposReport, type WinposRaportti, type WinposRivi } from './winpo
  * nimeä — muuten XLOOKUP ei osu ja nimikorjaus hajoaa. Speksin kohta 7
  * ("täytä Virallinen nimi -sarake nimikartasta") jää siis tekemättä
  * tarkoituksella: taulukko tekee sen itse.
+ *
+ * Rivimäärää ei ole kiinnitetty. Jos raportissa on enemmän myyjiä kuin
+ * sarakkeen A kaavoja riittää, kaava kopioidaan alaspäin niin pitkälle kuin
+ * dataa on. Jos kaavaa ei saada laajennettua, kirjoitus keskeytetään —
+ * rivi jonka nimi ei korjaudu on pahempi kuin puuttuva rivi.
  */
 
 /** Käsitellyt Drive-tiedostot ja raportit. Tiedoston siirto ei nollaa tilaa. */
 const KV_FILES = 'winpos:processed:files'
 const KV_REPORTS = 'winpos:processed:reports'
 
-/**
- * Sarakkeen A kaavat ulottuvat riville 77, eli dataa mahtuu 76 riviä. Yli
- * menevälle riville ei syntyisi nimikorjausta, joten ennemmin virhe kuin
- * hiljaa puolittain toimiva vienti.
- */
+/** Ensimmäinen datarivi; rivi 1 on otsikko. */
 const ENSIMMAINEN_DATARIVI = 2
-const VIIMEINEN_DATARIVI = 77
+
+/** Kuinka pitkälle välilehteä luetaan rakennetta selvitettäessä. */
+const LUKURAJA = 1000
 
 /** Kassamyynti-välilehden sarakkeet ja mistä Winpos-rivin kentästä ne täytetään. */
 const SARAKKEET: { otsikot: string[]; arvo: (r: WinposRivi) => string | number }[] = [
@@ -58,14 +61,29 @@ const SARAKKEET: { otsikot: string[]; arvo: (r: WinposRivi) => string | number }
   { otsikot: ['kuittien määrä', 'kuitit', 'kuitti'], arvo: r => r.kuitit },
 ]
 
+export type KirjoitusSuunnitelma = {
+  /** Kuukausitiedosto johon kirjoitettaisiin. */
+  kohde: string
+  valilehti: string
+  /** Kirjoitettava alue, esim. "B2:H19". */
+  alue: string
+  rivit: number
+  /** Montako nimikorjauskaavaa jouduttiin kopioimaan alaspäin. */
+  laajennetutKaavat: number
+  /** Mikä alue tyhjennetään ennen kirjoitusta. */
+  tyhjennettavaAlue: string
+  /** Muutama ensimmäinen rivi sellaisena kuin ne menisivät taulukkoon. */
+  esimerkkirivit: (string | number)[][]
+}
+
 export type TuontiTulos = {
-  /** Käsiteltyjen tiedostojen nimet. */
+  /** Onko kyseessä kuiva ajo: mitään ei kirjoitettu eikä merkitty käsitellyksi. */
+  kuivaAjo: boolean
   tuodut: string[]
   ohitetut: string[]
   varoitukset: string[]
-  /** Mihin kuukausitiedostoon kirjoitettiin. */
-  kohde: string | null
-  rivit: number
+  /** Mitä kustakin raportista kirjoitettiin tai kirjoitettaisiin. */
+  suunnitelmat: KirjoitusSuunnitelma[]
 }
 
 function sarakeKirjain(index: number): string {
@@ -79,6 +97,14 @@ function etsiSarake(otsikot: string[], haut: string[]): number {
     if (idx >= 0) return idx
   }
   return -1
+}
+
+/**
+ * Siirtää kaavan viittaukset toiselle riville: `=XLOOKUP(C77; ...)` → `C78`.
+ * Sarakeviittaukset ilman rivinumeroa (`J:J`) jäävät koskematta.
+ */
+function siirraKaava(kaava: string, mistaRivi: number, minneRivi: number): string {
+  return kaava.replace(new RegExp(`(\\$?[A-Z]{1,3}\\$?)${mistaRivi}\\b`, 'g'), `$1${minneRivi}`)
 }
 
 async function luetutAvaimet(key: string): Promise<Set<string>> {
@@ -104,9 +130,11 @@ async function tallennaAvaimet(key: string, arvot: Set<string>): Promise<void> {
  * Korvaa aiemmat rivit — Winpos-raportti on aina kumulatiivinen jakson
  * alusta, joten lisääminen kahdentaisi luvut.
  */
-async function kirjoitaKassamyyntiin(raportti: WinposRaportti): Promise<{ kohde: string; rivit: number }> {
-  const auth = getWriteAuth()
-  const sheets = google.sheets({ version: 'v4', auth })
+async function kirjoitaKassamyyntiin(
+  raportti: WinposRaportti,
+  kuivaAjo: boolean,
+): Promise<KirjoitusSuunnitelma> {
+  const sheets = google.sheets({ version: 'v4', auth: getWriteAuth() })
 
   const tiedostot = (await listSeurantaFiles())
     .filter(f => f.mimeType === SPREADSHEET_MIME && f.id && f.name)
@@ -150,22 +178,62 @@ async function kirjoitaKassamyyntiin(raportti: WinposRaportti): Promise<{ kohde:
   const vika = Math.max(...indeksit)
 
   // Turvaraja: sarake A on nimikorjauskaava, eikä sen päälle kirjoiteta
-  // koskaan. Jos otsikkohaku osuisi siihen, keskeytetään ennen kirjoitusta.
+  // dataa koskaan. Jos otsikkohaku osuisi siihen, keskeytetään.
   if (eka === 0) {
     throw new Error('Sarakekohdistus osui sarakkeeseen A, jossa on nimikorjauskaava — kirjoitus keskeytetty.')
   }
 
   const rivit = raportti.myyjat
-  if (rivit.length > VIIMEINEN_DATARIVI - ENSIMMAINEN_DATARIVI + 1) {
-    throw new Error(
-      `Raportissa on ${rivit.length} myyjää, mutta välilehdellä on tilaa ` +
-        `${VIIMEINEN_DATARIVI - ENSIMMAINEN_DATARIVI + 1} riville (nimikorjauskaava loppuu riville ${VIIMEINEN_DATARIVI}).`,
-    )
+  const viimeinenUusiRivi = ENSIMMAINEN_DATARIVI + rivit.length - 1
+
+  // --- Nimikorjauskaavan kattavuus sarakkeessa A ---
+  const kaavaRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: kohde.id!,
+    range: `'${valilehti}'!A1:A${LUKURAJA}`,
+    valueRenderOption: 'FORMULA',
+  })
+  const aSarake = (kaavaRes.data.values ?? []).map(r => String(r?.[0] ?? ''))
+
+  let viimeinenKaavaRivi = 0
+  let malliRivi = 0
+  for (let i = 0; i < aSarake.length; i++) {
+    if (aSarake[i].startsWith('=')) {
+      viimeinenKaavaRivi = i + 1
+      malliRivi = i + 1
+    }
   }
 
+  const lisattavatKaavat: { rivi: number; kaava: string }[] = []
+  if (viimeinenUusiRivi > viimeinenKaavaRivi) {
+    if (malliRivi === 0) {
+      throw new Error(
+        `Sarakkeesta A ei löytynyt yhtään nimikorjauskaavaa, joten sitä ei voi laajentaa ` +
+          `${rivit.length} riville. Kirjoitus keskeytetty — rivi jonka nimi ei korjaudu on pahempi kuin puuttuva rivi.`,
+      )
+    }
+    const malli = aSarake[malliRivi - 1]
+    for (let r = viimeinenKaavaRivi + 1; r <= viimeinenUusiRivi; r++) {
+      lisattavatKaavat.push({ rivi: r, kaava: siirraKaava(malli, malliRivi, r) })
+    }
+  }
+
+  // --- Nykyinen datan laajuus, jotta lyhyempi raportti ei jätä jämiä ---
+  const nykyinenRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: kohde.id!,
+    range: `'${valilehti}'!${sarakeKirjain(eka)}1:${sarakeKirjain(vika)}${LUKURAJA}`,
+  })
+  const nykyiset = nykyinenRes.data.values ?? []
+  let viimeinenNykyinenRivi = ENSIMMAINEN_DATARIVI - 1
+  for (let i = 0; i < nykyiset.length; i++) {
+    if ((nykyiset[i] ?? []).some(c => String(c ?? '').trim() !== '')) viimeinenNykyinenRivi = i + 1
+  }
+
+  const tyhjennettavaLoppu = Math.max(viimeinenNykyinenRivi, viimeinenUusiRivi, ENSIMMAINEN_DATARIVI)
+  const tyhjennettavaAlue = `${sarakeKirjain(eka)}${ENSIMMAINEN_DATARIVI}:${sarakeKirjain(vika)}${tyhjennettavaLoppu}`
+  const kirjoitettavaAlue = `${sarakeKirjain(eka)}${ENSIMMAINEN_DATARIVI}:${sarakeKirjain(vika)}${Math.max(viimeinenUusiRivi, ENSIMMAINEN_DATARIVI)}`
+
   // Rivi rakennetaan sarakejärjestyksessä eka..vika, jotta yhtenäinen alue
-  // voidaan kirjoittaa kerralla. Väliin jäävät sarakkeet, joita emme täytä,
-  // kirjoitetaan tyhjänä vain jos ne ovat kohdealueen sisällä.
+  // voidaan kirjoittaa kerralla.
   const leveys = vika - eka + 1
   const taulukko = rivit.map(r => {
     const solut: (string | number)[] = new Array(leveys).fill('')
@@ -175,11 +243,34 @@ async function kirjoitaKassamyyntiin(raportti: WinposRaportti): Promise<{ kohde:
     return solut
   })
 
-  const alue = `'${valilehti}'!${sarakeKirjain(eka)}${ENSIMMAINEN_DATARIVI}:${sarakeKirjain(vika)}${VIIMEINEN_DATARIVI}`
+  const suunnitelma: KirjoitusSuunnitelma = {
+    kohde: kohde.name!,
+    valilehti,
+    alue: kirjoitettavaAlue,
+    rivit: taulukko.length,
+    laajennetutKaavat: lisattavatKaavat.length,
+    tyhjennettavaAlue,
+    esimerkkirivit: taulukko.slice(0, 3),
+  }
 
-  // Tyhjennetään ensin koko dataikkuna: edellinen tuonti on voinut jättää
-  // enemmän rivejä kuin nyt kirjoitetaan, eivätkä ne saa jäädä roikkumaan.
-  await sheets.spreadsheets.values.clear({ spreadsheetId: kohde.id!, range: alue })
+  if (kuivaAjo) return suunnitelma
+
+  // Kaavat ensin, jotta nimikorjaus on paikallaan kun data saapuu.
+  if (lisattavatKaavat.length > 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: kohde.id!,
+      range: `'${valilehti}'!A${lisattavatKaavat[0].rivi}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: lisattavatKaavat.map(k => [k.kaava]) },
+    })
+  }
+
+  // Tyhjennetään koko käytössä ollut ikkuna: edellinen raportti on voinut
+  // olla pidempi, eivätkä sen rivit saa jäädä roikkumaan uusien alle.
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: kohde.id!,
+    range: `'${valilehti}'!${tyhjennettavaAlue}`,
+  })
 
   if (taulukko.length > 0) {
     await sheets.spreadsheets.values.update({
@@ -190,7 +281,12 @@ async function kirjoitaKassamyyntiin(raportti: WinposRaportti): Promise<{ kohde:
     })
   }
 
-  return { kohde: kohde.name!, rivit: taulukko.length }
+  return suunnitelma
+}
+
+export type TuontiOptiot = {
+  /** Kertoo mitä kirjoitettaisiin, mutta ei kirjoita eikä merkitse käsitellyksi. */
+  kuivaAjo?: boolean
 }
 
 /**
@@ -199,15 +295,17 @@ async function kirjoitaKassamyyntiin(raportti: WinposRaportti): Promise<{ kohde:
  * Jos yksi tiedosto on viallinen, se merkitään käsitellyksi ja muut jatkavat
  * — muuten sama roskatiedosto jumittaisi ajon joka kerta.
  */
-export async function importWinposReports(): Promise<TuontiTulos> {
+export async function importWinposReports(optiot: TuontiOptiot = {}): Promise<TuontiTulos> {
+  const kuivaAjo = optiot.kuivaAjo ?? false
+
   const tiedostot = await listWinposReports()
   const kasitellytTiedostot = await luetutAvaimet(KV_FILES)
   const kasitellytRaportit = await luetutAvaimet(KV_REPORTS)
 
-  const tulos: TuontiTulos = { tuodut: [], ohitetut: [], varoitukset: [], kohde: null, rivit: 0 }
+  const tulos: TuontiTulos = { kuivaAjo, tuodut: [], ohitetut: [], varoitukset: [], suunnitelmat: [] }
 
   // Vanhin ensin, jotta uusin raportti jää viimeiseksi kirjoitetuksi.
-  for (const tiedosto of [...tiedostot].reverse()) {
+  for (const tiedosto of Array.from(tiedostot).reverse()) {
     const nimi = tiedosto.name ?? tiedosto.id!
     if (kasitellytTiedostot.has(tiedosto.id!)) {
       tulos.ohitetut.push(nimi)
@@ -221,13 +319,13 @@ export async function importWinposReports(): Promise<TuontiTulos> {
     } catch (e) {
       const viesti = e instanceof Error ? e.message : String(e)
       tulos.varoitukset.push(`${nimi}: ei ole luettava Winpos-raportti (${viesti})`)
-      kasitellytTiedostot.add(tiedosto.id!)
+      if (!kuivaAjo) kasitellytTiedostot.add(tiedosto.id!)
       continue
     }
 
     if (kasitellytRaportit.has(raportti.reportId)) {
       tulos.ohitetut.push(`${nimi} (sama raportti on jo tuotu)`)
-      kasitellytTiedostot.add(tiedosto.id!)
+      if (!kuivaAjo) kasitellytTiedostot.add(tiedosto.id!)
       continue
     }
 
@@ -245,20 +343,24 @@ export async function importWinposReports(): Promise<TuontiTulos> {
       )
     }
 
-    const kirjoitettu = await kirjoitaKassamyyntiin(raportti)
+    const suunnitelma = await kirjoitaKassamyyntiin(raportti, kuivaAjo)
+    tulos.suunnitelmat.push(suunnitelma)
     tulos.tuodut.push(nimi)
-    tulos.kohde = kirjoitettu.kohde
-    tulos.rivit = kirjoitettu.rivit
     // Parserin omat huomiot (esim. nimikartasta puuttuva myyjä) välitetään
     // eteenpäin sellaisenaan — niitä ei niellä hiljaa.
     tulos.varoitukset.push(...raportti.varoitukset.map(v => `${nimi}: ${v}`))
 
-    kasitellytTiedostot.add(tiedosto.id!)
-    kasitellytRaportit.add(raportti.reportId)
+    if (!kuivaAjo) {
+      kasitellytTiedostot.add(tiedosto.id!)
+      kasitellytRaportit.add(raportti.reportId)
+    }
   }
 
-  await tallennaAvaimet(KV_FILES, kasitellytTiedostot)
-  await tallennaAvaimet(KV_REPORTS, kasitellytRaportit)
+  // Kuivassa ajossa ei jää jälkiä, jotta saman voi ajaa uudelleen.
+  if (!kuivaAjo) {
+    await tallennaAvaimet(KV_FILES, kasitellytTiedostot)
+    await tallennaAvaimet(KV_REPORTS, kasitellytRaportit)
+  }
 
   return tulos
 }
