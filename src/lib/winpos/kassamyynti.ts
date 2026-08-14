@@ -8,7 +8,13 @@ import {
   monthOrder,
   SPREADSHEET_MIME,
 } from '@/lib/rjmobDrive'
-import { parseWinposReport, type WinposRaportti, type WinposRivi } from './winpos-parser'
+import { parseWinposReport, type WinposRaportti } from './winpos-parser'
+import {
+  suunnitteleKirjoitus,
+  sarakeKirjain,
+  ENSIMMAINEN_DATARIVI,
+  type Taulukkotila,
+} from './suunnitelma'
 
 /**
  * Winpos-raportin vienti kuukausitiedoston Kassamyynti-välilehdelle.
@@ -29,82 +35,61 @@ import { parseWinposReport, type WinposRaportti, type WinposRivi } from './winpo
  *
  * Sarake A johtaa myyjän oikean nimen sarakkeesta C hakutaulun kautta, joten
  * **sarakkeeseen C kirjoitetaan Winposin raakanimi** ("Steven"), ei koko
- * nimeä — muuten XLOOKUP ei osu ja nimikorjaus hajoaa. Speksin kohta 7
- * ("täytä Virallinen nimi -sarake nimikartasta") jää siis tekemättä
- * tarkoituksella: taulukko tekee sen itse.
+ * nimeä — muuten XLOOKUP ei osu ja nimikorjaus hajoaa.
  *
- * Rivimäärää ei ole kiinnitetty. Jos raportissa on enemmän myyjiä kuin
- * sarakkeen A kaavoja riittää, kaava kopioidaan alaspäin niin pitkälle kuin
- * dataa on. Jos kaavaa ei saada laajennettua, kirjoitus keskeytetään —
- * rivi jonka nimi ei korjaudu on pahempi kuin puuttuva rivi.
+ * Kirjoituksen päättely on omassa moduulissaan ([suunnitelma.ts]), jotta
+ * rivikaton laajennus ja alueen tyhjennys ovat testattavissa ilman
+ * Sheets-rajapintaa.
  */
 
-/** Käsitellyt Drive-tiedostot ja raportit. Tiedoston siirto ei nollaa tilaa. */
-const KV_FILES = 'winpos:processed:files'
-const KV_REPORTS = 'winpos:processed:reports'
-
-/** Ensimmäinen datarivi; rivi 1 on otsikko. */
-const ENSIMMAINEN_DATARIVI = 2
+/**
+ * KV-avaimet erikseen ympäristöittäin.
+ *
+ * Kehitys käyttää samaa Upstash-kantaa kuin tuotanto (ks. CLAUDE.md), joten
+ * ilman erottelua paikallinen testiajo merkitsisi tiedoston käsitellyksi ja
+ * tuotanto ohittaisi sen hiljaa. Vika ei näkyisi mistään — taulukko vain
+ * jäisi täyttymättä.
+ */
+const YMPARISTO = process.env.VERCEL_ENV ?? 'kehitys'
+const KV_FILES = `winpos:${YMPARISTO}:processed:files`
+const KV_REPORTS = `winpos:${YMPARISTO}:processed:reports`
 
 /** Kuinka pitkälle välilehteä luetaan rakennetta selvitettäessä. */
 const LUKURAJA = 1000
 
-/** Kassamyynti-välilehden sarakkeet ja mistä Winpos-rivin kentästä ne täytetään. */
-const SARAKKEET: { otsikot: string[]; arvo: (r: WinposRivi) => string | number }[] = [
-  { otsikot: ['koodi'], arvo: r => r.koodi },
-  // Raakanimi, koska sarakkeen A XLOOKUP hakee juuri sillä.
-  { otsikot: ['nimi'], arvo: r => r.nimiRaaka },
-  { otsikot: ['myynti'], arvo: r => r.myynti },
-  { otsikot: ['kate'], arvo: r => r.kate },
-  { otsikot: ['palautus'], arvo: r => r.palautus },
-  { otsikot: ['alennus'], arvo: r => r.alennus },
-  { otsikot: ['kuittien määrä', 'kuitit', 'kuitti'], arvo: r => r.kuitit },
-]
-
 export type KirjoitusSuunnitelma = {
-  /** Kuukausitiedosto johon kirjoitettaisiin. */
   kohde: string
   valilehti: string
-  /** Kirjoitettava alue, esim. "B2:H19". */
   alue: string
   rivit: number
-  /** Montako nimikorjauskaavaa jouduttiin kopioimaan alaspäin. */
+  /** Montako nimikorjauskaavaa kopioitiin (tai kopioitaisiin) alaspäin. */
   laajennetutKaavat: number
-  /** Mikä alue tyhjennetään ennen kirjoitusta. */
   tyhjennettavaAlue: string
-  /** Muutama ensimmäinen rivi sellaisena kuin ne menisivät taulukkoon. */
   esimerkkirivit: (string | number)[][]
 }
 
 export type TuontiTulos = {
+  /** Missä ympäristössä ajettiin — näkyy vastauksessa, jottei avainten erottelu jää arvailuksi. */
+  ymparisto: string
   /** Onko kyseessä kuiva ajo: mitään ei kirjoitettu eikä merkitty käsitellyksi. */
   kuivaAjo: boolean
   tuodut: string[]
   ohitetut: string[]
   varoitukset: string[]
-  /** Mitä kustakin raportista kirjoitettiin tai kirjoitettaisiin. */
   suunnitelmat: KirjoitusSuunnitelma[]
 }
 
-function sarakeKirjain(index: number): string {
-  return String.fromCharCode(65 + index)
-}
-
-/** Sama otsikkohaku kuin muualla RJ-Mobissa: nimen perusteella, ei paikan. */
-function etsiSarake(otsikot: string[], haut: string[]): number {
-  for (const h of haut) {
-    const idx = otsikot.findIndex(o => o.toLowerCase().includes(h.toLowerCase()))
-    if (idx >= 0) return idx
-  }
-  return -1
-}
-
 /**
- * Siirtää kaavan viittaukset toiselle riville: `=XLOOKUP(C77; ...)` → `C78`.
- * Sarakeviittaukset ilman rivinumeroa (`J:J`) jäävät koskematta.
+ * Välilehden haku samalla prioriteetilla kuin `/api/targets`: ensin
+ * 'kassakate', sitten 'kassamyynti'. Jos tiedostossa olisi molemmat, tuonti
+ * ja lukureitti osuisivat muuten eri välilehteen.
  */
-function siirraKaava(kaava: string, mistaRivi: number, minneRivi: number): string {
-  return kaava.replace(new RegExp(`(\\$?[A-Z]{1,3}\\$?)${mistaRivi}\\b`, 'g'), `$1${minneRivi}`)
+function etsiValilehti(nimet: string[], ...haut: string[]): string {
+  for (const h of haut) {
+    const found = nimet.find(n => n.toLowerCase().includes(h.toLowerCase()))
+    if (found) return found
+  }
+  return ''
 }
 
 async function luetutAvaimet(key: string): Promise<Set<string>> {
@@ -155,133 +140,80 @@ async function kirjoitaKassamyyntiin(
 
   const meta = await sheets.spreadsheets.get({ spreadsheetId: kohde.id! })
   const nimet = meta.data.sheets?.map(s => s.properties?.title ?? '') ?? []
-  const valilehti = nimet.find(n => /kassakate|kassamyynti/i.test(n))
+  const valilehti = etsiValilehti(nimet, 'kassakate', 'kassamyynti')
   if (!valilehti) {
     throw new Error(`Kassamyynti-välilehteä ei löytynyt tiedostosta ${kohde.name} (löytyi: ${nimet.join(', ')})`)
   }
 
-  // Otsikkorivi luetaan aina uudelleen: sarakkeet voidaan järjestää milloin
-  // tahansa uudelleen, eikä paikkaan saa luottaa.
-  const otsikkoRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: kohde.id!,
-    range: `'${valilehti}'!A1:Z1`,
-  })
+  // Kaikki taulukon tila luetaan ennen päättelyä. Otsikkorivi luetaan aina
+  // uudelleen: sarakkeet voidaan järjestää milloin tahansa uudelleen.
+  const [otsikkoRes, kaavaRes] = await Promise.all([
+    sheets.spreadsheets.values.get({ spreadsheetId: kohde.id!, range: `'${valilehti}'!A1:Z1` }),
+    sheets.spreadsheets.values.get({
+      spreadsheetId: kohde.id!,
+      range: `'${valilehti}'!A1:A${LUKURAJA}`,
+      valueRenderOption: 'FORMULA',
+    }),
+  ])
+
   const otsikot = (otsikkoRes.data.values?.[0] ?? []).map(v => String(v ?? ''))
-
-  const indeksit = SARAKKEET.map(s => etsiSarake(otsikot, s.otsikot))
-  const puuttuvat = SARAKKEET.filter((s, i) => indeksit[i] < 0).map(s => s.otsikot[0])
-  if (puuttuvat.length > 0) {
-    throw new Error(`Kassamyynti-välilehdeltä puuttuu sarake: ${puuttuvat.join(', ')}`)
-  }
-
-  const eka = Math.min(...indeksit)
-  const vika = Math.max(...indeksit)
-
-  // Turvaraja: sarake A on nimikorjauskaava, eikä sen päälle kirjoiteta
-  // dataa koskaan. Jos otsikkohaku osuisi siihen, keskeytetään.
-  if (eka === 0) {
-    throw new Error('Sarakekohdistus osui sarakkeeseen A, jossa on nimikorjauskaava — kirjoitus keskeytetty.')
-  }
-
-  const rivit = raportti.myyjat
-  const viimeinenUusiRivi = ENSIMMAINEN_DATARIVI + rivit.length - 1
-
-  // --- Nimikorjauskaavan kattavuus sarakkeessa A ---
-  const kaavaRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: kohde.id!,
-    range: `'${valilehti}'!A1:A${LUKURAJA}`,
-    valueRenderOption: 'FORMULA',
-  })
   const aSarake = (kaavaRes.data.values ?? []).map(r => String(r?.[0] ?? ''))
 
-  let viimeinenKaavaRivi = 0
-  let malliRivi = 0
-  for (let i = 0; i < aSarake.length; i++) {
-    if (aSarake[i].startsWith('=')) {
-      viimeinenKaavaRivi = i + 1
-      malliRivi = i + 1
-    }
-  }
-
-  const lisattavatKaavat: { rivi: number; kaava: string }[] = []
-  if (viimeinenUusiRivi > viimeinenKaavaRivi) {
-    if (malliRivi === 0) {
-      throw new Error(
-        `Sarakkeesta A ei löytynyt yhtään nimikorjauskaavaa, joten sitä ei voi laajentaa ` +
-          `${rivit.length} riville. Kirjoitus keskeytetty — rivi jonka nimi ei korjaudu on pahempi kuin puuttuva rivi.`,
-      )
-    }
-    const malli = aSarake[malliRivi - 1]
-    for (let r = viimeinenKaavaRivi + 1; r <= viimeinenUusiRivi; r++) {
-      lisattavatKaavat.push({ rivi: r, kaava: siirraKaava(malli, malliRivi, r) })
-    }
-  }
-
-  // --- Nykyinen datan laajuus, jotta lyhyempi raportti ei jätä jämiä ---
+  // Datalohkon nykyinen laajuus tarvitaan tyhjennysalueen laskentaan. Luetaan
+  // koko A–Z ja rajataan päättelyssä, jotta sarakkeiden paikkaa ei tarvitse
+  // tietää jo tässä.
   const nykyinenRes = await sheets.spreadsheets.values.get({
     spreadsheetId: kohde.id!,
-    range: `'${valilehti}'!${sarakeKirjain(eka)}1:${sarakeKirjain(vika)}${LUKURAJA}`,
+    range: `'${valilehti}'!A1:Z${LUKURAJA}`,
   })
-  const nykyiset = nykyinenRes.data.values ?? []
-  let viimeinenNykyinenRivi = ENSIMMAINEN_DATARIVI - 1
-  for (let i = 0; i < nykyiset.length; i++) {
-    if ((nykyiset[i] ?? []).some(c => String(c ?? '').trim() !== '')) viimeinenNykyinenRivi = i + 1
-  }
+  const kaikkiRivit = (nykyinenRes.data.values ?? []).map(r => (r ?? []).map(c => String(c ?? '')))
 
-  const tyhjennettavaLoppu = Math.max(viimeinenNykyinenRivi, viimeinenUusiRivi, ENSIMMAINEN_DATARIVI)
-  const tyhjennettavaAlue = `${sarakeKirjain(eka)}${ENSIMMAINEN_DATARIVI}:${sarakeKirjain(vika)}${tyhjennettavaLoppu}`
-  const kirjoitettavaAlue = `${sarakeKirjain(eka)}${ENSIMMAINEN_DATARIVI}:${sarakeKirjain(vika)}${Math.max(viimeinenUusiRivi, ENSIMMAINEN_DATARIVI)}`
+  const alustavaTila: Taulukkotila = { otsikot, aSarake, nykyisetRivit: [] }
+  const kokeilu = suunnitteleKirjoitus({ ...alustavaTila, nykyisetRivit: [] }, raportti.myyjat)
+  // Nyt kun sarakelohko tiedetään, rajataan nykyiset rivit siihen.
+  const nykyisetRivit = kaikkiRivit.map(r => r.slice(kokeilu.eka, kokeilu.vika + 1))
 
-  // Rivi rakennetaan sarakejärjestyksessä eka..vika, jotta yhtenäinen alue
-  // voidaan kirjoittaa kerralla.
-  const leveys = vika - eka + 1
-  const taulukko = rivit.map(r => {
-    const solut: (string | number)[] = new Array(leveys).fill('')
-    SARAKKEET.forEach((s, i) => {
-      solut[indeksit[i] - eka] = s.arvo(r)
-    })
-    return solut
-  })
+  const suunnitelma = suunnitteleKirjoitus({ otsikot, aSarake, nykyisetRivit }, raportti.myyjat)
 
-  const suunnitelma: KirjoitusSuunnitelma = {
+  const tulos: KirjoitusSuunnitelma = {
     kohde: kohde.name!,
     valilehti,
-    alue: kirjoitettavaAlue,
-    rivit: taulukko.length,
-    laajennetutKaavat: lisattavatKaavat.length,
-    tyhjennettavaAlue,
-    esimerkkirivit: taulukko.slice(0, 3),
+    alue: suunnitelma.kirjoitettavaAlue,
+    rivit: suunnitelma.taulukko.length,
+    laajennetutKaavat: suunnitelma.lisattavatKaavat.length,
+    tyhjennettavaAlue: suunnitelma.tyhjennettavaAlue,
+    esimerkkirivit: suunnitelma.taulukko.slice(0, 3),
   }
 
-  if (kuivaAjo) return suunnitelma
+  if (kuivaAjo) return tulos
 
   // Kaavat ensin, jotta nimikorjaus on paikallaan kun data saapuu.
-  if (lisattavatKaavat.length > 0) {
+  if (suunnitelma.lisattavatKaavat.length > 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: kohde.id!,
-      range: `'${valilehti}'!A${lisattavatKaavat[0].rivi}`,
+      range: `'${valilehti}'!A${suunnitelma.lisattavatKaavat[0].rivi}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: { values: lisattavatKaavat.map(k => [k.kaava]) },
+      requestBody: { values: suunnitelma.lisattavatKaavat.map(k => [k.kaava]) },
     })
   }
 
-  // Tyhjennetään koko käytössä ollut ikkuna: edellinen raportti on voinut
-  // olla pidempi, eivätkä sen rivit saa jäädä roikkumaan uusien alle.
+  // Tyhjennys ennen kirjoitusta: edellinen raportti on voinut olla pidempi,
+  // eivätkä sen rivit saa jäädä roikkumaan uusien alle.
   await sheets.spreadsheets.values.clear({
     spreadsheetId: kohde.id!,
-    range: `'${valilehti}'!${tyhjennettavaAlue}`,
+    range: `'${valilehti}'!${suunnitelma.tyhjennettavaAlue}`,
   })
 
-  if (taulukko.length > 0) {
+  if (suunnitelma.taulukko.length > 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: kohde.id!,
-      range: `'${valilehti}'!${sarakeKirjain(eka)}${ENSIMMAINEN_DATARIVI}`,
+      range: `'${valilehti}'!${sarakeKirjain(suunnitelma.eka)}${ENSIMMAINEN_DATARIVI}`,
       valueInputOption: 'RAW',
-      requestBody: { values: taulukko },
+      requestBody: { values: suunnitelma.taulukko },
     })
   }
 
-  return suunnitelma
+  return tulos
 }
 
 export type TuontiOptiot = {
@@ -302,7 +234,14 @@ export async function importWinposReports(optiot: TuontiOptiot = {}): Promise<Tu
   const kasitellytTiedostot = await luetutAvaimet(KV_FILES)
   const kasitellytRaportit = await luetutAvaimet(KV_REPORTS)
 
-  const tulos: TuontiTulos = { kuivaAjo, tuodut: [], ohitetut: [], varoitukset: [], suunnitelmat: [] }
+  const tulos: TuontiTulos = {
+    ymparisto: YMPARISTO,
+    kuivaAjo,
+    tuodut: [],
+    ohitetut: [],
+    varoitukset: [],
+    suunnitelmat: [],
+  }
 
   // Vanhin ensin, jotta uusin raportti jää viimeiseksi kirjoitetuksi.
   for (const tiedosto of Array.from(tiedostot).reverse()) {
@@ -343,8 +282,7 @@ export async function importWinposReports(optiot: TuontiOptiot = {}): Promise<Tu
       )
     }
 
-    const suunnitelma = await kirjoitaKassamyyntiin(raportti, kuivaAjo)
-    tulos.suunnitelmat.push(suunnitelma)
+    tulos.suunnitelmat.push(await kirjoitaKassamyyntiin(raportti, kuivaAjo))
     tulos.tuodut.push(nimi)
     // Parserin omat huomiot (esim. nimikartasta puuttuva myyjä) välitetään
     // eteenpäin sellaisenaan — niitä ei niellä hiljaa.
