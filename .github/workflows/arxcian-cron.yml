@@ -4,25 +4,60 @@
 # joten ajastus hoidetaan täältä. Työ vain kutsuu sovelluksen cron-reittiä,
 # joka päättää mitä haetaan — työt lisätään koodissa JOBS-rekisteriin.
 #
-# HUOM: GitHubin ajastus on UTC:ssä eikä tunne kesäaikaa. Ajat alla
-# vastaavat Suomen aikaa 08/12/16/20 kesäaikana (UTC+3); talvella ne
-# osuvat tuntia myöhemmäksi. Välimuistin TTL joustaa tämän yli.
+# GitHubin ajastus on UTC:ssä eikä tunne kesäaikaa, joten yksi UTC-aika ei
+# osu Suomen kelloon ympäri vuoden: talvella (UTC+2) ajo tulee tuntia
+# aiemmin kuin kesällä (UTC+3). Siksi jokaiselle hakuajalle on kaksi
+# ajastusta, ja alla oleva vartio pysäyttää sen joka on väärässä
+# vuodenajassa. Hakuja ajetaan siis neljä vuorokaudessa ympäri vuoden.
 
 name: arxcian cron
 
 on:
   schedule:
-    - cron: '0 5 * * *'   # 08:00 Suomen kesäaikaa
-    - cron: '0 9 * * *'   # 12:00
-    - cron: '0 13 * * *'  # 16:00
-    - cron: '0 17 * * *'  # 20:00
+    - cron: '0 5 * * *'   # 08:00 kesäaikaa (talvella 07:00 → ohitetaan)
+    - cron: '0 6 * * *'   # 08:00 talviaikaa (kesällä 09:00 → ohitetaan)
+    - cron: '0 9 * * *'   # 12:00 kesäaikaa
+    - cron: '0 10 * * *'  # 12:00 talviaikaa
+    - cron: '0 13 * * *'  # 16:00 kesäaikaa
+    - cron: '0 14 * * *'  # 16:00 talviaikaa
+    - cron: '0 17 * * *'  # 20:00 kesäaikaa
+    - cron: '0 18 * * *'  # 20:00 talviaikaa
   workflow_dispatch:
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
+      # Tarkistetaan vain tunti, ei minuutteja: GitHubin ajastus myöhästyy
+      # ruuhka-aikoina säännöllisesti kymmeniä minuutteja, ja minuuttiraja
+      # hylkäisi silloin koko haun. Väärän vuodenajan ajastus osuu aina
+      # tuntiin 7 tai 9 (vastaavasti 11/13, 15/17, 19/21), joka ei ole
+      # hakuaika, joten pelkkä tunti riittää erottamaan ne toisistaan.
+      - name: Tarkista että Suomessa on hakuaika
+        id: vartio
+        env:
+          TAPAHTUMA: ${{ github.event_name }}
+        run: |
+          if [ "$TAPAHTUMA" = 'workflow_dispatch' ]; then
+            echo "Käsin käynnistetty — ajetaan kellonajasta riippumatta."
+            echo 'aja=kylla' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          tunti=$(TZ=Europe/Helsinki date +%H)
+          case "$tunti" in
+            08|12|16|20)
+              echo "Suomessa on klo $tunti — hakuaika, ajetaan."
+              echo 'aja=kylla' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Suomessa on klo $tunti — ei hakuaika, tämä ajastus kuuluu toiselle vuodenajalle."
+              echo 'aja=ei' >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Käynnistä ajastetut haut
+        if: steps.vartio.outputs.aja == 'kylla'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |

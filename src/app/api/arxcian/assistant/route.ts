@@ -4,6 +4,8 @@ import { currentUser, type SessionUser } from '@/lib/session'
 import { checkRateLimit } from '@/lib/arxcian/rateLimit'
 import { MODEL_ASSISTANT } from '@/lib/arxcian/models'
 import { READ_TOOLS, requestOrigin, runReadTool } from '@/lib/arxcian/assistant/tools'
+import { getLanguage } from '@/lib/arxcian/assistant/language'
+import type { AssistantLanguage } from '@/lib/arxcian/assistant/types'
 import {
   WRITE_TOOLS,
   isWriteTool,
@@ -40,23 +42,38 @@ const MAX_TOOL_ROUNDS = 4
  */
 const MAX_PROPOSALS = 1
 
-// Käyttäjän oma valinta: assistentti vastaa englanniksi, koska ääni (ks.
-// lib/arxcian/tts.ts) on brittienglantia. Muu sovellus pysyy suomeksi
-// CLAUDE.md:n mukaisesti — tämä on tietoinen, rajattu poikkeus.
-//
-// Kielivaatimus on erikseen ja perusteluineen, koska pelkkä "Answer in English"
-// ei riittänyt: suomenkielinen kysymys ja suomenkieliset lähdeartikkelit
-// saivat mallin vastaamaan suomeksi, jolloin brittiääni luki suomea.
-//
-// Muotovaatimus on samoin oma kappaleensa: vastaus sekä luetaan ääneen että
-// näytetään sellaisenaan ilman markdown-renderöijää, joten korostusmerkinnät
-// näkyvät tähtinä ruudulla ja kuuluvat ääneen luettuina.
-const SYSTEM_PROMPT = `You are arxcian's assistant. Answer concisely.
+/**
+ * Kielikohtainen kappale system promptiin.
+ *
+ * Vaatimus on oma kappaleensa ja perusteluineen, koska pelkkä "Answer in X" ei
+ * riitä: kysymys ja lähdeartikkelit ovat usein toisella kielellä, ja malli
+ * ajautuu niiden mukana. Sama ongelma oli aiemmin toisin päin, kun kaikki
+ * vastaukset pakotettiin englanniksi.
+ *
+ * Jokaiselle kielelle on oma ääni (ks. lib/arxcian/tts.ts), joten väärä kieli ei
+ * ole vain tyylikysymys — ääni lukisi vierasta kieltä omilla säännöillään.
+ */
+const LANGUAGE_RULES: Record<AssistantLanguage, string> = {
+  en: `Always answer in English, even when the question or the source articles are
+in Finnish. Translate Finnish headlines into English instead of quoting them as
+they are.`,
+  fi: `Vastaa aina suomeksi, myös silloin kun kysymys tai lähdeartikkelit ovat
+englanniksi. Käännä englanninkieliset otsikot suomeksi sen sijaan että lainaisit
+niitä sellaisenaan.`,
+}
 
-Always answer in English, even when the question or the source articles are in
-Finnish. The answer is read aloud by a British English voice, so any other
-language is mispronounced. Translate Finnish headlines into English instead of
-quoting them as they are.
+/**
+ * System prompt rakennetaan pyyntökohtaisesti, koska kieli on käyttäjän asetus
+ * (lib/arxcian/assistant/language.ts) eikä vakio.
+ *
+ * Muotovaatimus on omana kappaleenaan ja **kielestä riippumaton**: vastaus sekä
+ * luetaan ääneen että näytetään sellaisenaan ilman markdown-renderöijää, joten
+ * korostusmerkinnät näkyvät tähtinä ruudulla ja kuuluvat ääneen luettuina.
+ */
+function systemPrompt(language: AssistantLanguage): string {
+  return `You are arxcian's assistant. Answer concisely.
+
+${LANGUAGE_RULES[language]}
 
 Write plain prose meant to be spoken aloud: no markdown, no asterisks, no
 bullet characters, no headings, no emojis. Separate items with sentences.
@@ -71,7 +88,11 @@ complete_habit_today and create_alert — do not change anything on their own:
 they put a proposal in front of the user, who has to confirm it separately.
 Never say that something has been created, saved, added or completed. Say that
 you have proposed it and that it is waiting for the user's confirmation. Call at
-most one writing tool per turn, and never call the same one twice.`
+most one writing tool per turn, and never call the same one twice.
+
+The set_language tool is different: it changes the answer language immediately
+and needs no confirmation. After calling it, answer in the new language.`
+}
 
 /** Anthropicin palvelinpuolen hakutyökalu: sitä ei suoriteta täällä. */
 const WEB_SEARCH = {
@@ -184,6 +205,12 @@ async function runAssistant(
   const { onText } = handlers
   let proposalsMade = 0
 
+  // Kieli luetaan kerran pyynnön alussa. Jos malli vaihtaa sen kesken vuoron
+  // (set_language), promptia ei rakenneta uudelleen: työkalun vastaus kertoo
+  // uuden kielen ja on mallin viimeisin ohje, joten se voittaa promptin.
+  // Seuraava pyyntö saa uuden kielen jo promptissa.
+  const system = systemPrompt(await getLanguage(ctx.user))
+
   /**
    * Kirjoitustyökalun kutsu: tallentaa ehdotuksen ja kertoo siitä selaimelle.
    * Itse toimea ei suoriteta täällä missään tilanteessa.
@@ -229,7 +256,7 @@ async function runAssistant(
     const stream = getClient().messages.stream({
       model: MODEL_ASSISTANT,
       max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
+      system,
       tools: TOOLS,
       messages,
     })
@@ -258,7 +285,7 @@ async function runAssistant(
   const final = getClient().messages.stream({
     model: MODEL_ASSISTANT,
     max_tokens: MAX_TOKENS,
-    system: SYSTEM_PROMPT,
+    system,
     messages,
   })
   final.on('text', onText)

@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv'
+import { kv } from './kv'
 
 const DEFAULT_WINDOW_SECONDS = 60 * 60
 
@@ -31,8 +31,8 @@ export async function checkRateLimit(
   const key = `ratelimit:${prefix}:${userId}:${bucket}`
 
   try {
-    const count = await kv.incr(key)
-    if (count === 1) await kv.expire(key, windowSeconds)
+    const count = await kv().incr(key)
+    if (count === 1) await kv().expire(key, windowSeconds)
     return count <= limit
   } catch (e) {
     console.error(`[ratelimit] tarkistus epäonnistui: ${prefix}`, e)

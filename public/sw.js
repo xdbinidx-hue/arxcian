@@ -94,3 +94,26 @@ self.addEventListener('fetch', event => {
     )
   }
 })
+
+/**
+ * Ilmoituksen napautus avaa arxcianin.
+ *
+ * Ilman tätä käsittelijää napautus vain sulkee ilmoituksen: markkinailmoitus
+ * annetaan `registration.showNotification`illa, eikä service workerin
+ * näyttämällä ilmoituksella ole oletustoimintoa. Jo avoin ikkuna nostetaan
+ * esiin uuden avaamisen sijaan, jottei jokainen kuittaus jättäisi jälkeensä
+ * välilehteä.
+ */
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const target = event.notification.data?.url || '/arxcian'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      for (const client of clients) {
+        if (client.url.includes('/arxcian') && 'focus' in client) return client.focus()
+      }
+      return self.clients.openWindow(target)
+    }),
+  )
+})

@@ -23,8 +23,8 @@ export async function latestAcrossCategories(n: number, category?: Category): Pr
     CATEGORIES.map(async c => (await readCached<Article[]>(cacheKeyFor(c)))?.data ?? []),
   )
 
-  // Sama artikkeli voi olla useassa kategoriassa (esim. MarketWatchin juttu
-  // sekä bisnes- että sijoittaminen-syötteessä). fetchNews poistaa
+  // Sama artikkeli voi olla useassa kategoriassa (esim. Guardianin juttu
+  // sekä maailma- että konfliktit-syötteessä). fetchNews poistaa
   // kaksoiskappaleet vain kategorian sisällä, joten tämä karsii ne myös
   // kategorioiden yli.
   const seen = new Set<string>()

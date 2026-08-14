@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@/lib/session'
 import { checkRateLimit } from '@/lib/arxcian/rateLimit'
+import { getLanguage } from '@/lib/arxcian/assistant/language'
 import { synthesizeSpeech } from '@/lib/arxcian/tts'
 
 /**
  * Muuntaa tekstin puheeksi. Käytetään AI-assistentin (api/arxcian/assistant)
  * vastausten lukemiseen ääneen CommandPalettessa.
+ *
+ * Kieli **ei tule pyynnön rungosta** vaan käyttäjän asetuksesta: palvelin
+ * tietää sen jo istunnosta, ja selaimen lähettämä kieli tarkoittaisi että
+ * äänen valinta luottaa kutsujaan — deployn jälkeen auki oleva PWA lähettäisi
+ * vanhaa tietoa tai ei mitään. Selain lähettää yhä pelkän tekstin, joten
+ * asiakkaan sopimus ei muuttunut.
  */
 
 /**
@@ -45,7 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const audio = await synthesizeSpeech(text)
+    const audio = await synthesizeSpeech(text, await getLanguage(user))
     return new NextResponse(new Uint8Array(audio), {
       headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' },
     })

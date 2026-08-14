@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv'
+import { kv } from '../kv'
 
 /**
  * Puhesynteesin merkkilaskuri (kustannusvahti).
@@ -34,7 +34,7 @@ export const TTS_CHARS_KEY = 'arxcian:assistant:tts:chars'
 export async function addChars(chars: number): Promise<void> {
   if (!Number.isFinite(chars) || chars <= 0) return
   try {
-    await kv.incrby(TTS_CHARS_KEY, Math.round(chars))
+    await kv().incrby(TTS_CHARS_KEY, Math.round(chars))
   } catch (e) {
     console.error('[tts-usage] merkkilaskurin kasvatus epäonnistui', e)
   }
@@ -46,7 +46,7 @@ export async function addChars(chars: number): Promise<void> {
  */
 export async function readChars(): Promise<number> {
   try {
-    const value = await kv.get<number | string | null>(TTS_CHARS_KEY)
+    const value = await kv().get<number | string | null>(TTS_CHARS_KEY)
     const parsed = typeof value === 'number' ? value : Number(value ?? 0)
     return Number.isFinite(parsed) ? parsed : 0
   } catch (e) {

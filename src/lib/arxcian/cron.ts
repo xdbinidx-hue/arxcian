@@ -5,9 +5,10 @@ import { getSentiment } from './trading/sentiment'
 import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
+import { refreshCalendar } from './trading/calendar'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
-import { refreshRjMobSummary, RJMOB_SUMMARY_KEY } from './rjmobSummary'
+import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
 
 /**
@@ -59,6 +60,14 @@ const tradingJobs: CronJob[] = [
     },
   },
   {
+    id: 'trading-calendar',
+    description: 'Trading: talouskalenteri (ForexFactory)',
+    run: async () => {
+      const events = await refreshCalendar()
+      return { key: 'trading:calendar', items: events.length }
+    },
+  },
+  {
     id: 'trading-quotes',
     description: 'Trading: watchlist-kurssit',
     run: async () => {
@@ -91,10 +100,12 @@ const hubJobs: CronJob[] = [
   },
   {
     id: 'rjmob-summary',
-    description: 'Hub: RJ-Mobin kuukausiyhteenveto',
+    description: 'Hub: RJ-Mobin kuukausiyhteenveto (kuluva kuu + valmiit kuukaudet)',
     run: async () => {
-      await refreshRjMobSummary()
-      return { key: RJMOB_SUMMARY_KEY }
+      // items = montako kuukautta on välimuistissa, ei montako laskettiin:
+      // valmis kuukausi lasketaan kerran ja ohitetaan sen jälkeen.
+      const result = await refreshRjMobSummaries()
+      return { key: RJMOB_SUMMARY_KEY, items: result.months.length }
     },
   },
 ]

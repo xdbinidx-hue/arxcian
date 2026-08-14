@@ -1,6 +1,7 @@
 import { speakableText } from '@/lib/arxcian/speakable'
 import { TTS_MODEL } from '@/lib/arxcian/models'
 import { addChars } from '@/lib/arxcian/assistant/ttsUsage'
+import { DEFAULT_LANGUAGE, type AssistantLanguage } from '@/lib/arxcian/assistant/types'
 
 /**
  * Puheentuottaja AI-assistentin vastauksille (ElevenLabs).
@@ -10,25 +11,32 @@ import { addChars } from '@/lib/arxcian/assistant/ttsUsage'
  * luetaan ääneen lause kerrallaan jo generoinnin aikana, joten jokainen sadasosa
  * synteesin viiveestä kuuluu käyttäjälle taukona.
  *
- * Funktion sopimus `(text) => Promise<Buffer>` säilyi ennallaan, joten
- * /api/arxcian/tts ja selaimen puhejono (lib/arxcian/speechQueue.ts) eivät
- * muuttuneet lainkaan. googleapis on yhä riippuvuutena — RJ-Mobin Sheets- ja
- * Drive-haku käyttävät sitä.
+ * Kieli on toinen, valinnainen parametri: se valitsee äänen. Oletus pitää
+ * vanhat kutsut ennallaan, ja selaimen puhejono (lib/arxcian/speechQueue.ts) ei
+ * tiedä kielestä mitään — palvelin lukee sen istunnosta. googleapis on yhä
+ * riippuvuutena, koska RJ-Mobin Sheets- ja Drive-haku käyttävät sitä.
  */
+
+/** Kielen ääni omassa ympäristömuuttujassaan. API-avain on sama molemmille. */
+const VOICE_ENV: Record<AssistantLanguage, string> = {
+  en: 'ELEVENLABS_VOICE_ID',
+  fi: 'ELEVENLABS_VOICE_ID_FI',
+}
 
 /**
  * Ääni ja avain tulevat ympäristöstä, ja **molemmat ovat pakollisia**.
  *
- * Puuttuvasta asetuksesta ei palata hiljaisesti Googleen: kaksi rinnakkaista
- * ääntä tarkoittaisi että tuotannossa voi kuulua eri ääni kuin kehityksessä
- * ilman että kukaan huomaa mitään olevan vialla. Selkeä virhe kertoo heti mikä
- * puuttuu.
+ * Puuttuvasta asetuksesta ei palata hiljaisesti toiseen ääneen: silloin suomea
+ * luettaisiin englanninkielisellä äänellä ilman että kukaan huomaa mitään
+ * olevan vialla — ja juuri se olisi vaikein vika huomata, koska ääntä tulee
+ * ulos. Virheilmoitus kertoo minkä muuttujan nimi puuttuu.
  */
-function config() {
+function config(language: AssistantLanguage) {
   const apiKey = process.env.ELEVENLABS_API_KEY
-  const voiceId = process.env.ELEVENLABS_VOICE_ID
+  const voiceEnv = VOICE_ENV[language]
+  const voiceId = process.env[voiceEnv]
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY puuttuu')
-  if (!voiceId) throw new Error('ELEVENLABS_VOICE_ID puuttuu')
+  if (!voiceId) throw new Error(`${voiceEnv} puuttuu (kieli ${language})`)
   return { apiKey, voiceId }
 }
 
@@ -68,12 +76,20 @@ const MAX_INPUT_CHARS = 4500
  * tiedostoa. Siivous ajetaan silti myös täällä: reitti on julkinen rajapinta,
  * eikä se saa luottaa kutsujan siivonneen tekstin.
  *
- * Kieltä ei pakoteta (`language_code`), koska sama funktio tuottaa sekä
- * assistentin englanninkieliset vastaukset että suomenkielisen tervehdyksen —
- * malli tunnistaa kielen tekstistä.
+ * Kieli valitsee **äänen**, ei mallia: Flash v2.5 on monikielinen, mutta yksi
+ * ääni kuulostaa vain omalla kielellään oikealta. Kieli on oletusarvoinen
+ * parametri, jotta olemassa olevat kutsut eivät muuttuneet.
+ *
+ * `language_code`-parametria ei lähetetä. Malli tunnistaa kielen tekstistä, ja
+ * pakotus olisi tässä muutos jonka toimivuutta ei voi todentaa ilman
+ * ElevenLabs-avainta — väärä arvo ei kaataisi mitään näkyvästi vaan muuttaisi
+ * ääntämystä hiljaa.
  */
-export async function synthesizeSpeech(text: string): Promise<Buffer> {
-  const { apiKey, voiceId } = config()
+export async function synthesizeSpeech(
+  text: string,
+  language: AssistantLanguage = DEFAULT_LANGUAGE,
+): Promise<Buffer> {
+  const { apiKey, voiceId } = config(language)
 
   const spoken = speakableText(text)
   const trimmed = spoken.length > MAX_INPUT_CHARS ? spoken.slice(0, MAX_INPUT_CHARS) : spoken

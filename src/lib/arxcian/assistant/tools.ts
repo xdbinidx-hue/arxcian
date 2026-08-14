@@ -7,13 +7,15 @@ import { latestAcrossCategories } from '../news/digest'
 import { watchlistSnapshot } from '../trading/snapshot'
 import { readCachedSentiment } from '../trading/sentiment'
 import { getAlerts } from '../trading/alerts'
-import { RJMOB_SUMMARY_KEY, type RjMobSummaryData } from '../rjmobSummary'
+import { parseMonthInput, readRjMobMonths, readRjMobSummary } from '../rjmobSummary'
 import { getCalendarStatus, upcomingEvents } from '../personal/calendar/events'
 import { getGoals } from '../personal/goals'
 import { getHabits, calculateStreak } from '../personal/habits'
 import { getNotes } from '../personal/notes'
 import { CITIES_CACHE_KEY, describeWeatherCode, type CityWeather } from '../weather'
 import { isoDateHelsinki, todayISOHelsinki } from '../time'
+import { setLanguage } from './language'
+import { isLanguage } from './types'
 
 /**
  * Avustajan lukutyökalut.
@@ -28,6 +30,14 @@ import { isoDateHelsinki, todayISOHelsinki } from '../time'
  * Henkilökohtaiset tietueet haetaan kirjastoapureilla, jotka suodattavat
  * näkyvyyden jo itse (`visibleTo`). Käyttäjä välitetään läpi sellaisenaan —
  * suodatusta ei toisteta eikä ohiteta täällä.
+ *
+ * Yksi poikkeus lukemiseen: `set_language` kirjoittaa käyttäjän kieliasetuksen.
+ * Se on tarkoituksella **täällä eikä proposals.ts:ssä**, eli se ei tuota
+ * vahvistuskorttia. Vahvistus on tietueen luontia varten (muistiinpano,
+ * tavoite, hälytys), jossa väärin kuultu puhe jäisi listalle näyttämään
+ * oikealta. Kielivalinta ei ole tietue vaan asetus, jonka virheellisyys kuuluu
+ * heti seuraavasta lauseesta ja jonka voi perua sanomalla "vastaa englanniksi"
+ * — vahvistuskortti tekisi siitä tarpeettoman kankean.
  */
 
 /** Kuinka monta tietuetta yksi työkalu enintään palauttaa. */
@@ -101,8 +111,19 @@ export const READ_TOOLS = [
   {
     name: 'get_rjmob_summary',
     description:
-      'Hakee RJ-Mobin kuluvan kuukauden myyntiluvut: liittymät, kassakate ja F-Secure. Muutosprosentti on kuukauden loppuun projisoitu ennuste, ei toteuma. Vain luku — RJ-Mobin lukuja ei voi muuttaa avustajan kautta.',
-    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+      'Hakee RJ-Mobin yhden kuukauden myyntiluvut: liittymät, kassakate ja F-Secure. Oletuksena kuluva kuukausi. Vain kuluvan kuukauden muutosprosentti on kuukauden loppuun projisoitu ennuste (projected on tosi); valmiin kuukauden muutos on toteutunut vertailu edelliseen kuukauteen. Vastauksen availableMonths kertoo miltä kuukausilta lukuja on. Vain luku — RJ-Mobin lukuja ei voi muuttaa avustajan kautta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: {
+          type: 'string',
+          description:
+            'Kuukausi jonka luvut haetaan: "2026-06", "current", "previous" tai suomenkielinen kuukauden nimi ("kesäkuu", "viime kuu"). Jätä pois kuluvalle kuukaudelle.',
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
   },
   {
     name: 'get_calendar',
@@ -144,6 +165,23 @@ export const READ_TOOLS = [
       'Hakee seurattujen kaupunkien nykysään (lämpötila ja sääkuvaus) maapallon välimuistista. Helsinki on mukana listassa.',
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
+  {
+    name: 'set_language',
+    description:
+      'Vaihtaa kielen jolla vastaat: "fi" on suomi, "en" englanti. Käytä tätä kun käyttäjä pyytää vastauksia toisella kielellä ("vastaa suomeksi", "answer in English"). Asetus säilyy seuraaviin keskusteluihin. Vaihdon jälkeen vastaa lyhyesti, yhdellä lauseella, uudella kielellä.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        language: {
+          type: 'string',
+          enum: ['fi', 'en'],
+          description: 'Uusi kieli: fi (suomi) tai en (englanti).',
+        },
+      },
+      required: ['language'],
+      additionalProperties: false,
+    },
+  },
 ] satisfies Anthropic.Messages.ToolUnion[]
 
 const READ_TOOL_NAMES = new Set(READ_TOOLS.map(t => t.name))
@@ -169,6 +207,47 @@ function countInput(input: unknown, fallback: number): number {
   const raw = (input ?? {}) as { n?: unknown }
   const parsed = Math.round(Number(raw.n))
   return Math.min(MAX_ITEMS, Math.max(1, Number.isFinite(parsed) ? parsed : fallback))
+}
+
+/**
+ * RJ-Mobin kuukausiluvut välimuistista.
+ *
+ * Työkalu ei hae Drivestä eikä laske mitään: kuukaudet ovat cron-työn
+ * `rjmob-summary` kirjoittamia. Kun pyydettyä kuukautta ei ole, vastaus
+ * kertoo mitä kuukausia on — malli ei saa täyttää aukkoa arvauksella,
+ * koska väärä myyntiluku näyttää täsmälleen oikealta.
+ */
+async function rjmobSummaryResult(input: unknown): Promise<unknown> {
+  const raw = (input ?? {}) as { month?: unknown }
+  const asked = typeof raw.month === 'string' ? raw.month : ''
+
+  const availableMonths = await readRjMobMonths()
+  const month = parseMonthInput(asked)
+
+  if (!month) {
+    return {
+      error: `Kuukautta ei tunnistettu: "${asked}".`,
+      availableMonths,
+      note: 'Kysy käyttäjältä mitä kuukautta hän tarkoittaa. Älä arvaa lukuja.',
+    }
+  }
+
+  const cached = await readRjMobSummary(month)
+  if (!cached) {
+    return {
+      error: `RJ-Mobin lukuja kuukaudelta ${month} ei ole välimuistissa.`,
+      availableMonths,
+      note: 'Kerro käyttäjälle miltä kuukausilta lukuja on. Älä arvaa lukuja.',
+    }
+  }
+
+  return {
+    ...cached.data,
+    month,
+    availableMonths,
+    fetchedAt: helsinkiTime(cached.fetchedAt),
+    note: 'changePercent on kuukauden loppuun projisoitu ennuste, kun projected on tosi. Muuten se on toteuma.',
+  }
 }
 
 async function calendarResult(input: unknown, user: SessionUser, origin: string): Promise<unknown> {
@@ -225,17 +304,8 @@ export async function runReadTool(
     }
     case 'get_alerts':
       return getAlerts()
-    case 'get_rjmob_summary': {
-      const cached = await readCached<RjMobSummaryData>(RJMOB_SUMMARY_KEY)
-      if (!cached) {
-        return { error: 'RJ-Mobin kuukausiyhteenvetoa ei ole vielä laskettu välimuistiin.' }
-      }
-      return {
-        ...cached.data,
-        fetchedAt: helsinkiTime(cached.fetchedAt),
-        note: 'changePercent on kuukauden loppuun projisoitu ennuste, kun projected on tosi.',
-      }
-    }
+    case 'get_rjmob_summary':
+      return rjmobSummaryResult(input)
     case 'get_calendar':
       return calendarResult(input, user, origin)
     case 'get_goals': {
@@ -276,6 +346,26 @@ export async function runReadTool(
           temperature: c.temperature,
           conditions: describeWeatherCode(c.weatherCode).label,
         })),
+      }
+    }
+    case 'set_language': {
+      const raw = (input ?? {}) as { language?: unknown }
+      if (!isLanguage(raw.language)) {
+        return { error: 'Kielen on oltava "fi" tai "en".' }
+      }
+      // Omistaja on aina kirjautunut käyttäjä: mallin ehdottamaa käyttäjää ei
+      // lueta lainkaan, muuten toisen kieliasetuksen voisi vaihtaa pyytämällä
+      // sitä ääneen. Sama sääntö kuin ehdotuksissa (proposals.ts).
+      await setLanguage(user, raw.language)
+      // Kehotus on jo uudella kielellä: se on mallille vahvin yksittäinen
+      // vihje siitä millä kielellä seuraava lause kirjoitetaan.
+      return {
+        ok: true,
+        language: raw.language,
+        note:
+          raw.language === 'fi'
+            ? 'Kieli on nyt suomi. Vastaa tästä eteenpäin suomeksi, alkaen lyhyestä vahvistuksesta.'
+            : 'The language is now English. Answer in English from now on, starting with a short confirmation.',
       }
     }
     default:
