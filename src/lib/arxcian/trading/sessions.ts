@@ -11,14 +11,15 @@
  * lähdettä lainkaan — ja selainkomponentti voi importata tämän suoraan.
  *
  * Ajat on määritelty **paikallisena kellonaikana IANA-vyöhykkeessä**, ei
- * UTC-siirtymänä. Se on ainoa tapa saada kesäaika oikein: Lontoo ja New York
- * siirtyvät eri viikonloppuina, ja Tokio ei siirry lainkaan, joten kiinteä
- * UTC-taulukko olisi väärässä useita viikkoja vuodessa.
+ * UTC-siirtymänä; miksi, ks. [zoneTime.ts](../zoneTime.ts) johon itse muunnos
+ * on siirretty omien treidausaikojen tullessa mukaan.
  */
+
+import { addDays, localDay, wallClockToInstant, weekday, type CalendarDay } from '../zoneTime'
 
 export type SessionId = 'asia' | 'london' | 'new-york'
 
-type SessionDef = {
+export type SessionDef = {
   id: SessionId
   label: string
   /** Mitä paikkaa aika edustaa. Näytetään käyttäjälle, koska "Aasia" ei ole kaupunki. */
@@ -41,7 +42,7 @@ const hm = (h: number, m = 0) => h * 60 + m
  * eri tavalla, joten jos tähän joskus lisätään Sydney (22–07), `occurrences`
  * on kirjoitettava uusiksi eikä vain lisättävä riviä.
  */
-const SESSIONS: readonly SessionDef[] = [
+export const SESSIONS: readonly SessionDef[] = [
   {
     id: 'asia',
     label: 'Aasia',
@@ -68,87 +69,11 @@ const SESSIONS: readonly SessionDef[] = [
   },
 ]
 
-type CalendarDay = { year: number; month: number; day: number }
-
-// Muotoilijoiden luonti on kallista ja näitä kutsutaan silmukassa, joten ne
-// rakennetaan kerran vyöhykettä kohti.
-const partsCache = new Map<string, Intl.DateTimeFormat>()
-
-function partsFormatter(zone: string): Intl.DateTimeFormat {
-  let formatter = partsCache.get(zone)
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: zone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      // h23 eikä hour12:false — jälkimmäinen tuottaa osassa ympäristöjä
-      // keskiyöllä tunnin "24", joka rikkoisi laskennan hiljaa.
-      hourCycle: 'h23',
-    })
-    partsCache.set(zone, formatter)
-  }
-  return formatter
+export function sessionById(id: SessionId): SessionDef | undefined {
+  return SESSIONS.find(s => s.id === id)
 }
 
-/** Vyöhykkeen siirtymä UTC:stä millisekunteina annetulla hetkellä. */
-function zoneOffset(zone: string, instant: number): number {
-  // Sekunnin tarkkuuteen, koska formatToParts ei anna millisekunteja eikä
-  // erotus muuten menisi tasan.
-  const whole = Math.floor(instant / 1000) * 1000
-  const parts = partsFormatter(zone).formatToParts(new Date(whole))
-  const value = (type: string) => Number(parts.find(p => p.type === type)?.value)
-
-  const asIfUtc = Date.UTC(
-    value('year'),
-    value('month') - 1,
-    value('day'),
-    value('hour'),
-    value('minute'),
-    value('second'),
-  )
-  return asIfUtc - whole
-}
-
-/**
- * Paikallinen seinäkelloaika → absoluuttinen hetki.
- *
- * Käänteinen suunta ei ole suoraan saatavilla: `Date.UTC` antaa hetken jonka
- * *UTC*-esitys on haluttu, joten siitä vähennetään vyöhykkeen siirtymä. Siirtymä
- * riippuu itse hetkestä, joten arvausta tarkennetaan kerran — toinen kierros
- * riittää myös kesäajan vaihtoviikonloppuna, jolloin ensimmäinen arvaus voi
- * osua väärälle puolelle siirtymää.
- */
-function wallClockToInstant(zone: string, day: CalendarDay, minutes: number): number {
-  const naive = Date.UTC(day.year, day.month - 1, day.day, 0, minutes)
-  let instant = naive - zoneOffset(zone, naive)
-  instant = naive - zoneOffset(zone, instant)
-  return instant
-}
-
-/** Hetken paikallinen kalenteripäivä annetussa vyöhykkeessä. */
-function localDay(zone: string, instant: number): CalendarDay {
-  const parts = partsFormatter(zone).formatToParts(new Date(instant))
-  const value = (type: string) => Number(parts.find(p => p.type === type)?.value)
-  return { year: value('year'), month: value('month'), day: value('day') }
-}
-
-function addDays(day: CalendarDay, count: number): CalendarDay {
-  const shifted = new Date(Date.UTC(day.year, day.month - 1, day.day + count))
-  return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-  }
-}
-
-/** 0 = sunnuntai. Puhdasta kalenterilaskentaa, ei vyöhykettä. */
-function weekday(day: CalendarDay): number {
-  return new Date(Date.UTC(day.year, day.month - 1, day.day)).getUTCDay()
-}
+export type SessionWindow = { open: number; close: number }
 
 /**
  * Istunnon esiintymät ikkunassa eilisestä neljän päivän päähän.
@@ -158,9 +83,9 @@ function weekday(day: CalendarDay): number {
  * mukana siksi, että Tokion istunto on Suomen aikaa aamuyöllä auki edellisen
  * paikallisen päivän puolella.
  */
-function occurrences(session: SessionDef, now: number): { open: number; close: number }[] {
-  const today = localDay(session.zone, now)
-  const result: { open: number; close: number }[] = []
+export function sessionWindows(session: SessionDef, now: number): SessionWindow[] {
+  const today: CalendarDay = localDay(session.zone, now)
+  const result: SessionWindow[] = []
 
   for (let offset = -1; offset <= 4; offset++) {
     const day = addDays(today, offset)
@@ -202,7 +127,7 @@ export type SessionState = {
  */
 export function sessionStates(now: number): SessionState[] {
   return SESSIONS.map(session => {
-    const windows = occurrences(session, now)
+    const windows = sessionWindows(session, now)
     const current = windows.find(w => w.open <= now && now < w.close)
     const next = windows.find(w => w.open > now)
 

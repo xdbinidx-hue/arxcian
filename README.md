@@ -1,43 +1,34 @@
 # arxcian
 
-## Deploy Verceliin (10 minuuttia)
+Henkilökohtainen komentokeskus: RJ-Mobin bisnesluvut, trading, uutiset ja
+personal-osio yhdessä Next.js-sovelluksessa.
 
-### 1. GitHub-repo
+Arkkitehtuuri, päätökset ja perustelut ovat [CLAUDE.md](CLAUDE.md):ssä. Tämä
+tiedosto kertoo vain miten sovellus ajetaan.
 
-1. Mene github.com → New repository → nimi: `rjmob-portal`
-2. Lataa tämä kansio sinne (tai käytä GitHub Desktop)
-
-### 2. Vercel deploy
-
-1. Mene vercel.com → kirjaudu GitHubilla
-2. "Add New Project" → valitse `rjmob-portal`
-3. Klikkaa "Deploy" — toimii automaattisesti
-
-### 3. Lisää ympäristömuuttuja Verceliin
-
-1. Vercel → Project → Settings → Environment Variables
-2. Lisää uusi muuttuja:
-   - **Name:** `GOOGLE_SERVICE_ACCOUNT_KEY`
-   - **Value:** Koko JSON-tiedoston sisältö YHDELLÄ RIVILLÄ
-
-   Avaa JSON-tiedosto tekstieditorilla, kopioi kaikki sisältö,
-   ja liitä se Verceliin yhdelle riville.
-
-3. Klikkaa "Save" ja "Redeploy"
-
-### 4. Valmis!
-
-URL on muotoa: `https://rjmob-portal.vercel.app`
-
-## Päivitys
-
-Kun uusi myyntiseuranta tulee Google Driveen → dashboard päivittyy automaattisesti.
-Ei tarvitse tehdä mitään.
-
-## Kehitys lokaalisti
+## Kehitys
 
 ```bash
 npm install
-# Luo .env.local ja lisää GOOGLE_SERVICE_ACCOUNT_KEY
+vercel env pull .env.local --environment development
 npm run dev
 ```
+
+`.env.local` ei ole repossa eikä sinne saa committoida arvoja. Tarvittavat
+muuttujat on lueteltu [CLAUDE.md](CLAUDE.md):n Ympäristömuuttujat-osiossa ja
+[.env.example](.env.example):ssä.
+
+## Julkaisu
+
+Push `main`iin julkaisee Vercelissä automaattisesti.
+
+```bash
+npx vercel@latest env add <NIMI> production --yes   # uusi muuttuja tuotantoon
+```
+
+## Ajastetut haut
+
+Uutis- ja markkinahaut ajetaan
+[.github/workflows/arxcian-cron.yml](.github/workflows/arxcian-cron.yml):stä,
+joka kutsuu `/api/arxcian/cron`-reittiä neljästi päivässä. Vercelin Hobby-taso
+sallii vain kaksi cronia vuorokaudessa, joten ajastus ei ole `vercel.json`issa.

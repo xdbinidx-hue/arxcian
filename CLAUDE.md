@@ -185,6 +185,97 @@ Muutosprosentti on **run rate -ennuste, ei toteuma**: hub näyttää aina kuluva
 
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
 
+## Markkina-ajat ja ilmoitukset
+
+Forex-istuntojen (Aasia/Tokio, Lontoo, New York) aukiolot ja käyttäjän omat
+treidausajat ovat sama asia eri lähteestä, joten ne kulkevat yhden tyypin
+kautta: [marketEvents.ts](src/lib/arxcian/trading/marketEvents.ts) tuottaa
+aikajanan `MarketEvent`-tapahtumia, eikä ilmoituksen antaja tiedä kummasta on
+kyse. Kaksi ilmoituspolkua ajautuisi erilleen — toinen dedupetaan, toinen ei,
+toinen soittaa äänen, toinen unohtaa.
+
+Ajat määritellään **paikallisena kellonaikana IANA-vyöhykkeessä**, ei
+UTC-siirtymänä. Muunnos on [zoneTime.ts](src/lib/arxcian/zoneTime.ts):ssä,
+erotettuna sessions.ts:stä juuri siksi että molemmat käyttävät sitä. Lontoo ja
+New York siirtyvät kesäaikaan eri viikonloppuina eikä Tokio siirry lainkaan,
+joten kiinteä siirtymätaulukko olisi väärässä useita viikkoja vuodessa: 16.3.
+New York avaa Suomen aikaa 14.00, muina aikoina 15.00.
+
+### Kaksi ilmoituskerrosta, ei yhtä
+
+**In-app-kerros** ([MarketAlerts](src/components/arxcian/trading/MarketAlerts.tsx))
+hoitaa bannerin ja äänimerkin silloin kun arxcian on auki. Se ei ole
+väliaikaisratkaisu vaan pysyvä puolisko: käyttöjärjestelmän push ei näytä
+mitään avoimessa välilehdessä, joten pelkkä push tarkoittaisi että arxciania
+katsoessa ilmoitus tulee puhelimeen eikä ruudulle.
+
+**Web Push** tavoittaa suljetun sovelluksen. Se on päätetty 14.8.2026 ja
+rakennetaan samojen `MarketEvent`ien päälle — ei toista aikajanaa.
+
+Ajastin oli koko kysymyksen pullonkaula. Vercel Cron ei kelpaa millään
+tasolla johon tässä ollaan: Hobby sallii 100 cronia per projekti mutta
+**kukin vain kerran vuorokaudessa, tarkkuus ±59 min**. (Aiempi merkintä
+"kaksi croniä/vrk" oli väärä — määrä ei ollut koskaan rajoite, tarkkuus oli.)
+GitHub Actions myöhästyy rutiinilla 5–15 min, mikä riittää uutishakuun mutta
+ei siihen että "Lontoo avautuu" on totta silloin kun se sanotaan.
+
+Valittu **QStash**: se ajastaa yksittäisen HTTP-kutsun absoluuttiseen hetkeen
+(`Upstash-Not-Before`), joten pollausta ei ole lainkaan. Yksi vuorokausittainen
+ajastus suunnittelee seuraavan 36 h tapahtumat jonoon. Volyymi ~30 viestiä/vrk,
+ilmaisraja 1 000/vrk. Sivuhyöty: QStash allekirjoittaa pyyntönsä, joten
+push-reitit verifioidaan allekirjoituksella eikä `CRON_SECRET`illa.
+
+**Suunnittelija on idempotentti, ei kertaluontoinen.** QStashin oma
+deduplikaatio-ikkuna on vain 10 minuuttia, joten se ei estä saman tapahtuman
+jonottamista uudelleen seuraavana päivänä. Idempotenssi tehdään itse: jokainen
+jonotettu tapahtuma kirjataan Redisiin avaimella `push:planned:<tapahtuma-avain>`
+ja QStashin viesti-id:llä, ja suunnittelija ohittaa jo jonossa olevat. Sivutuote
+on peruutus: kun oma treidausaika poistetaan, tallennettu viesti-id kertoo mikä
+jonosta pitää poistaa.
+
+**Talouskalenteri ei ulotu viikonlopun yli.** ForexFactoryn syöte kattaa vain
+kuluvan viikon (su–la) eikä `ff_calendar_nextweek` vastaa mitään, joten
+perjantaina ajettu suunnittelija ei näe maanantain punaisia julkaisuja — niitä
+ei vielä ole olemassa. Tätä **ei ratkaista pidemmällä ikkunalla** vaan
+ajoituksella: suunnittelija ajetaan vuorokausittaisen ajastuksen lisäksi aina
+kun `trading-calendar`-cron on päivittänyt syötteen, ja idempotenssi tekee
+ylimääräisistä ajoista vaarattomia. Istuntoajat eivät kärsi tästä lainkaan —
+ne ovat sääntöjä ja laskettavissa miten kauas tahansa.
+
+**Kuljetus ei saa olla markkinakohtainen.** Sama "herää oikeaan aikaan ja
+kerro käyttäjälle" -mekanismi tarvitaan talouskalenterin punaisille
+julkaisuille (T-15 min) ja myöhemmin YouTube-kanavien uusille videoille, ks.
+[docs/trading-backlog.md](docs/trading-backlog.md). Kaksi erillistä ratkaisua
+samaan ongelmaan on juuri se mitä ei haluta, joten ajastin ja tilaukset
+rakennetaan yleisiksi ja `MarketEvent` on yksi lähde niiden päällä.
+
+### Yksityiskohdat
+
+Kanavia on kolme (selainilmoitus, banneri, ääni) erikseen kytkettävinä, koska
+ne epäonnistuvat eri tavoin: ilmoitus vaatii luvan, ääni käyttäjän eleen,
+banneri toimii aina. Yksi yhteinen kytkin piilottaisi sen että kaksi kolmesta
+ei tullut perille. Ääni syntetisoidaan Web Audiolla eikä ladata tiedostona —
+äänitiedosto olisi verkkohaku juuri sillä hetkellä kun ilmoituksen pitäisi
+olla välitön.
+
+In-app-kerroksen kaksoisilmoitus estetään **yhdellä kasvavalla aikaleimalla**
+selaimen localStoragessa, ei avainlistalla: tapahtumat tulevat ilmoitushetken
+järjestyksessä, joten "tätä vanhemmat on hoidettu" on sama tieto ilman
+siivousta. Yli 10 minuuttia myöhässä olevat ohitetaan mutta merkki siirretään
+silti — muuten nukkuneen koneen herätessä tulisi kerralla koko päivän rypäs.
+Merkki on laitekohtainen eikä käyttäjäkohtainen; sama tapahtuma kuuluukin
+näyttää erikseen puhelimessa ja koneella. Pushin puolella sama tieto on
+palvelimella, koska lähettäjä on siellä.
+
+Asetukset ja omat ajat ovat KV:ssä käyttäjäkohtaisesti
+([notifyStore.ts](src/lib/arxcian/trading/notifyStore.ts)), eivät selaimessa:
+Albin ja Arbnor voivat käyttää samaa laitetta, ja selaimeen tallennettu asetus
+tarkoittaisi että toisen killzone-ajat hälyttäisivät toiselle.
+
+**iOS:** push toimii vain kotiruudulle asennetusta PWA:sta (16.4+), lupakysely
+vaatii käyttäjän eleen, ja tilaus kuolee jos sovellus poistetaan — kuolleet
+tilaukset (410/404) siivotaan lähetyksen yhteydessä.
+
 ## Tunnetut puutteet
 
 Maapallolla **ei ole punaisia uutispisteitä** eikä kaupunkien välisiä synapsikaaria. Uutispisteet vaatisivat pääteltyä sijaintia (RSS:ssä ei ole sijaintikenttää), kaaret odottavat käyttäjän omaa toteutusta.
