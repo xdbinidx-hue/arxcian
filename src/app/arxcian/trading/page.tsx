@@ -1,4 +1,6 @@
+import { redirect } from 'next/navigation'
 import { currentOwner } from '@/lib/session'
+import { getNotifySettings, getTradingTimes } from '@/lib/arxcian/trading/notifyStore'
 import { getAlerts } from '@/lib/arxcian/trading/alerts'
 import { getCalendar, highImpactEvents } from '@/lib/arxcian/trading/calendar'
 import { SentimentGauge } from '@/components/arxcian/trading/SentimentGauge'
@@ -8,13 +10,23 @@ import { EconomicCalendar } from '@/components/arxcian/trading/EconomicCalendar'
 import { MarketSessions } from '@/components/arxcian/trading/MarketSessions'
 import { ChartPanel } from '@/components/arxcian/trading/ChartPanel'
 import { WatchlistTable } from '@/components/arxcian/trading/WatchlistTable'
+import { MarketAlertsSettings } from '@/components/arxcian/trading/MarketAlertsSettings'
 
 export const metadata = { title: 'Trading · arxcian' }
 export const dynamic = 'force-dynamic'
 
 export default async function TradingPage() {
-  await currentOwner()
-  const [alerts, calendar] = await Promise.all([getAlerts(), getCalendar()])
+  // Käyttäjä tarvitaan tällä sivulla: uusi treidausaika tallennetaan hänen
+  // omakseen. Layout on jo ohjannut kirjautumattoman pois, joten tämä on
+  // kaventamista varten eikä toinen suojaus.
+  const user = await currentOwner()
+  if (!user) redirect('/login')
+  const [alerts, calendar, notifySettings, tradingTimes] = await Promise.all([
+    getAlerts(),
+    getCalendar(),
+    getNotifySettings(user),
+    getTradingTimes(user),
+  ])
 
   // Yksi kello koko renderöinnille: suodatus ja selaimen lähtölaskennan
   // aloitus katsovat samaa hetkeä, jolloin listalta ei putoa tapahtumaa
@@ -54,6 +66,17 @@ export default async function TradingPage() {
 
       <div className="mb-4">
         <IctFeed />
+      </div>
+
+      {/* Ilmoitusasetukset ja omat ajat kurssihälytysten viereen: molemmat
+          vastaavat samaan kysymykseen "milloin minua herätetään", vaikka
+          toinen katsoo hintaa ja toinen kelloa. */}
+      <div className="mb-4 grid gap-3 lg:grid-cols-2">
+        <MarketAlertsSettings
+          initialSettings={notifySettings}
+          initialTimes={tradingTimes}
+          user={user}
+        />
       </div>
 
       <AlertsPanel initialAlerts={alerts} />

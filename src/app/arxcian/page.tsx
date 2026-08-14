@@ -12,6 +12,7 @@ import { TodoPanel } from '@/components/arxcian/hub/TodoPanel'
 import { CalendarMonth } from '@/components/arxcian/hub/CalendarMonth'
 import { Channels } from '@/components/arxcian/hub/Channels'
 import { RjMobSummary } from '@/components/arxcian/hub/RjMobSummary'
+import { MarketSessions } from '@/components/arxcian/hub/MarketSessions'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,10 @@ export default async function ArxcianHub() {
   // Maapallon data kootaan palvelimella olemassa olevasta välimuistista —
   // maapallo ei koskaan hae dataa itse.
   const globe = await hubData()
+
+  // Yksi kello koko renderöinnille, jotta istuntopaneelin lähtölaskenta alkaa
+  // palvelimella samasta hetkestä johon selain jatkaa.
+  const now = Date.now()
 
   return (
     <div className="relative mx-auto max-w-[1920px]">
@@ -92,9 +97,13 @@ export default async function ArxcianHub() {
 
         <div className="grid content-start gap-3 xl:col-start-3 xl:row-start-1">
           <MarketSnapshot delay={0.24} />
-          <CalendarMonth delay={0.28} />
-          <TodoPanel delay={0.32} />
-          <QuickActions delay={0.36} />
+          {/* Istunnot heti kurssien alle: molemmat vastaavat markkinaa
+              koskevaan kysymykseen, ja "onko Lontoo auki" on se joka
+              ratkaisee kannattaako kursseja edes katsoa juuri nyt. */}
+          <MarketSessions now={now} delay={0.28} />
+          <CalendarMonth delay={0.32} />
+          <TodoPanel delay={0.36} />
+          <QuickActions delay={0.4} />
         </div>
       </div>
 
