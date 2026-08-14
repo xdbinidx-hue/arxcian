@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 import { redirect } from 'next/navigation'
 import { currentOwner } from '@/lib/session'
+import { getNotifySettings, getTradingTimes } from '@/lib/arxcian/trading/notifyStore'
 import { Shell } from '@/components/arxcian/Shell'
 import { ServiceWorkerRegister } from '@/components/arxcian/ServiceWorkerRegister'
+import { MarketAlerts } from '@/components/arxcian/trading/MarketAlerts'
 
 export const metadata: Metadata = {
   title: 'arxcian',
@@ -26,9 +28,18 @@ export default async function ArxcianLayout({ children }: { children: React.Reac
   const user = await currentOwner()
   if (!user) redirect('/login')
 
+  // Markkinailmoitukset luetaan layoutissa eikä Trading-sivulla: ajastin
+  // kuuluu koko sovellukseen, koska ilmoitus avautuvasta istunnosta on
+  // hyödyllinen nimenomaan silloin kun katse on jossain muualla.
+  const [notifySettings, tradingTimes] = await Promise.all([
+    getNotifySettings(user),
+    getTradingTimes(user),
+  ])
+
   return (
     <div className="arxcian-root min-h-dvh antialiased">
       <Shell user={user}>{children}</Shell>
+      <MarketAlerts settings={notifySettings} times={tradingTimes} />
       <ServiceWorkerRegister />
     </div>
   )
