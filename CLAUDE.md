@@ -63,6 +63,35 @@ const omat = visibleTo(kaikki, user)
 
 Globaali `vercel` on 54.4.1 eikä osaa lisätä preview-muuttujia ei-interaktiivisesti (jää `git_branch_required`-tilaan). Päivitys vaatisi sudon, joten käytä preview-lisäyksiin `npx vercel@latest env add <NIMI> preview --value <arvo> --yes`.
 
+## RJ-Mobin laskentaohjeet ovat Drivessä, eivät koodissa
+
+Kaikki RJ-Mobin datapoiminta- ja laskentasäännöt on kirjoitettu auki Google
+Driveen kansioon **Arxcian > rjmob > Ohjeet** (kansio-id
+`1d8o0ObBBxV5b7xMA-tH014Q8xsPILWGp`): `myyntiseuranta_ohje`,
+`tuottoseuranta_ohje`, `tavoitteet_ja_runrate_ohje`, `trendit_ohje`,
+`tilannekatsaus_ohje`, `maksukuitti_ohje` ja `rj-mob_myyjät`.
+
+**Tarkista ohje ennen kuin muutat laskentaa, äläkä päättele kaavaa koodista
+taaksepäin.** Koodi kertoo mitä tehdään, ohje kertoo miksi — ja ohje on se
+jonka Albin päivittää. Ohjeet myös muuttuvat: elokuussa 2026 myyntiseurannan
+välilehtirakenne vaihtui kesken kuun ja `rj-mob_myyjät` kirjoitettiin uusiksi
+taulukkomuotoon saman päivän aikana. Jos jokin luku näyttää väärältä eikä
+koodista löydy syytä, lue ohje uudelleen ennen kuin korjaat koodia.
+
+`rj-mob_myyjät` on myyjälista, jossa on tunnus, koko nimi, tuntipalkka ja
+työskenteleekö myyjä yhä. Se on **dokumentaatiota, ei koodin lukema lähde** —
+samat tiedot ovat `TUNTIPALKAT` ja `RJ_MOB_SELLERS` ([rjmob.ts](src/lib/rjmob.ts))
+sekä `MYYJAT` ([winpos-myyjat.ts](src/lib/winpos/winpos-myyjat.ts)). Kun lista
+muuttuu, molemmat päät on päivitettävä. Jos siitä joskus halutaan elävä lähde,
+se pitää siirtää Docsista Sheetsiin: Docsin sarkainsisennetystä tekstistä
+parien tunnistus nojaa rivijärjestykseen eikä kestä käsin tehtyä muotoilua.
+
+**Lukeminen kun Drive-connectori ei vastaa:** kansio on jaettu projektin
+palvelutilille, joten ohjeet saa luettua `GOOGLE_SERVICE_ACCOUNT_KEY`:llä ilman
+connectoria — `drive.files.export({ fileId, mimeType: 'text/plain' })` scopella
+`drive.readonly`. Huom. että `.env.local`in avain pitää `JSON.parse`ata
+**ilman** `\n`-korvausta; korvaus rikkoo private_keyn.
+
 ## Ulkoinen data: hae ja välimuistita
 
 Kaikki ulkoiset lähteet kulkevat [src/lib/arxcian/cache.ts](src/lib/arxcian/cache.ts):n kautta. Älä hae RSS:ää tai markkinadataa suoraan sivulla.
