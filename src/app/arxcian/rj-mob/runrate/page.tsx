@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import { tehoaEiArvioida as eiTehoa } from '@/lib/rjmob'
 import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
 
 interface SellerRunRate {
@@ -234,7 +235,9 @@ export default function RunRatePage() {
                         <td style={td}>{fmt(s.kassa)} €</td>
                         <td style={{...td, color:'#185FA5', fontWeight:500}}>{fmt(s.rrKassa)} €</td>
                         <td style={{...td, fontWeight:600, color:'#185FA5'}}>{fmt(s.rrProvisio)} €</td>
-                        <td style={{...td, color: tehoColor(s.teho, s.tyyppi), fontWeight:500}}>{fmt(s.teho, 2)} €/h</td>
+                        {eiTehoa(s.nimi)
+                          ? <td style={{...td, color:'#bbb'}}>—</td>
+                          : <td style={{...td, color: tehoColor(s.teho, s.tyyppi), fontWeight:500}}>{fmt(s.teho, 2)} €/h</td>}
                       </tr>
                     ))}
                     <tr>

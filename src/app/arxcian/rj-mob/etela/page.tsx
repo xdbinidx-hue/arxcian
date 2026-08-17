@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import { tehoaEiArvioida as eiTehoa } from '@/lib/rjmob'
 
 interface SellerResult {
   nimi: string
@@ -11,12 +12,12 @@ interface SellerResult {
   fsecEur: number
   kassa: number
   tunnit: number
-  // Kolme teholukua tulevat valmiina laskeMyyjalta (myyntiseuranta_ohje), ei
-  // laskettuna täällä liittEur-sarakkeesta: vain kirjasto tietää Krenarin
-  // nelinkertaisen provision ja F-Secure-leikkurin.
-  tehoLiitt: number
-  teho: number
-  tehoTotal: number
+  // Myyntiseurannan asteikon teholuvut tulevat valmiina laskeMyyjalta: siellä
+  // liittymäprovisio on x1 myös Krenarilla, kun taas tuottoseurannan `teho`
+  // käyttää hänen nelinkertaista provisiotaan. F-Secure-leikkuri on molemmissa.
+  myyntiTehoLiitt: number
+  myyntiTeho: number
+  myyntiTehoTotal: number
 }
 
 interface StoreData {
@@ -73,7 +74,7 @@ export default function EtelanHaratPage() {
             .sort((a: SellerResult, b: SellerResult) => {
               if (a.nimi.includes('Albin')) return 1
               if (b.nimi.includes('Albin')) return -1
-              return b.tehoLiitt - a.tehoLiitt
+              return b.myyntiTehoLiitt - a.myyntiTehoLiitt
             })
           setSellers(sorted)
           setStores(d.stores ?? {})
@@ -133,10 +134,14 @@ export default function EtelanHaratPage() {
     total: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob + (s.fsecEur ?? 0)) / s.tunnit : 0,
   })
 
+  // Albin jää keskiarvon ulkopuolelle samasta syystä kuin hänen rivinsä
+  // teholuvuista: hän ei tee myyntivuoroja, joten hänen tuntinsa ja
+  // provisionsa vääristäisivät tiimin lukua kumpaankin suuntaan.
+  const tehoRivit = sellers.filter(s => !eiTehoa(s.nimi))
   const sellerTeho = {
-    liitt: yhteisTeho(sellers, s => s.tehoLiitt, s => s.tunnit),
-    kassa: yhteisTeho(sellers, s => s.teho, s => s.tunnit),
-    total: yhteisTeho(sellers, s => s.tehoTotal, s => s.tunnit),
+    liitt: yhteisTeho(tehoRivit, s => s.myyntiTehoLiitt, s => s.tunnit),
+    kassa: yhteisTeho(tehoRivit, s => s.myyntiTeho, s => s.tunnit),
+    total: yhteisTeho(tehoRivit, s => s.myyntiTehoTotal, s => s.tunnit),
   }
 
   const storeTeho = {
@@ -156,6 +161,7 @@ export default function EtelanHaratPage() {
   const tehoColor = (teho: number) => teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
   const tehoSolu = (teho: number) => ({...tdStyle, color: tehoColor(teho), fontWeight:500})
   const tehoTot = (teho: number) => ({...totStyle, color: tehoColor(teho)})
+  const tdEiTehoa = {...tdStyle, color:'#aaa', fontSize:11, textAlign:'center' as const}
 
   const [viesti, setViesti] = useState('')
   const [viestiLoading, setViestiLoading] = useState<string|null>(null)
@@ -251,9 +257,15 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
-                          <td style={tehoSolu(s.tehoLiitt)}>{fmt(s.tehoLiitt)} €/h</td>
-                          <td style={tehoSolu(s.teho)}>{fmt(s.teho)} €/h</td>
-                          <td style={tehoSolu(s.tehoTotal)}>{fmt(s.tehoTotal)} €/h</td>
+                          {eiTehoa(s.nimi) ? (
+                            <td style={tdEiTehoa} colSpan={3}>ei arvioida</td>
+                          ) : (
+                            <>
+                              <td style={tehoSolu(s.myyntiTehoLiitt)}>{fmt(s.myyntiTehoLiitt)} €/h</td>
+                              <td style={tehoSolu(s.myyntiTeho)}>{fmt(s.myyntiTeho)} €/h</td>
+                              <td style={tehoSolu(s.myyntiTehoTotal)}>{fmt(s.myyntiTehoTotal)} €/h</td>
+                            </>
+                          )}
                         </tr>
                       )
                     })}

@@ -132,6 +132,19 @@ export function getTuntipalkka(nimi: string): number {
 export function isRefSeller(nimi: string): boolean {
   return REF_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
 }
+/**
+ * Myyjät joiden tehoa ei ilmoiteta eikä lasketa keskiarvoon (Albinin pyyntö
+ * 17.8.2026). Albin ei tee myyntivuoroja, joten hänen liittymäprovisionsa
+ * jakautuisi lähes nollille tunneille ja näyttäisi mielivaltaista lukua.
+ *
+ * Arbnor ei ole listalla vaikka on samalla tavalla omistaja: hän tekee
+ * myyntivuoroja (elokuussa 2026 48 h), joten hänen tehonsa on mielekäs.
+ */
+export const NO_TEHO_SELLERS = ['Albin Rashica', 'Rashica Albin']
+export function tehoaEiArvioida(nimi: string): boolean {
+  return NO_TEHO_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
+}
+
 export function isOwner(nimi: string): boolean {
   return OWNER_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
 }
@@ -185,11 +198,21 @@ export interface SellerResult {
   tyokulu: number
   netto: number
   roi: number | null
-  /** Liittymäteho: liittymäprovisio / tunnit (myyntiseuranta_ohje). */
+  // --- Tuottoseurannan asteikko: Krenarilla liittymäprovisio x4 ---
+  /** Liittymäteho: myyjän liittymäprovisio / tunnit. */
   tehoLiitt: number
   teho: number         // laskettu normaali tunnit (myyntiseuranta), leikkurin jälkeen
   /** Total teho: liittymä + kassakate + F-Secure -provisio / tunnit. Ilman bonuksia. */
   tehoTotal: number
+
+  // --- Myyntiseurannan asteikko: liittymäprovisio x1 kaikilla, Krenar mukaan lukien ---
+  /** Liittymäteho myyntiseurannan asteikolla. */
+  myyntiTehoLiitt: number
+  /** Liittymä + kassakate / tunnit myyntiseurannan asteikolla. */
+  myyntiTeho: number
+  /** Liittymä + kassakate + F-Secure / tunnit myyntiseurannan asteikolla. */
+  myyntiTehoTotal: number
+
   tehoStatus: 'green' | 'amber' | 'red' | 'special'
   fsecFV: number
   /** F-Secure-leikkuri osui: alle rajan jääneistä provisioista leikattiin 30 %. */
@@ -242,7 +265,9 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
       fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: 0,
       rjmobLiitt: 0, rjmobKassa: 0, rjmobFsec: 0, rjmobTulo: 0,
       myyjaProv: 0, provisioYhteensa: 0, palkkaBrutto: 0, tyokulu: 0, netto: 0, roi: null,
-      tehoLiitt: 0, teho: 0, tehoTotal: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12,
+      tehoLiitt: 0, teho: 0, tehoTotal: 0,
+      myyntiTehoLiitt: 0, myyntiTeho: 0, myyntiTehoTotal: 0,
+      tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12,
       fsecLeikkuri: false, fsecLeikkuriEur: 0, tappiollinen: false,
     }
   }
@@ -303,6 +328,25 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
   // ansaita tunnissa.
   const tehoLiitt = tunnit > 0 ? myyjaProvNetto / tunnit : 0
   const tehoTotal = tunnit > 0 ? (myyjaProvNetto + kassaNetto + fsecEurNetto) / tunnit : 0
+
+  // Myyntiseurannan teholuvut lasketaan liittymäprovisiolla **sellaisenaan
+  // (x1)**, myös Krenarilla — yllä olevat tuottoseurannan luvut käyttävät
+  // Krenarin omaa nelinkertaista provisiota (KRENAR_SELLER_MULT).
+  //
+  // Ero on tarkoituksellinen eikä bugi. Myyntiseuranta vertaa myyjien
+  // myyntisuoritusta keskenään, ja siellä Krenarin sopimuskerroin tekisi
+  // hänestä nelinkertaisen ilman että hän on myynyt euroakaan enempää:
+  // elokuussa 2026 hänen liittymätehonsa on 36,80 €/h tuottoseurannan
+  // asteikolla mutta 9,20 €/h myyntiseurannan asteikolla. Tuottoseuranta taas
+  // mittaa mitä myyjälle todella maksetaan, ja siellä kerroin kuuluu mukaan.
+  //
+  // Muille kuin Krenarille sarjat ovat numeerisesti identtiset, koska
+  // myyjaProv = liittEur. **Muuta molemmat päät tai kumpaakaan.**
+  const myyntiProvNetto = liittEur * jaljelle
+  const myyntiTehoLiitt = tunnit > 0 ? myyntiProvNetto / tunnit : 0
+  const myyntiTeho = tunnit > 0 ? (myyntiProvNetto + kassaNetto) / tunnit : 0
+  const myyntiTehoTotal = tunnit > 0 ? (myyntiProvNetto + kassaNetto + fsecEurNetto) / tunnit : 0
+
   const fsecFV = fsecKpl * FSEC_RECURRING * 12
 
   // Myyjän provisiot yhteensä (pohjapalkan päälle tuleva osuus, myös työkulun provisiopohja).
@@ -352,7 +396,9 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
     fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: dnaBonusEur,
     rjmobLiitt, rjmobKassa, rjmobFsec, rjmobTulo,
     myyjaProv, provisioYhteensa, palkkaBrutto, tyokulu, netto, roi,
-    tehoLiitt, teho, tehoTotal, tehoStatus, fsecFV, fsecLeikkuri, fsecLeikkuriEur, tappiollinen,
+    tehoLiitt, teho, tehoTotal,
+    myyntiTehoLiitt, myyntiTeho, myyntiTehoTotal,
+    tehoStatus, fsecFV, fsecLeikkuri, fsecLeikkuriEur, tappiollinen,
   }
 }
 
