@@ -185,7 +185,11 @@ export interface SellerResult {
   tyokulu: number
   netto: number
   roi: number | null
+  /** Liittymäteho: liittymäprovisio / tunnit (myyntiseuranta_ohje). */
+  tehoLiitt: number
   teho: number         // laskettu normaali tunnit (myyntiseuranta), leikkurin jälkeen
+  /** Total teho: liittymä + kassakate + F-Secure -provisio / tunnit. Ilman bonuksia. */
+  tehoTotal: number
   tehoStatus: 'green' | 'amber' | 'red' | 'special'
   fsecFV: number
   /** F-Secure-leikkuri osui: alle rajan jääneistä provisioista leikattiin 30 %. */
@@ -238,7 +242,7 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
       fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: 0,
       rjmobLiitt: 0, rjmobKassa: 0, rjmobFsec: 0, rjmobTulo: 0,
       myyjaProv: 0, provisioYhteensa: 0, palkkaBrutto: 0, tyokulu: 0, netto: 0, roi: null,
-      teho: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12,
+      tehoLiitt: 0, teho: 0, tehoTotal: 0, tehoStatus: 'special', fsecFV: fsecKpl * FSEC_RECURRING * 12,
       fsecLeikkuri: false, fsecLeikkuriEur: 0, tappiollinen: false,
     }
   }
@@ -285,6 +289,20 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
   // enää vastaa kaavaa (myyjaProv + kassa) / tunnit näillä kentillä — ne ovat
   // leikkaamattomat, koska ne ovat taulukon omia lukuja.
   const teho = tunnit > 0 ? (myyjaProvNetto + kassaNetto) / tunnit : 0
+
+  // Myyntiseuranta näyttää kolme teholukua (myyntiseuranta_ohje): liittymä,
+  // liittymä + kassakate ja total. Keskimmäinen on jo `teho`, joten kaikki
+  // kolme lasketaan täällä samasta pohjasta — muuten sivu laskisi ne itse
+  // raa'asta `liittEur`-sarakkeesta, jolloin Krenarin nelinkertainen provisio
+  // ja F-Secure-leikkuri jäisivät pois ja sama teho näyttäisi Myyntiseurannassa
+  // eri lukua kuin tuottoseurannassa.
+  //
+  // Total tehossa ovat mukana vain provisiot, ei F-Secure- eikä
+  // DNA-uusmyyntibonusta: ohje sanoo "liittymä + kassakate + f-secure
+  // provisio", ja bonukset ovat portaittaisia kertasuorituksia joita ei
+  // ansaita tunnissa.
+  const tehoLiitt = tunnit > 0 ? myyjaProvNetto / tunnit : 0
+  const tehoTotal = tunnit > 0 ? (myyjaProvNetto + kassaNetto + fsecEurNetto) / tunnit : 0
   const fsecFV = fsecKpl * FSEC_RECURRING * 12
 
   // Myyjän provisiot yhteensä (pohjapalkan päälle tuleva osuus, myös työkulun provisiopohja).
@@ -334,7 +352,7 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
     fsecEur, fsecBonus: bonus, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl, dnaBonus: dnaBonusEur,
     rjmobLiitt, rjmobKassa, rjmobFsec, rjmobTulo,
     myyjaProv, provisioYhteensa, palkkaBrutto, tyokulu, netto, roi,
-    teho, tehoStatus, fsecFV, fsecLeikkuri, fsecLeikkuriEur, tappiollinen,
+    tehoLiitt, teho, tehoTotal, tehoStatus, fsecFV, fsecLeikkuri, fsecLeikkuriEur, tappiollinen,
   }
 }
 

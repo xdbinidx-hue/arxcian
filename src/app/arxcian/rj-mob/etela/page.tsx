@@ -11,7 +11,12 @@ interface SellerResult {
   fsecEur: number
   kassa: number
   tunnit: number
+  // Kolme teholukua tulevat valmiina laskeMyyjalta (myyntiseuranta_ohje), ei
+  // laskettuna täällä liittEur-sarakkeesta: vain kirjasto tietää Krenarin
+  // nelinkertaisen provision ja F-Secure-leikkurin.
+  tehoLiitt: number
   teho: number
+  tehoTotal: number
 }
 
 interface StoreData {
@@ -68,9 +73,7 @@ export default function EtelanHaratPage() {
             .sort((a: SellerResult, b: SellerResult) => {
               if (a.nimi.includes('Albin')) return 1
               if (b.nimi.includes('Albin')) return -1
-              const tehoA = a.tunnit > 0 ? a.liittEur / a.tunnit : 0
-              const tehoB = b.tunnit > 0 ? b.liittEur / b.tunnit : 0
-              return tehoB - tehoA
+              return b.tehoLiitt - a.tehoLiitt
             })
           setSellers(sorted)
           setStores(d.stores ?? {})
@@ -82,6 +85,20 @@ export default function EtelanHaratPage() {
 
   const fmt = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2})
   const fmtN = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 0, maximumFractionDigits: 0})
+
+  /**
+   * Yhteensä-rivin teho on painotettu: Σ(provisio) / Σ(tunnit).
+   *
+   * Ennen tässä oli rivikohtaisten tehojen keskiarvo, joka antoi kahden tunnin
+   * myyjälle saman painon kuin sadan tunnin myyjälle — luku ei siis vastannut
+   * mitään todellista euroa tunnissa. Osoittaja johdetaan rivin omasta tehosta
+   * (teho × tunnit), jolloin yhteensä-rivi on väistämättä samasta pohjasta kuin
+   * rivit sen yllä.
+   */
+  const yhteisTeho = <T,>(rivit: T[], teho: (r: T) => number, tunnit: (r: T) => number) => {
+    const h = rivit.reduce((s, r) => s + tunnit(r), 0)
+    return h > 0 ? rivit.reduce((s, r) => s + teho(r) * tunnit(r), 0) / h : 0
+  }
 
   const sellerTotals = {
     liittKpl: sellers.reduce((s,r) => s+r.liittKpl, 0),
@@ -101,12 +118,44 @@ export default function EtelanHaratPage() {
     tunnit: Object.values(stores).reduce((s,r) => s+r.tunnit, 0),
   }
 
+  /**
+   * Myymälän kolme teholukua (myyntiseuranta_ohje).
+   *
+   * Kassakatteena on `kassaRjmob` (×1) eikä `kassa` (×10): myyjän `kassa` on
+   * kassaprovisio ja myymälän `kassa` siitä johdettu kassakate, joten ilman
+   * tätä myymälän teho olisi kymmenkertainen myyjiin nähden eikä 7/9 €/h
+   * -kynnys tarkoittaisi samaa molemmissa taulukoissa. Sama valinta kuin
+   * rjmobInsights.ts:n myymalanTeho-funktiossa.
+   */
+  const myymalanTehot = (s: StoreData) => ({
+    liitt: s.tunnit > 0 ? s.liittEur / s.tunnit : 0,
+    kassa: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob) / s.tunnit : 0,
+    total: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob + (s.fsecEur ?? 0)) / s.tunnit : 0,
+  })
+
+  const sellerTeho = {
+    liitt: yhteisTeho(sellers, s => s.tehoLiitt, s => s.tunnit),
+    kassa: yhteisTeho(sellers, s => s.teho, s => s.tunnit),
+    total: yhteisTeho(sellers, s => s.tehoTotal, s => s.tunnit),
+  }
+
+  const storeTeho = {
+    liitt: yhteisTeho(Object.values(stores), s => myymalanTehot(s).liitt, s => s.tunnit),
+    kassa: yhteisTeho(Object.values(stores), s => myymalanTehot(s).kassa, s => s.tunnit),
+    total: yhteisTeho(Object.values(stores), s => myymalanTehot(s).total, s => s.tunnit),
+  }
+
   const thStyle = {padding:'8px 10px', fontSize:11, fontWeight:500, color:'#888', textAlign:'right' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6'}
   const thLStyle = {...thStyle, textAlign:'left' as const}
   const tdStyle = {padding:'7px 10px', fontSize:12, textAlign:'right' as const, borderBottom:'0.5px solid #f0f0f0', whiteSpace:'nowrap' as const}
   const tdLStyle = {...tdStyle, textAlign:'left' as const, fontWeight:500}
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign:'left' as const}
+
+  // Sama kynnys kuin tuottoseurannassa ja run ratessa: 9 €/h hyvä, 7 €/h raja.
+  const tehoColor = (teho: number) => teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
+  const tehoSolu = (teho: number) => ({...tdStyle, color: tehoColor(teho), fontWeight:500})
+  const tehoTot = (teho: number) => ({...totStyle, color: tehoColor(teho)})
 
   const [viesti, setViesti] = useState('')
   const [viestiLoading, setViestiLoading] = useState<string|null>(null)
@@ -191,8 +240,6 @@ Generoi viesti:`
                   <tbody>
                     {sellers.map((s, i) => {
                       const provisio = s.liittEur + s.fsecEur + s.kassa
-                      const myyntiTeho = s.tunnit > 0 ? (s.liittEur + s.kassa) / s.tunnit : 0
-                      const tehoColor = myyntiTeho >= 9 ? '#3B6D11' : myyntiTeho >= 7 ? '#854F0B' : '#A32D2D'
                       return (
                         <tr key={s.nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
@@ -204,9 +251,9 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && s.liittEur/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && s.liittEur/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{(s.tunnit > 0 ? s.liittEur/s.tunnit : 0).toFixed(2)} €/h</td>
-                          <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{myyntiTeho.toFixed(2)} €/h</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassa+s.fsecEur)/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{(s.tunnit > 0 ? (s.liittEur+s.kassa+s.fsecEur)/s.tunnit : 0).toFixed(2)} €/h</td>
+                          <td style={tehoSolu(s.tehoLiitt)}>{fmt(s.tehoLiitt)} €/h</td>
+                          <td style={tehoSolu(s.teho)}>{fmt(s.teho)} €/h</td>
+                          <td style={tehoSolu(s.tehoTotal)}>{fmt(s.tehoTotal)} €/h</td>
                         </tr>
                       )
                     })}
@@ -219,15 +266,9 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
-                      <td style={totStyle}>
-                        {fmt(sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).reduce((s,r) => s + r.teho, 0) / (sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).length || 1)) + ' €/h'}
-                      </td>
-                      <td style={totStyle}>
-                        {fmt(sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassa) / r.tunnit, 0) / (sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).length || 1)) + ' €/h'}
-                      </td>
-                      <td style={totStyle}>
-                        {fmt(sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassa + r.fsecEur) / r.tunnit, 0) / (sellers.filter(s => s.tyyppi !== 'owner' && s.tunnit > 0).length || 1)) + ' €/h'}
-                      </td>
+                      <td style={tehoTot(sellerTeho.liitt)}>{fmt(sellerTeho.liitt)} €/h</td>
+                      <td style={tehoTot(sellerTeho.kassa)}>{fmt(sellerTeho.kassa)} €/h</td>
+                      <td style={tehoTot(sellerTeho.total)}>{fmt(sellerTeho.total)} €/h</td>
                     </tr>
                   </tbody>
                 </table>
@@ -258,8 +299,7 @@ Generoi viesti:`
                   </thead>
                   <tbody>
                     {Object.entries(stores).sort((a,b) => b[1].liittEur - a[1].liittEur).map(([nimi, s], i) => {
-                      const teho = s.tunnit > 0 ? s.liittEur / s.tunnit : 0
-                      const tehoColor = teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
+                      const t = myymalanTehot(s)
                       return (
                         <tr key={nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
@@ -270,9 +310,9 @@ Generoi viesti:`
                           <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
-                          <td style={{...tdStyle, color: tehoColor, fontWeight:500}}>{teho.toFixed(2)} €/h</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassaRjmob)/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassaRjmob)/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{s.tunnit > 0 ? ((s.liittEur+s.kassaRjmob)/s.tunnit).toFixed(2) : '0.00'} €/h</td>
-                          <td style={{...tdStyle, color: s.tunnit > 0 && (s.liittEur+s.kassaRjmob+(s.fsecEur??0))/s.tunnit >= 9 ? '#3B6D11' : s.tunnit > 0 && (s.liittEur+s.kassaRjmob+(s.fsecEur??0))/s.tunnit >= 7 ? '#854F0B' : '#A32D2D', fontWeight:500}}>{s.tunnit > 0 ? ((s.liittEur+s.kassaRjmob+(s.fsecEur??0))/s.tunnit).toFixed(2) : '0.00'} €/h</td>
+                          <td style={tehoSolu(t.liitt)}>{fmt(t.liitt)} €/h</td>
+                          <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
+                          <td style={tehoSolu(t.total)}>{fmt(t.total)} €/h</td>
                         </tr>
                       )
                     })}
@@ -284,15 +324,9 @@ Generoi viesti:`
                       <td style={totStyle}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
-                      <td style={totStyle}>
-                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + r.liittEur / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
-                      </td>
-                      <td style={totStyle}>
-                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassaRjmob) / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
-                      </td>
-                      <td style={totStyle}>
-                        {fmt(Object.values(stores).filter(s => s.tunnit > 0).reduce((s,r) => s + (r.liittEur + r.kassaRjmob + (r.fsecEur ?? 0)) / r.tunnit, 0) / (Object.values(stores).filter(s => s.tunnit > 0).length || 1)) + ' €/h'}
-                      </td>
+                      <td style={tehoTot(storeTeho.liitt)}>{fmt(storeTeho.liitt)} €/h</td>
+                      <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
+                      <td style={tehoTot(storeTeho.total)}>{fmt(storeTeho.total)} €/h</td>
                     </tr>
 
                   </tbody>
