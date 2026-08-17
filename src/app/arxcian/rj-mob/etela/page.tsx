@@ -15,9 +15,13 @@ interface SellerResult {
   // Myyntiseurannan asteikon teholuvut tulevat valmiina laskeMyyjalta: siellä
   // liittymäprovisio on x1 myös Krenarilla, kun taas tuottoseurannan `teho`
   // käyttää hänen nelinkertaista provisiotaan. F-Secure-leikkuri on molemmissa.
-  myyntiTehoLiitt: number
-  myyntiTeho: number
-  myyntiTehoTotal: number
+  // Valinnaisia tarkoituksella: /api/sheets on CDN-välimuistissa
+  // (s-maxage=300), joten heti deployn jälkeen selain voi saada vielä
+  // vanhan vastauksen josta nämä puuttuvat. Silloin näytetään viiva eikä
+  // kaadeta sivua undefined.toLocaleString()-virheeseen.
+  myyntiTehoLiitt?: number
+  myyntiTeho?: number
+  myyntiTehoTotal?: number
 }
 
 interface StoreData {
@@ -74,7 +78,7 @@ export default function EtelanHaratPage() {
             .sort((a: SellerResult, b: SellerResult) => {
               if (a.nimi.includes('Albin')) return 1
               if (b.nimi.includes('Albin')) return -1
-              return b.myyntiTehoLiitt - a.myyntiTehoLiitt
+              return (b.myyntiTehoLiitt ?? 0) - (a.myyntiTehoLiitt ?? 0)
             })
           setSellers(sorted)
           setStores(d.stores ?? {})
@@ -96,9 +100,10 @@ export default function EtelanHaratPage() {
    * (teho × tunnit), jolloin yhteensä-rivi on väistämättä samasta pohjasta kuin
    * rivit sen yllä.
    */
-  const yhteisTeho = <T,>(rivit: T[], teho: (r: T) => number, tunnit: (r: T) => number) => {
-    const h = rivit.reduce((s, r) => s + tunnit(r), 0)
-    return h > 0 ? rivit.reduce((s, r) => s + teho(r) * tunnit(r), 0) / h : 0
+  const yhteisTeho = <T,>(rivit: T[], teho: (r: T) => number | undefined, tunnit: (r: T) => number) => {
+    const kelpaa = rivit.filter(r => Number.isFinite(teho(r)) && Number.isFinite(tunnit(r)))
+    const h = kelpaa.reduce((s, r) => s + tunnit(r), 0)
+    return h > 0 ? kelpaa.reduce((s, r) => s + (teho(r) as number) * tunnit(r), 0) / h : 0
   }
 
   const sellerTotals = {
@@ -161,7 +166,9 @@ export default function EtelanHaratPage() {
   const tehoColor = (teho: number) => teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
   const tehoSolu = (teho: number) => ({...tdStyle, color: tehoColor(teho), fontWeight:500})
   const tehoTot = (teho: number) => ({...totStyle, color: tehoColor(teho)})
-  const tdEiTehoa = {...tdStyle, color:'#aaa', fontSize:11, textAlign:'center' as const}
+  const tehoTd = (n: number | undefined, key: number) => Number.isFinite(n)
+    ? <td key={key} style={tehoSolu(n as number)}>{fmt(n as number)} €/h</td>
+    : <td key={key} style={{...tdStyle, color:'#bbb'}}>—</td>
 
   const [viesti, setViesti] = useState('')
   const [viestiLoading, setViestiLoading] = useState<string|null>(null)
@@ -258,12 +265,12 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
                           {eiTehoa(s.nimi) ? (
-                            <td style={tdEiTehoa} colSpan={3}>ei arvioida</td>
+                            // Tyhjä, ei nollaa eikä selitystä: nolla näyttäisi
+                            // mitatulta tulokselta ja värittyisi punaiseksi.
+                            <td style={tdStyle} colSpan={3} />
                           ) : (
                             <>
-                              <td style={tehoSolu(s.myyntiTehoLiitt)}>{fmt(s.myyntiTehoLiitt)} €/h</td>
-                              <td style={tehoSolu(s.myyntiTeho)}>{fmt(s.myyntiTeho)} €/h</td>
-                              <td style={tehoSolu(s.myyntiTehoTotal)}>{fmt(s.myyntiTehoTotal)} €/h</td>
+                              {[s.myyntiTehoLiitt, s.myyntiTeho, s.myyntiTehoTotal].map(tehoTd)}
                             </>
                           )}
                         </tr>
