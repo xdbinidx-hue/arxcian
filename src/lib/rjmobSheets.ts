@@ -68,6 +68,13 @@ function parseMonthNumFromFileName(fileName: string): number | null {
 
 const RJ_STORES = ['malmi', 'easton', 'holma', 'syke', 'kivistö', 'kivisto']
 
+// Lähdevälilehdillä miinusmerkkinä on toisinaan U+2212 (−) eikä ASCII-viivaa,
+// jolloin parseNum riisuu sen numeroksi kelpaamattomana ja negatiivinen kate
+// muuttuisi positiiviseksi. Normalisoidaan ennen jäsennystä.
+function normalizeMinus(v: string): string {
+  return v.replace(/−/g, '-')
+}
+
 // Kanoninen "Etunimi Sukunimi" -muoto RJ_MOB_SELLERS-parien perusteella (parillinen indeksi = kanoninen).
 const CANONICAL_NAME: Record<string, string> = {}
 for (let i = 0; i + 1 < RJ_MOB_SELLERS.length; i += 2) {
@@ -113,102 +120,66 @@ export async function loadDashData(fileId: string): Promise<DashData> {
   }
 }
 
-async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: string, sheetNames: string[], fileName: string) {
-  const monthNum = parseMonthNumFromFileName(fileName)
-  const myyjatSheet = sheetNames.find(n => n.toLowerCase().includes('myyjät yhteensä') || n.toLowerCase().includes('myyjat yhteensa')) ?? sheetNames[0]
-  const myymalaSheet = sheetNames.find(n => n.toLowerCase().includes('myymäl') || n.toLowerCase().includes('myymäl')) ?? ''
-  const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
+type HoursMap = Record<string, { total: number, normaali: number, koulutus: number, sairas: number }>
 
-  const myyjatRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:BZ200` })
-  const myyjatRows = (myyjatRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
+/**
+ * data-välilehden tunnit nimen mukaan, avaimina sekä "Sukunimi Etunimi" että
+ * käännetty "Etunimi Sukunimi" — myyjätaulukot käyttävät kumpaakin muotoa.
+ *
+ * Eriytetty omaksi funktioksi, koska sekä "Myyjät Yhteensä" -pohjainen että
+ * elokuusta 2026 käytössä oleva "Myyjät Myymälöittäin" -pohjainen jäsennin
+ * tarvitsee samat tunnit. Logiikkaa ei muutettu siirrossa.
+ */
+async function readHoursMap(sheets: ReturnType<typeof google.sheets>, fileId: string, dataSheet: string): Promise<HoursMap> {
+  const hoursMap: HoursMap = {}
+  if (!dataSheet) return hoursMap
 
-  let headerIdx = -1
-  for (let i = 0; i < myyjatRows.length; i++) {
-    if (myyjatRows[i].some(c => c.toUpperCase() === 'MYYJÄ' || c.toUpperCase() === 'MYYJAT')) { headerIdx = i; break }
-  }
-  if (headerIdx < 0) {
-    for (let i = 0; i < myyjatRows.length; i++) {
-      if (myyjatRows[i].some(c => c.toLowerCase().includes('kassaprovisio') || c.toLowerCase().includes('liittymäprovisio'))) { headerIdx = i; break }
+  const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:BZ200` })
+  const dataRows = (dataRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
+  const dataHeaders = dataRows[0]?.map(h => h.toLowerCase().trim()) ?? []
+  const dNimi = findCol(dataHeaders, 'nimi')
+  const dTotal = findCol(dataHeaders, 'kokonaistunnit', 'tunnit yhteensä', 'kokonais')
+  const dNormaali = findCol(dataHeaders, 'normaali työ', 'normaali')
+  const dKoulutus = findCol(dataHeaders, 'koulutus', 'palaveri', 'koulutus/palaveri')
+  const dSairas = findCol(dataHeaders, 'sairas')
+  const absenceColNames = ['koulutus', 'palaveri', 'sairas', 'isyysvapaa', 'isyys', 'äitiysvapaa', 'äitiys', 'vanhempainvapaa', 'vanhempain', 'lomautus', 'poissaolo']
+  const absenceCols = dataHeaders.map((h, i) => absenceColNames.some(a => h.includes(a)) ? i : -1).filter(i => i >= 0)
+
+  for (let i = 1; i < dataRows.length; i++) {
+    const row = dataRows[i]
+    if (!row[dNimi]) continue
+    const rawNimi = row[dNimi].trim()
+    const parts = rawNimi.split(' ')
+    const normalized = parts.length >= 2 ? parts[1] + ' ' + parts[0] : rawNimi
+    const totalH = parseNum(row[dTotal])
+    let normaaliH = dNormaali >= 0 ? parseNum(row[dNormaali]) : totalH
+    if (dNormaali < 0 && absenceCols.length > 0) {
+      const totalAbsences = absenceCols.reduce((s, ci) => s + parseNum(row[ci]), 0)
+      normaaliH = Math.max(0, totalH - totalAbsences)
     }
+    hoursMap[normalized.toLowerCase()] = { total: totalH, normaali: normaaliH, koulutus: dKoulutus >= 0 ? parseNum(row[dKoulutus]) : 0, sairas: dSairas >= 0 ? parseNum(row[dSairas]) : 0 }
+    hoursMap[rawNimi.toLowerCase()] = hoursMap[normalized.toLowerCase()]
   }
-  if (headerIdx < 0) throw new Error('Header row not found in new format')
+  return hoursMap
+}
 
-  const headers = myyjatRows[headerIdx].map(h => h.toLowerCase().trim())
-  const idxMyyjä = findCol(headers, 'myyjä', 'myyjat', 'nimi')
-  const idxLiittEur = findCol(headers, 'liittymäprovisio', 'liittymäprov', 'liittymä €', 'liittymä€')
-  const idxKassaEur = findCol(headers, 'kassakate', 'kassaprovisio', 'kassaprov')
-  const idxLiittKpl = findCol(headers, 'liittymä kpl', 'liittymäkpl', 'liittymät kpl')
-  const idxFsecTotal = findCol(headers, 'f-secure total', 'fsecure total', 'f-secure total security')
-  const idxFsecInternet = findCol(headers, 'f-secure internet', 'fsecure internet', 'f-secure internet security')
-  const idxFsecKpl = findCol(headers, 'f-secure kpl', 'fsecure kpl', 'fsec kpl')
-  const idxTunnit = findCol(headers, 'tunnit')
-  const idxDnaUusmyynti = findCol(headers, 'dna uusmyynti', 'dna-uusmyynti', 'uusmyynti')
-
-  const hoursMap: Record<string, { total: number, normaali: number, koulutus: number, sairas: number }> = {}
-  if (dataSheet) {
-    const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:BZ200` })
-    const dataRows = (dataRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
-    const dataHeaders = dataRows[0]?.map(h => h.toLowerCase().trim()) ?? []
-    const dNimi = findCol(dataHeaders, 'nimi')
-    const dTotal = findCol(dataHeaders, 'kokonaistunnit', 'tunnit yhteensä', 'kokonais')
-    const dNormaali = findCol(dataHeaders, 'normaali työ', 'normaali')
-    const dKoulutus = findCol(dataHeaders, 'koulutus', 'palaveri', 'koulutus/palaveri')
-    const dSairas = findCol(dataHeaders, 'sairas')
-    const absenceColNames = ['koulutus', 'palaveri', 'sairas', 'isyysvapaa', 'isyys', 'äitiysvapaa', 'äitiys', 'vanhempainvapaa', 'vanhempain', 'lomautus', 'poissaolo']
-    const absenceCols = dataHeaders.map((h, i) => absenceColNames.some(a => h.includes(a)) ? i : -1).filter(i => i >= 0)
-
-    for (let i = 1; i < dataRows.length; i++) {
-      const row = dataRows[i]
-      if (!row[dNimi]) continue
-      const rawNimi = row[dNimi].trim()
-      const parts = rawNimi.split(' ')
-      const normalized = parts.length >= 2 ? parts[1] + ' ' + parts[0] : rawNimi
-      const totalH = parseNum(row[dTotal])
-      let normaaliH = dNormaali >= 0 ? parseNum(row[dNormaali]) : totalH
-      if (dNormaali < 0 && absenceCols.length > 0) {
-        const totalAbsences = absenceCols.reduce((s, ci) => s + parseNum(row[ci]), 0)
-        normaaliH = Math.max(0, totalH - totalAbsences)
-      }
-      hoursMap[normalized.toLowerCase()] = { total: totalH, normaali: normaaliH, koulutus: dKoulutus >= 0 ? parseNum(row[dKoulutus]) : 0, sairas: dSairas >= 0 ? parseNum(row[dSairas]) : 0 }
-      hoursMap[rawNimi.toLowerCase()] = hoursMap[normalized.toLowerCase()]
-    }
-  }
-
-  const sellers: SellerRaw[] = []
-  const standiRows: SellerRaw[] = []
-
-  for (let i = headerIdx + 1; i < myyjatRows.length; i++) {
-    const row = myyjatRows[i]
-    const nimi = row[idxMyyjä >= 0 ? idxMyyjä : 1]?.trim() ?? ''
-    if (!nimi || shouldSkip(nimi) || nimi === 'Kaikki myymälät') continue
-    if (row[0] && row[0].trim() && !nimi) continue
-
-    const liittEur = parseNum(row[idxLiittEur])
-    const kassa = parseNum(row[idxKassaEur])
-    const liittKpl = parseNum(row[idxLiittKpl])
-    const fsecTotalKpl = idxFsecTotal >= 0 ? parseNum(row[idxFsecTotal]) : 0
-    const fsecInternetKpl = idxFsecInternet >= 0 ? parseNum(row[idxFsecInternet]) : 0
-    const fsecKpl = (fsecTotalKpl + fsecInternetKpl) > 0 ? fsecTotalKpl + fsecInternetKpl : (idxFsecKpl >= 0 ? parseNum(row[idxFsecKpl]) : 0)
-    const fsecEur = (fsecTotalKpl * FSEC_TOTAL_SELLER) + (fsecInternetKpl * FSEC_INTERNET_SELLER)
-
-    const cleanedNimi = cleanUnmatchedName(nimi)
-    const hours = hoursMap[cleanedNimi.toLowerCase()] ?? hoursMap[nimi.toLowerCase()]
-    const normaaliTunnit = hours ? (hours.normaali || hours.total) : parseNum(row[idxTunnit])
-    const palkkaTunnit = hours ? (hours.total || hours.normaali) : normaaliTunnit
-    const tunnit = normaaliTunnit
-
-    if (liittKpl === 0 && liittEur === 0) continue
-
-    const dnaUusmyyntiKpl = idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0
-    const raw: SellerRaw = { nimi: cleanedNimi, liittKpl, liittEur, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl }
-
-    if (isStandi(cleanedNimi)) {
-      standiRows.push(raw)
-    } else if (isRJMobSellerForMonth(cleanedNimi, monthNum)) {
-      sellers.push({ ...raw, tunnit: normaaliTunnit, palkkaTunnit: palkkaTunnit > 0 ? palkkaTunnit : normaaliTunnit })
-    }
-  }
-
+/**
+ * Myymäläkohtaiset summat "Myyjät Myymälöittäin" -välilehdeltä.
+ *
+ * Eriytetty omaksi funktioksi, koska elokuusta 2026 myyjärivit luetaan samalta
+ * välilehdeltä eikä poistuneelta "Myyjät Yhteensä" -välilehdeltä — myymälöiden
+ * laskenta on molemmissa sama eikä sitä haluta kahtena kopiona. Runko on
+ * siirretty sellaisenaan, logiikkaa ei muutettu.
+ *
+ * Kassakate kirjautuu lähteeseen 1x provisiona: `kassa` on siitä johdettu
+ * myyntiseurantaan näytettävä kassakate (x10) ja `kassaRjmob` provisioasteikko
+ * (x1), jolla myymälän teho on samalla tasolla kuin myyjän.
+ */
+async function readStores(
+  sheets: ReturnType<typeof google.sheets>,
+  fileId: string,
+  myymalaSheet: string,
+): Promise<DashData['stores']> {
   const storeResults: Record<string, { liittKpl: number, liittEur: number, fsecKpl: number, fsecEur: number, kassa: number, kassaRjmob: number, tunnit: number }> = {}
 
   if (myymalaSheet) {
@@ -335,6 +306,79 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
       }
     }
   }
+
+  return storeResults
+}
+
+async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: string, sheetNames: string[], fileName: string) {
+  const monthNum = parseMonthNumFromFileName(fileName)
+  const myyjatSheet = sheetNames.find(n => n.toLowerCase().includes('myyjät yhteensä') || n.toLowerCase().includes('myyjat yhteensa')) ?? sheetNames[0]
+  const myymalaSheet = sheetNames.find(n => n.toLowerCase().includes('myymäl') || n.toLowerCase().includes('myymäl')) ?? ''
+  const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
+
+  const myyjatRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:BZ200` })
+  const myyjatRows = (myyjatRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
+
+  let headerIdx = -1
+  for (let i = 0; i < myyjatRows.length; i++) {
+    if (myyjatRows[i].some(c => c.toUpperCase() === 'MYYJÄ' || c.toUpperCase() === 'MYYJAT')) { headerIdx = i; break }
+  }
+  if (headerIdx < 0) {
+    for (let i = 0; i < myyjatRows.length; i++) {
+      if (myyjatRows[i].some(c => c.toLowerCase().includes('kassaprovisio') || c.toLowerCase().includes('liittymäprovisio'))) { headerIdx = i; break }
+    }
+  }
+  if (headerIdx < 0) throw new Error('Header row not found in new format')
+
+  const headers = myyjatRows[headerIdx].map(h => h.toLowerCase().trim())
+  const idxMyyjä = findCol(headers, 'myyjä', 'myyjat', 'nimi')
+  const idxLiittEur = findCol(headers, 'liittymäprovisio', 'liittymäprov', 'liittymä €', 'liittymä€')
+  const idxKassaEur = findCol(headers, 'kassakate', 'kassaprovisio', 'kassaprov')
+  const idxLiittKpl = findCol(headers, 'liittymä kpl', 'liittymäkpl', 'liittymät kpl')
+  const idxFsecTotal = findCol(headers, 'f-secure total', 'fsecure total', 'f-secure total security')
+  const idxFsecInternet = findCol(headers, 'f-secure internet', 'fsecure internet', 'f-secure internet security')
+  const idxFsecKpl = findCol(headers, 'f-secure kpl', 'fsecure kpl', 'fsec kpl')
+  const idxTunnit = findCol(headers, 'tunnit')
+  const idxDnaUusmyynti = findCol(headers, 'dna uusmyynti', 'dna-uusmyynti', 'uusmyynti')
+
+  const hoursMap = await readHoursMap(sheets, fileId, dataSheet)
+
+  const sellers: SellerRaw[] = []
+  const standiRows: SellerRaw[] = []
+
+  for (let i = headerIdx + 1; i < myyjatRows.length; i++) {
+    const row = myyjatRows[i]
+    const nimi = row[idxMyyjä >= 0 ? idxMyyjä : 1]?.trim() ?? ''
+    if (!nimi || shouldSkip(nimi) || nimi === 'Kaikki myymälät') continue
+    if (row[0] && row[0].trim() && !nimi) continue
+
+    const liittEur = parseNum(row[idxLiittEur])
+    const kassa = parseNum(row[idxKassaEur])
+    const liittKpl = parseNum(row[idxLiittKpl])
+    const fsecTotalKpl = idxFsecTotal >= 0 ? parseNum(row[idxFsecTotal]) : 0
+    const fsecInternetKpl = idxFsecInternet >= 0 ? parseNum(row[idxFsecInternet]) : 0
+    const fsecKpl = (fsecTotalKpl + fsecInternetKpl) > 0 ? fsecTotalKpl + fsecInternetKpl : (idxFsecKpl >= 0 ? parseNum(row[idxFsecKpl]) : 0)
+    const fsecEur = (fsecTotalKpl * FSEC_TOTAL_SELLER) + (fsecInternetKpl * FSEC_INTERNET_SELLER)
+
+    const cleanedNimi = cleanUnmatchedName(nimi)
+    const hours = hoursMap[cleanedNimi.toLowerCase()] ?? hoursMap[nimi.toLowerCase()]
+    const normaaliTunnit = hours ? (hours.normaali || hours.total) : parseNum(row[idxTunnit])
+    const palkkaTunnit = hours ? (hours.total || hours.normaali) : normaaliTunnit
+    const tunnit = normaaliTunnit
+
+    if (liittKpl === 0 && liittEur === 0) continue
+
+    const dnaUusmyyntiKpl = idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0
+    const raw: SellerRaw = { nimi: cleanedNimi, liittKpl, liittEur, fsecKpl, fsecTotalKpl, fsecInternetKpl, fsecEur, kassa, tunnit, palkkaTunnit, dnaUusmyyntiKpl }
+
+    if (isStandi(cleanedNimi)) {
+      standiRows.push(raw)
+    } else if (isRJMobSellerForMonth(cleanedNimi, monthNum)) {
+      sellers.push({ ...raw, tunnit: normaaliTunnit, palkkaTunnit: palkkaTunnit > 0 ? palkkaTunnit : normaaliTunnit })
+    }
+  }
+
+  const storeResults = await readStores(sheets, fileId, myymalaSheet)
 
   // Kuukausi tiedostonimestä: F-Secure-leikkuri on voimassa vasta elokuusta 2026.
   const kuukausiOrder = monthOrder(fileName)
