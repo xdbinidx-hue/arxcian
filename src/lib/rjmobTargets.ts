@@ -118,7 +118,13 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
   const tavoitteetSheet = findSheet(sheetNames, 'tavoitteet')
   const kassakateSheet = findSheet(sheetNames, 'kassakate', 'kassamyynti')
   const dataSheet = findSheet(sheetNames, 'data')
+  // Elokuusta 2026 "Myyjät Yhteensä" on poistettu tiedostosta, jolloin toteumat
+  // (liittymät, F-Secure, uusmyynti) luetaan "Myyjät Myymälöittäin"
+  // -välilehdeltä. Järjestys on tarkoituksella tämä: kun valmis yhteenveto on
+  // olemassa (heinäkuu ja vanhemmat), käytetään sitä eikä summata riveistä.
+  // Sama tunnistus kuin rjmobSheets.ts:n loadDashDatassa.
   const myyjatSheet = findSheet(sheetNames, 'myyjät yhteensä', 'myyjat yhteensa')
+    || findSheet(sheetNames, 'myyjät myymälöittäin', 'myyjat myymaloittain', 'myymäl', 'myymal')
 
   if (!tavoitteetSheet) {
     throw new TavoitteetPuuttuu(`Tavoitteet-välilehteä ei löytynyt (löytyi: ${sheetNames.join(', ')})`)
@@ -195,13 +201,22 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
         const fsecInternetKpl = idxFsecInternet >= 0 ? parseNum(row[idxFsecInternet]) : 0
         const fsecKpl = (fsecTotalKpl + fsecInternetKpl) > 0 ? fsecTotalKpl + fsecInternetKpl : (idxFsecKpl >= 0 ? parseNum(row[idxFsecKpl]) : 0)
 
-        actualsMap[nimi.toLowerCase()] = {
-          liittKpl: parseNum(row[idxLiittKpl]),
-          liittEur: parseNum(row[idxLiittEur]),
-          fsecKpl,
-          dnaUusmyynti: idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0,
-          elisaUusmyynti: idxElisaUusmyynti >= 0 ? parseNum(row[idxElisaUusmyynti]) : 0,
-          teliaUusmyynti: (idxTeliaUusmyynti >= 0 ? parseNum(row[idxTeliaUusmyynti]) : 0) + (idxTeliaYritysUusmyynti >= 0 ? parseNum(row[idxTeliaYritysUusmyynti]) : 0),
+        // Summataan eikä korvata: "Myyjät Myymälöittäin" -välilehdellä sama
+        // myyjä esiintyy kerran jokaisesta myymälästä jossa hän on myynyt.
+        // Vanhalla "Myyjät Yhteensä" -välilehdellä rivi on yksi per myyjä,
+        // joten summaus käyttäytyy siellä täsmälleen kuin korvaus.
+        const key = nimi.toLowerCase()
+        const edell = actualsMap[key] ?? {
+          liittKpl: 0, liittEur: 0, fsecKpl: 0,
+          dnaUusmyynti: 0, elisaUusmyynti: 0, teliaUusmyynti: 0,
+        }
+        actualsMap[key] = {
+          liittKpl: edell.liittKpl + parseNum(row[idxLiittKpl]),
+          liittEur: edell.liittEur + parseNum(row[idxLiittEur]),
+          fsecKpl: edell.fsecKpl + fsecKpl,
+          dnaUusmyynti: edell.dnaUusmyynti + (idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0),
+          elisaUusmyynti: edell.elisaUusmyynti + (idxElisaUusmyynti >= 0 ? parseNum(row[idxElisaUusmyynti]) : 0),
+          teliaUusmyynti: edell.teliaUusmyynti + (idxTeliaUusmyynti >= 0 ? parseNum(row[idxTeliaUusmyynti]) : 0) + (idxTeliaYritysUusmyynti >= 0 ? parseNum(row[idxTeliaYritysUusmyynti]) : 0),
         }
       }
     }
