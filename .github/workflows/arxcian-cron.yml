@@ -56,6 +56,34 @@ jobs:
               ;;
           esac
 
+      # Winpos-tuonti ajetaan yksin ja ennen joukkoajoa. Kaksi syytä: cron
+      # ajaa työt rinnakkain, ja tuonti tyhjentää Kassamyynti-alueen ennen
+      # kirjoitusta — samaan aikaan lukeva rjmob-summary välimuistittaisi
+      # nollat. Ennen joukkoajoa siksi, että saman ajon yhteenvedot näkevät
+      # jo tuodut kassaluvut eivätkä edellisen kierroksen lukuja.
+      #
+      # Tämä vaihe ei kaada workflow'ta: jos Winpos-raportti on viallinen tai
+      # Drive on nurin, uutishaut on silti syytä ajaa. Virhe näkyy lokissa ja
+      # varoituksena.
+      - name: Tuo Winpos-raportit
+        if: steps.vartio.outputs.aja == 'kylla'
+        continue-on-error: true
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          response=$(curl -sS --max-time 200 -w '\n%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            'https://rjmob-portal.vercel.app/api/arxcian/cron?job=winpos-import')
+
+          body=$(printf '%s' "$response" | sed '$d')
+          status=$(printf '%s' "$response" | tail -n1)
+
+          echo "$body"
+
+          if [ "$status" != "200" ] || printf '%s' "$body" | grep -q '"ok":false'; then
+            echo "::warning::Winpos-tuonti epäonnistui — jatketaan muihin hakuihin"
+          fi
+
       - name: Käynnistä ajastetut haut
         if: steps.vartio.outputs.aja == 'kylla'
         env:

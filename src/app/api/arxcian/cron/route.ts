@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authorizeCron, jobsFor } from '@/lib/arxcian/cron'
+import { authorizeCron, jobsFor, JOBS } from '@/lib/arxcian/cron'
 
 // Ulkoiset lähteet ja AI-valinta ovat hitaita: kategoria hakee viisi
 // syötettä ja tekee niiden päälle yhden mallikutsun, ja kategorioita on
@@ -22,8 +22,10 @@ export async function GET(req: NextRequest) {
   const schedule = req.nextUrl.searchParams.get('schedule')
   const jobId = req.nextUrl.searchParams.get('job')
 
+  // Yksittäinen työ etsitään koko rekisteristä: soloOnly-työt eivät ole
+  // jobsForin joukkoajossa mutta niitä pitää voida ajaa nimellä.
   const selected = jobId
-    ? jobsFor(null).filter(job => job.id === jobId)
+    ? JOBS.filter(job => job.id === jobId)
     : jobsFor(schedule)
 
   if (jobId && selected.length === 0) {

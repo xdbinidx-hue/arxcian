@@ -10,6 +10,7 @@ import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
+import { importWinposReports } from '@/lib/winpos/kassamyynti'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -30,6 +31,16 @@ export type CronJob = {
   description: string
   /** Mihin ajoihin työ kuuluu. Tyhjä = kaikkiin. */
   schedules?: string[]
+  /**
+   * Työ ei kuulu joukkoajoon vaan käynnistetään aina yksin (`?job=<id>`).
+   *
+   * Cron-reitti ajaa työt `Promise.all`illa eli rinnakkain. Elävään
+   * taulukkoon kirjoittava työ ei saa olla käynnissä samaan aikaan kuin
+   * samaa taulukkoa lukevat työt: Winpos-tuonti tekee `values.clear`in ja
+   * `values.update`n kahtena kutsuna, joten alue on hetken tyhjä ja
+   * rinnakkainen lukija välimuistittaisi nollat.
+   */
+  soloOnly?: boolean
   run: () => Promise<JobResult>
 }
 
@@ -119,18 +130,33 @@ const rjmobJobs: CronJob[] = [
       return { key: RJMOB_INSIGHTS_KEY, items: result.data.huomiot.length }
     },
   },
-  // Winpos-tuontia EI ole kytketty tähän. Se kirjoittaa elävään
-  // taulukkoon, joten ajastus otetaan käyttöön vasta kun tuonti on nähty
-  // toimivaksi oikealla raportilla. Siihen asti ajo tapahtuu käsin
-  // reitiltä /api/winpos/import (ja ?kuiva=1 näyttää mitä kirjoitettaisiin).
+  {
+    id: 'winpos-import',
+    description: 'RJ-Mob: Winpos-raporttien tuonti Kassamyynti-välilehdelle',
+    // Yksin ajettava, ks. soloOnly. Workflow kutsuu tätä omana vaiheenaan
+    // ennen joukkoajoa, jotta saman ajon rjmob-summary ja rjmob-insights
+    // lukevat jo tuodut kassaluvut eivätkä edellisen kierroksen lukuja.
+    soloOnly: true,
+    run: async () => {
+      const tulos = await importWinposReports()
+      // items = montako raporttia tuotiin. Jo käsitellyt ohitetaan, joten
+      // tavallinen ajo palauttaa nollan eikä kirjoita taulukkoon lainkaan.
+      return { key: 'winpos:tuonti', items: tulos.tuodut.length }
+    },
+  },
 ]
 
 /** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
 export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs, ...hubJobs, ...rjmobJobs]
 
+/**
+ * Joukkoajon työt. `soloOnly`-työt jäävät aina ulkopuolelle — ne ajetaan
+ * yksin `?job=<id>`illä, ks. CronJob.soloOnly.
+ */
 export function jobsFor(schedule: string | null): readonly CronJob[] {
-  if (!schedule) return JOBS
-  return JOBS.filter(job => !job.schedules || job.schedules.includes(schedule))
+  const joukko = JOBS.filter(job => !job.soloOnly)
+  if (!schedule) return joukko
+  return joukko.filter(job => !job.schedules || job.schedules.includes(schedule))
 }
 
 /**
