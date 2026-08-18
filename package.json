@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@upstash/qstash": "^2.11.3",
     "@vercel/kv": "^3.0.0",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.10.1",
