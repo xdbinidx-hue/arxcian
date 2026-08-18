@@ -9,8 +9,10 @@ import { todayISOHelsinki } from './time'
  * Luvut tulevat samasta lähteestä ja saman laskennan läpi kuin
  * tuottoseurannan sivu: myyntiseurantataulukot järjestetään samalla
  * `vuosi × 100 + kuukausi` -säännöllä, ja kentät ovat ne joita sivu
- * itse näyttää yhteenvetolaatoissaan (liittKpl, kassa, fsecKpl). Näin hubin
- * luku ei voi ajautua eri suuntaan kuin se luku jota sivulla katsotaan.
+ * itse näyttää yhteenvetolaatoissaan (liittKpl + liittEur, fsecKpl, kassa).
+ * Näin hubin luku ei voi ajautua eri suuntaan kuin se luku jota sivulla
+ * katsotaan — liittymärivi näyttää kappaleet ja provision samana parina kuin
+ * tuottoseurannan oma laatta.
  *
  * **Muutosprosentti on ennuste vain kuluvassa kuukaudessa.** Kesken oleva
  * kuukausi on lähes tyhjä alussa, joten kertymän vertaaminen edellisen
@@ -62,6 +64,14 @@ const MIN_DAYS_FOR_PROJECTION = 7
 export type RjMobMetric = {
   /** Valmiiksi muotoiltu kuukauden kertymä, esim. "342" tai "18,9k €" */
   display: string
+  /**
+   * Saman rivin tarkentava toinen luku, esim. liittymien provisio euroina.
+   *
+   * Valinnainen tarkoituksella: välimuistissa jo oleva merkintä on kirjoitettu
+   * ilman tätä kenttää, ja avain elää valmiilla kuukausilla vuoden. Paneeli
+   * jättää rivin silloin yhden luvun varaan eikä näytä tyhjää riviä.
+   */
+  sub?: string
   /** Muutos edelliseen kuukauteen prosentteina, tai null jos vertailua ei ole */
   changePercent: number | null
 }
@@ -75,8 +85,8 @@ export type RjMobSummaryData = {
   projected: boolean
   metrics: {
     liittymat: RjMobMetric
-    kassakate: RjMobMetric
     fsecure: RjMobMetric
+    kassakate: RjMobMetric
   }
 }
 
@@ -216,7 +226,11 @@ async function summaryFor(
     projected: isRunningMonth && Boolean(prev),
     metrics: {
       liittymat: {
-        display: fmtKpl(current.totals.liittKpl),
+        display: `${fmtKpl(current.totals.liittKpl)} kpl`,
+        // Provisio kulkee kappaleiden rinnalla, ei omana rivinään: se on saman
+        // myynnin toinen puoli, ja tuottoseurannan laatta näyttää ne samoin.
+        // Muutosprosentti lasketaan kappaleista, koska rivi on kappalerivi.
+        sub: fmtEur(current.totals.liittEur),
         changePercent: prev ? changeOf(current.totals.liittKpl, prev.liittKpl, factor) : null,
       },
       kassakate: {

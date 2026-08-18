@@ -4,7 +4,12 @@ import { readCached } from '@/lib/arxcian/cache'
 import { RJMOB_SUMMARY_KEY, type RjMobSummaryData } from '@/lib/arxcian/rjmobSummary'
 
 /**
- * RJ-MOB: kuluvan kuukauden myynti kolmena lukuna.
+ * RJ-MOB: kuluvan kuukauden myyntiseuranta kolmena rivinä.
+ *
+ * Järjestys on myynnin oma järjestys eikä esteettinen valinta: liittymät
+ * kappaleina ja provisiona, sitten F-Secure kappaleina, sitten kassakate.
+ * Sama pari kuin tuottoseurannan liittymälaatta, jotta hubista ja sivulta
+ * luettu luku on sama luku.
  *
  * Luetaan vain välimuistista. RJ-Mobin luvut syntyvät Google Sheetsistä
  * laskentalogiikan läpi (ks. lib/rjmob.ts), eikä hubin sivulataus saa odottaa
@@ -23,8 +28,8 @@ type Metric = {
 
 const METRICS: readonly Metric[] = [
   { key: 'liittymat', label: 'Liittymät', icon: '▣' },
-  { key: 'kassakate', label: 'Kassakate', icon: '€' },
   { key: 'fsecure', label: 'F-Secure', icon: '◇' },
+  { key: 'kassakate', label: 'Kassakate', icon: '€' },
 ]
 
 export async function RjMobSummary({ delay }: { delay?: number }) {
@@ -41,7 +46,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
       {data ? (
         <>
           <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-ax-faint">
-            Tämän kuun myynti
+            Tämän kuun myyntiseuranta
           </p>
 
           {/* Ennusteen merkintä on paneelissa eikä pelkästään koodin
@@ -75,6 +80,13 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                     <span className="block text-xl font-light tabular-nums text-ax-text">
                       {value.display}
                     </span>
+                    {/* Tarkentava luku puuttuu vanhasta välimuistimerkinnästä,
+                        joten rivi on rakennettava toimimaan ilman sitä. */}
+                    {value.sub && (
+                      <span className="block font-mono text-[10px] tabular-nums text-ax-faint">
+                        {value.sub}
+                      </span>
+                    )}
                   </span>
 
                   <span className="self-center text-right">
