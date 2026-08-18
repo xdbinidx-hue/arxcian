@@ -6,6 +6,7 @@ import { getIctVideos } from './trading/ict'
 import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
 import { refreshCalendar } from './trading/calendar'
+import { planAllUsers } from './push/schedule'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
@@ -61,9 +62,25 @@ const tradingJobs: CronJob[] = [
   },
   {
     id: 'trading-calendar',
-    description: 'Trading: talouskalenteri (ForexFactory)',
+    description: 'Trading: talouskalenteri (ForexFactory) ja push-ilmoitusten suunnittelu',
     run: async () => {
       const events = await refreshCalendar()
+
+      // Suunnittelu ajetaan tässä eikä omana työnään, koska cron-reitti ajaa
+      // työt rinnakkain (Promise.all): erillinen työ voisi ajautua ennen
+      // kalenterin päivitystä. ForexFactoryn syöte kattaa vain kuluvan viikon,
+      // joten järjestys on olennainen — perjantaina ajettu suunnittelija ei
+      // näe maanantain julkaisuja ennen kuin syöte on vaihtunut.
+      //
+      // Suunnittelu ei saa kaataa kalenterityötä: kalenteri on haettu ja
+      // välimuistissa siinä vaiheessa, ja seuraava ajo yrittää suunnittelun
+      // uudelleen.
+      try {
+        await planAllUsers()
+      } catch (error) {
+        console.error('[cron] push-suunnittelu epäonnistui', error)
+      }
+
       return { key: 'trading:calendar', items: events.length }
     },
   },
