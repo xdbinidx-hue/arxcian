@@ -6,6 +6,7 @@ import {
   getSubscriptions,
   removeSubscription,
 } from '@/lib/arxcian/push/subscriptions'
+import { replanQuietly } from '@/lib/arxcian/push/schedule'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,10 @@ export async function POST(req: NextRequest) {
     label: body.label || 'Tuntematon laite',
   })
 
+  // Ensimmäinen laite: ilman tätä jono olisi tyhjä siihen asti kunnes cron
+  // seuraavan kerran ajaa, eli laite lisättäisiin eikä mitään tapahtuisi.
+  await replanQuietly(user)
+
   return NextResponse.json({ devices: devices.map(s => ({ endpoint: s.endpoint, label: s.label })) })
 }
 
@@ -62,5 +67,7 @@ export async function DELETE(req: NextRequest) {
   if (!endpoint) return NextResponse.json({ error: 'endpoint puuttuu' }, { status: 400 })
 
   const devices = await removeSubscription(user, endpoint)
+  // Viimeisen laitteen poisto tyhjentää jonon, ks. planForUser.
+  await replanQuietly(user)
   return NextResponse.json({ devices: devices.map(s => ({ endpoint: s.endpoint, label: s.label })) })
 }

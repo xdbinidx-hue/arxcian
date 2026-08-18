@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { currentOwner } from '@/lib/session'
 import { getNotifySettings, saveNotifySettings } from '@/lib/arxcian/trading/notifyStore'
 import type { NotifySettings } from '@/lib/arxcian/trading/types'
+import { replanQuietly } from '@/lib/arxcian/push/schedule'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,5 +31,11 @@ export async function PUT(req: NextRequest) {
     patch.sessions = body.sessions.filter((s): s is string => typeof s === 'string')
   }
 
-  return NextResponse.json({ settings: await saveNotifySettings(user, patch) })
+  const settings = await saveNotifySettings(user, patch)
+
+  // Asetusmuutos vaikuttaa jonoon molempiin suuntiin: istunnon kytkeminen
+  // päälle lisää ilmoituksia, pois kytkeminen perumaan jo jonotetut.
+  await replanQuietly(user)
+
+  return NextResponse.json({ settings })
 }

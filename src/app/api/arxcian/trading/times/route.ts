@@ -6,6 +6,7 @@ import {
   removeTradingTime,
   toggleTradingTime,
 } from '@/lib/arxcian/trading/notifyStore'
+import { replanQuietly } from '@/lib/arxcian/push/schedule'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +61,11 @@ export async function POST(req: NextRequest) {
     },
     user,
   )
+  // Uusi aika jonoon heti eikä vasta seuraavassa cron-ajossa: tunnin päähän
+  // lisätty killzone olisi muuten mennyt jo ohi kun suunnittelija seuraavan
+  // kerran herää.
+  await replanQuietly(user)
+
   return NextResponse.json({ times })
 }
 
@@ -70,7 +76,9 @@ export async function PATCH(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id puuttuu' }, { status: 400 })
 
-  return NextResponse.json({ times: await toggleTradingTime(id, user) })
+  const times = await toggleTradingTime(id, user)
+  await replanQuietly(user)
+  return NextResponse.json({ times })
 }
 
 export async function DELETE(req: NextRequest) {

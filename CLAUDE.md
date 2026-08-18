@@ -281,13 +281,38 @@ ajastus suunnittelee seuraavan 36 h tapahtumat jonoon. Volyymi ~30 viestiä/vrk,
 ilmaisraja 1 000/vrk. Sivuhyöty: QStash allekirjoittaa pyyntönsä, joten
 push-reitit verifioidaan allekirjoituksella eikä `CRON_SECRET`illa.
 
-**Suunnittelija on idempotentti, ei kertaluontoinen.** QStashin oma
-deduplikaatio-ikkuna on vain 10 minuuttia, joten se ei estä saman tapahtuman
-jonottamista uudelleen seuraavana päivänä. Idempotenssi tehdään itse: jokainen
-jonotettu tapahtuma kirjataan Redisiin avaimella `push:planned:<tapahtuma-avain>`
-ja QStashin viesti-id:llä, ja suunnittelija ohittaa jo jonossa olevat. Sivutuote
-on peruutus: kun oma treidausaika poistetaan, tallennettu viesti-id kertoo mikä
-jonosta pitää poistaa.
+**Suunnittelija on idempotentti, ei kertaluontoinen.** Jonotetut tapahtumat
+kirjataan Redisiin ([planned.ts](src/lib/arxcian/push/planned.ts)), yksi kartta
+käyttäjää kohti: `MarketEvent.key` -> QStashin viesti-id. Suunnittelija ohittaa
+jo jonossa olevat, peruu poistuneet ja siivoaa menneet — yhdellä kierroksella,
+koska kaikki kolme vertaavat samaa kahta listaa.
+
+QStashilla on oma deduplikaationsa ja se asetetaan toiseksi lukoksi
+(`deduplicationId`) siltä varalta että julkaisu onnistuu mutta kartan kirjoitus
+kaatuu. Idempotenssi ei silti nojaa siihen: **viesti-id tarvitaan joka
+tapauksessa peruutukseen.** Kun oma treidausaika poistetaan tai istunto
+kytketään pois, jo jonotettu ilmoitus on saatava pois, eikä sitä voi tehdä
+ilman id:tä.
+
+**Suunnittelu ei tarvitse omaa ajastusta.** Suunnittelu ja toimitus ovat eri
+tarkkuusluokkaa: toimitus vaatii minuutin, suunnittelu ei mitään. 48 tunnin
+ikkuna kestää hyvin sen että suunnittelija ajetaan myöhässä, joten se
+ratsastaa olemassa olevalla GitHub Actions -cronilla (neljä ajoa/vrk) ja
+QStashin kymmenestä ilmaisesta ajastuksesta jää käyttämättä kaikki kymmenen.
+Suunnittelu ajetaan `trading-calendar`-työn *sisällä* eikä omana työnään, koska
+cron-reitti ajaa työt `Promise.all`illa — erillinen työ voisi ajautua ennen
+kalenterin päivitystä.
+
+Lisäksi uudelleensuunnittelu laukeaa heti kun asetus, oma aika tai laite
+muuttuu (`replanQuietly`): tunnin päähän lisätty killzone olisi muuten mennyt
+ohi ennen seuraavaa cron-ajoa. Se on tarkoituksella hiljainen — jos QStash on
+alhaalla, tallennuksen on silti onnistuttava.
+
+**Lähetysreittiin ei pääse istunnolla eikä `CRON_SECRET`illa.** Rungossa
+kerrotaan kenelle lähetetään, joten jaettu salaisuus riittäisi kenelle tahansa
+lähettämään ilmoituksen kenen tahansa puhelimeen. QStash allekirjoittaa kutsun
+ja allekirjoitus kattaa rungon ja osoitteen. Suunnittelureitti sen sijaan
+käyttää tavallista `authorizeCron`ia, koska QStash ei kutsu sitä.
 
 **Talouskalenteri ei ulotu viikonlopun yli.** ForexFactoryn syöte kattaa vain
 kuluvan viikon (su–la) eikä `ff_calendar_nextweek` vastaa mitään, joten
