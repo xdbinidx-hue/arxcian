@@ -1,7 +1,9 @@
 import { google } from 'googleapis'
 import { fetchAndCache } from '../cache'
 import type { Owner } from '@/lib/session'
-import type { WatchAction, WatchList, WatchSource, WatchType } from './types'
+import type { WatchAction, WatchList, WatchResult, WatchSource, WatchType } from './types'
+
+export type WatchSourcesFrom = WatchResult['sourcesFrom']
 
 /**
  * Lähdelistan luku Drive-taulukosta.
@@ -157,7 +159,7 @@ async function fetchFromSheet(id: string): Promise<WatchSource[]> {
  */
 export async function getWatchSources(
   force = false,
-): Promise<{ sources: WatchSource[]; from: 'network' | 'cache' | 'stale' | 'fallback' }> {
+): Promise<{ sources: WatchSource[]; from: WatchSourcesFrom }> {
   const id = sheetId()
   if (!id) return { sources: [...FALLBACK], from: 'fallback' }
 
@@ -172,7 +174,7 @@ export async function getWatchSources(
     // watchin hengissä, mutta vika on kerrottava — hiljainen varalista on
     // sama asia kuin "ei uutta sisältöä" ikuisesti.
     console.error('[watch] lähdelistan luku epäonnistui, käytetään varalistaa', e)
-    return { sources: [...FALLBACK], from: 'fallback' }
+    return { sources: [...FALLBACK], from: 'fallback-virhe' }
   }
 }
 

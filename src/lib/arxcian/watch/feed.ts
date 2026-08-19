@@ -74,8 +74,12 @@ function fromRss(xml: string, source: WatchSource): WatchItem[] {
     return rssItems.map(raw => {
       const it = raw as Record<string, unknown>
       const link = typeof it.link === 'string' ? it.link : textOf(it.link)
+      // guid ennen linkkiä: RSS2:n guid on määritelty juuri pysyväksi
+      // tunnisteeksi, ja linkki voi vaihtaa utm-parametreja jolloin sama
+      // artikkeli ilmoitettaisiin uudelleen. Sama perustelu kuin
+      // YouTube-haaran videoId:llä.
       return {
-        id: link,
+        id: textOf(it.guid) || link,
         lista: source.lista,
         source: source.nimi,
         title: textOf(it.title),
@@ -107,16 +111,27 @@ function fromRss(xml: string, source: WatchSource): WatchItem[] {
  * päättää mitä yhden lähteen kaatuminen tarkoittaa.
  */
 export async function fetchWatchFeed(source: WatchSource): Promise<WatchItem[]> {
+  let items: WatchItem[]
+
   if (source.tyyppi === 'youtube') {
     const xml = await fetchYoutubeFeed(source.tunniste, source.nimi)
-    return fromYoutube(xml, source).filter(i => i.id && i.title)
+    items = fromYoutube(xml, source).filter(i => i.id && i.title)
+  } else {
+    const res = await fetch(source.tunniste, {
+      signal: AbortSignal.timeout(RSS_TIMEOUT_MS),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; arxcian/1.0)' },
+    })
+    if (!res.ok) throw new Error(`${source.nimi}: HTTP ${res.status}`)
+    items = fromRss(await res.text(), source).filter(i => i.id && i.title)
   }
 
-  const res = await fetch(source.tunniste, {
-    signal: AbortSignal.timeout(RSS_TIMEOUT_MS),
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; arxcian/1.0)' },
-  })
-  if (!res.ok) throw new Error(`${source.nimi}: HTTP ${res.status}`)
+  // Tyhjä jäsennystulos on virhe, ei tulos. Syötteen rakenne voi muuttua tai
+  // olla muoto jota tämä ei tunne (esim. RSS 1.0 / RDF), jolloin haku
+  // "onnistuisi" nollalla kohteella ja käyttöliittymä sanoisi "ei uutta
+  // sisältöä" ikuisesti. Sama päättely kuin channels.ts:n heitossa.
+  if (items.length === 0) {
+    throw new Error(`${source.nimi}: syöte jäsentyi tyhjäksi (${source.tyyppi})`)
+  }
 
-  return fromRss(await res.text(), source).filter(i => i.id && i.title)
+  return items
 }

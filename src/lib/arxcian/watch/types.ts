@@ -63,6 +63,13 @@ export type WatchResult = {
   uusia: number
   /** Montako niistä päätyi inboxiin (toiminto = ilmoita) */
   inboxiin: number
-  /** Mistä lähdelista tuli — sama merkitys kuin cache.ts:n Fetched.source */
-  sourcesFrom: 'network' | 'cache' | 'stale' | 'fallback'
+  /**
+   * Mistä lähdelista tuli.
+   *
+   * `fallback` = taulukkoa ei ole konfiguroitu, mikä on kelvollinen tila.
+   * `fallback-virhe` = taulukko on olemassa mutta rikki. Ne **eivät saa
+   * näyttää samalta**: jälkimmäinen vaatii korjausta, ja pelkkä lokirivi
+   * jäisi huomaamatta.
+   */
+  sourcesFrom: 'network' | 'cache' | 'stale' | 'fallback' | 'fallback-virhe'
 }

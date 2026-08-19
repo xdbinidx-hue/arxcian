@@ -12,80 +12,121 @@ import type { InboxEntry, WatchItem } from './types'
  * 13.8.2026 pelkkä sovelluksen sisäinen inbox: ei uutta riippuvuutta, tiliä
  * eikä ympäristömuuttujaa, ja watch pysyy testattavana ilman ulkoista
  * palvelua. Ulkoinen kanava — Telegram, Web Push — on myöhemmin oma
- * erillinen lukijansa tämän päällä, joten sen lisääminen ei muuta watchin
- * omaa logiikkaa. **Älä siis kirjoita ilmoituksen lähetystä watch.ts:ään.**
+ * erillinen lukijansa tämän päällä. **Älä kirjoita lähetystä watch.ts:ään.**
  *
- * Inbox on omistajatietoinen ja suodatetaan `visibleTo()`llä palvelimella:
- * Personalin kanavat voivat olla henkilökohtaisia, ja Albin ja Arbnor voivat
- * käyttää samaa laitetta.
+ * ## Miksi tässä ei ole yhtään luku-muokkaa-kirjoita -kierrosta
+ *
+ * Cron-reitti ajaa työt `Promise.all`illa, ja `watch-trading` ja
+ * `watch-personal` kirjoittavat molemmat tähän samaan avaimeen. Luettu lista
+ * + kirjoitettu lista hukkaisi toisen työn rivit aina kun ne osuvat
+ * päällekkäin — ja hukatut olisivat **pysyvästi** poissa, koska `seen.ts` on
+ * jo merkinnyt ne tunnisteet nähdyiksi ennen tätä kutsua. Sama päättely kuin
+ * kalenterin tokeneissa (ks. CLAUDE.md).
+ *
+ * Siksi:
+ * - lisäys on `rpush` — atominen liitos, ei lukua lainkaan
+ * - kuittaus on `sadd` omaan joukkoonsa, ei riviä poistamalla
+ *
+ * Kuittausjoukko on **käyttäjäkohtainen**. Jaettu rivi kuuluu molemmille,
+ * joten Albinin kuittaus ei saa viedä sitä Arbnorilta joka ei ole nähnyt sitä.
  */
 
 const KEY = 'arxcian:watch:inbox'
 
-/** Yläraja, jottei inbox kasva rajatta jos sitä ei tyhjennetä. */
+/** Yläraja, jottei lista kasva rajatta jos rivejä ei kuitata. */
 const MAX_ENTRIES = 100
 
+/** Kuittaukset elävät selvästi listaa pidempään, jottei kuitattu palaa näkyviin. */
+const DISMISSED_TTL_SECONDS = 180 * 24 * 60 * 60
+
+function dismissedKey(user: SessionUser): string {
+  return `arxcian:watch:inbox:kuitattu:${user}`
+}
+
+/**
+ * Lisää rivit atomisesti.
+ *
+ * **Ei nielaise virhettä.** Jos kirjoitus kaatuu, kutsujan on saatava tietää:
+ * `seen.ts` on jo polttanut nämä tunnisteet, joten hiljainen epäonnistuminen
+ * hävittäisi sisällön lopullisesti ja raportoisi silti onnistumisen.
+ */
+export async function addToInbox(items: WatchItem[]): Promise<number> {
+  if (items.length === 0) return 0
+
+  const entries: InboxEntry[] = items.map(i => ({ ...i, addedAt: Date.now() }))
+  const client = kv()
+
+  const rivit = entries.map(e => JSON.stringify(e))
+  await client.rpush(KEY, rivit[0], ...rivit.slice(1))
+  // Vanhimmat pois kun katto ylittyy. Erillinen kutsu, mutta ylivuoto on
+  // vaaraton väliaikaisena tilana toisin kuin hukattu rivi.
+  await client.ltrim(KEY, -MAX_ENTRIES, -1)
+
+  return entries.length
+}
+
+/** Rivit uusin ensin, ilman näkyvyys- tai kuittaussuodatusta. */
 async function readAll(): Promise<InboxEntry[]> {
+  const raw = await kv().lrange<string | InboxEntry>(KEY, 0, -1)
+  const entries: InboxEntry[] = []
+
+  for (const row of raw) {
+    // Upstash palauttaa JSON-merkkijonon jäsennettynä jos se näyttää
+    // objektilta, joten kumpikin muoto on kelvollinen.
+    if (typeof row === 'string') {
+      try {
+        entries.push(JSON.parse(row) as InboxEntry)
+      } catch {
+        // Rikkinäinen rivi ohitetaan — se ei saa kaataa koko inboxia.
+      }
+    } else if (row) {
+      entries.push(row)
+    }
+  }
+
+  return entries.reverse()
+}
+
+async function dismissedIds(user: SessionUser): Promise<Set<string>> {
   try {
-    return (await kv().get<InboxEntry[]>(KEY)) ?? []
+    return new Set(await kv().smembers<string[]>(dismissedKey(user)))
+  } catch (e) {
+    // Kuittaukset eivät ole luettavissa: näytetään mieluummin jo kuitattu
+    // rivi kuin piilotetaan kuittaamaton.
+    console.error('[watch] kuittausten luku epäonnistui', e)
+    return new Set()
+  }
+}
+
+/** Käyttäjälle näkyvät kuittaamattomat rivit. Suodatus on palvelimella. */
+export async function readInbox(user: SessionUser | null): Promise<InboxEntry[]> {
+  if (!user) return []
+
+  try {
+    const [entries, kuitatut] = await Promise.all([readAll(), dismissedIds(user)])
+    return visibleTo(entries, user).filter(e => !kuitatut.has(e.id))
   } catch (e) {
     console.error('[watch] inboxin luku epäonnistui', e)
     return []
   }
 }
 
-async function writeAll(entries: InboxEntry[]): Promise<void> {
-  try {
-    await kv().set(KEY, entries.slice(0, MAX_ENTRIES))
-  } catch (e) {
-    console.error('[watch] inboxin kirjoitus epäonnistui', e)
-  }
-}
-
 /**
- * Lisää uudet rivit inboxiin, uusin ensin.
+ * Kuittaa rivit luetuiksi tälle käyttäjälle.
  *
- * Palauttaa montako oikeasti lisättiin. Jo inboxissa oleva tunniste
- * ohitetaan: watch on idempotentti vain nähtyjen rekisterin osalta, ja
- * käsin ajettu kierros ei saa kahdentaa rivejä.
- */
-export async function addToInbox(items: WatchItem[]): Promise<number> {
-  if (items.length === 0) return 0
-
-  const nykyiset = await readAll()
-  const olemassa = new Set(nykyiset.map(e => e.id))
-  const uudet = items.filter(i => !olemassa.has(i.id)).map(i => ({ ...i, addedAt: Date.now() }))
-  if (uudet.length === 0) return 0
-
-  await writeAll([...uudet, ...nykyiset])
-  return uudet.length
-}
-
-/** Käyttäjälle näkyvät rivit. Suodatus on palvelimella, ei selaimessa. */
-export async function readInbox(user: SessionUser | null): Promise<InboxEntry[]> {
-  return visibleTo(await readAll(), user)
-}
-
-/** Montako riviä käyttäjälle näkyy — hubin merkkiä varten. */
-export async function inboxCount(user: SessionUser | null): Promise<number> {
-  return (await readInbox(user)).length
-}
-
-/**
- * Poistaa rivit jotka käyttäjä saa nähdä.
- *
- * Omistajuus tarkistetaan täälläkin eikä vain luvussa: pelkkä lukusuodatus
- * antaisi tyhjentää toisen käyttäjän rivit näkemättä niitä.
+ * Kuittaus on merkintä eikä poisto, joten se ei kilpaile cronin lisäyksen
+ * kanssa. Vain käyttäjälle näkyvät rivit voi kuitata — muuten toisen rivin
+ * voisi kuitata sitä näkemättä.
  */
 export async function clearInbox(user: SessionUser | null, ids?: string[]): Promise<number> {
-  const kaikki = await readAll()
-  const poistettavat = new Set(
-    visibleTo(kaikki, user)
-      .filter(e => !ids || ids.includes(e.id))
-      .map(e => e.id),
-  )
-  if (poistettavat.size === 0) return 0
+  if (!user) return 0
 
-  await writeAll(kaikki.filter(e => !poistettavat.has(e.id)))
-  return poistettavat.size
+  const nakyvat = await readInbox(user)
+  const kuitattavat = nakyvat.filter(e => !ids || ids.includes(e.id)).map(e => e.id)
+  if (kuitattavat.length === 0) return 0
+
+  const client = kv()
+  await client.sadd(dismissedKey(user), kuitattavat[0], ...kuitattavat.slice(1))
+  await client.expire(dismissedKey(user), DISMISSED_TTL_SECONDS)
+  return kuitattavat.length
 }

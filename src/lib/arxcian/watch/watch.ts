@@ -38,14 +38,25 @@ export async function runWatch(lista: WatchList): Promise<WatchResult> {
 
   const settled = await Promise.allSettled(sources.map(s => fetchWatchFeed(s)))
 
-  const items: WatchItem[] = []
+  // Lähde tunnistetaan `tunniste`ella eikä `nimi`llä: nimi on taulukon
+  // vapaata tekstiä ja oletusarvoltaan sama kuin tunniste, joten kaksi
+  // samannimistä riviä törmäisi keskenään.
+  const items: (WatchItem & { sourceKey: string })[] = []
   const failed: string[] = []
+  const nahdyt = new Set<string>()
+
   settled.forEach((result, i) => {
-    if (result.status === 'fulfilled') {
-      items.push(...result.value)
-    } else {
+    if (result.status !== 'fulfilled') {
       failed.push(sources[i].nimi)
       console.error(`[watch] ${lista}: lähde epäonnistui ${sources[i].nimi}`, result.reason)
+      return
+    }
+    for (const item of result.value) {
+      // Sama video voi tulla kahdesta saman listan lähteestä. Ilman
+      // karsintaa se päätyisi inboxiin kahtena rivinä samalla avaimella.
+      if (nahdyt.has(item.id)) continue
+      nahdyt.add(item.id)
+      items.push({ ...item, sourceKey: sources[i].tunniste })
     }
   })
 
@@ -61,14 +72,20 @@ export async function runWatch(lista: WatchList): Promise<WatchResult> {
     return { lista, ok: 0, failed, uusia: 0, inboxiin: 0, sourcesFrom: from }
   }
 
-  const uudetIdt = await diffAndMark(lista, items.map(i => i.id))
-  const uudet = items.filter(i => uudetIdt.includes(i.id))
+  const uudetIdt = new Set(
+    await diffAndMark(lista, items.map(i => ({ sourceKey: i.sourceKey, id: i.id }))),
+  )
+  const uudet = items.filter(i => uudetIdt.has(i.id))
 
   // Toiminto on lähdekohtainen, joten inboxiin menevät vain 'ilmoita'-rivit.
   // 'tiivista' on varattu uutisille, jotka siirretään watchin päälle vasta
   // erikseen — niiden oma putki tekee tiivistyksen yhä itse.
-  const nimiToiminto = new Map(sources.map(s => [s.nimi, s.toiminto]))
-  const ilmoitettavat = uudet.filter(i => nimiToiminto.get(i.source) === 'ilmoita')
+  const toiminnot = new Map(sources.map(s => [s.tunniste, s.toiminto]))
+  const ilmoitettavat = uudet.filter(i => toiminnot.get(i.sourceKey) === 'ilmoita')
+
+  // addToInbox ei nielaise virhettä: seen.ts on jo merkinnyt nämä
+  // tunnisteet nähdyiksi, joten hiljainen epäonnistuminen hävittäisi ne
+  // lopullisesti ja raportoisi silti onnistumisen.
   const inboxiin = await addToInbox(ilmoitettavat)
 
   console.log(

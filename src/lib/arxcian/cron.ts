@@ -234,12 +234,22 @@ const watchJobs: CronJob[] = (['trading', 'personal'] as const).map(lista => ({
   description: `Watch: uusi sisältö (${lista})`,
   run: async () => {
     const r = await runWatch(lista)
+
+    // Kaksi eri vikaa, molemmat piiloutuisivat muuten pelkkään lokiin:
+    // yksikään lähde ei vastannut, tai lähdelista on rikki ja ajetaan
+    // varalistalla. Konfiguroimaton varalista ei ole vika.
+    const listaRikki = r.sourcesFrom === 'fallback-virhe'
+    const rikki = r.ok === 0 || listaRikki
+
     return {
       key: statusKeyFor(lista),
       items: r.uusia,
-      // Kaikkien lähteiden kaatuminen ei saa näyttää tyhjältä onnistumiselta.
-      source: r.ok === 0 ? ('stale' as const) : ('network' as const),
-      failedSources: r.failed.length > 0 ? r.failed : undefined,
+      source: rikki ? ('stale' as const) : ('network' as const),
+      failedSources: listaRikki
+        ? [...r.failed, 'lähdelista (varalista käytössä)']
+        : r.failed.length > 0
+          ? r.failed
+          : undefined,
     }
   },
 }))
