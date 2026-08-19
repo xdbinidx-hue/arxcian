@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { readCached } from '@/lib/arxcian/cache'
-import { readFetchStatus } from '@/lib/arxcian/fetchStatus'
+import { panelFetchState } from '@/lib/arxcian/panelStatus'
+import { UI_REFRESH_JOBS } from '@/lib/arxcian/cronAccess'
+import { fetchLabel } from '@/lib/arxcian/time'
 import { CHANNELS_CACHE_KEY, type ChannelVideo } from '@/lib/arxcian/channels'
 import { Panel } from '@/components/arxcian/Panel'
 
@@ -20,20 +22,16 @@ import { Panel } from '@/components/arxcian/Panel'
  * **Vanhentuneisuus näytetään, ei piiloteta.** Paneeli näytti aiemmin
  * välimuistin sisällön kertomatta milloin se haettiin, joten viikon vanha
  * lista näytti täsmälleen samalta kuin tunnin vanha — ja kun YouTube esti
- * haun, vika näkyi vain lokissa. Otsikkorivillä on nyt hakuaika, ja jos
- * viimeisin yritys epäonnistui, sen kertoo erillinen rivi. Tieto tulee
- * mitatusta hakutilasta (fetchStatus.ts) eikä datan iästä pääteltynä.
+ * haun, vika näkyi vain lokissa. Hakuaika ja virkistysnappi tulevat nyt
+ * Panelin `refresh`-propista, jotta jokainen paneeli näyttää saman tiedon
+ * samalla tavalla. Tieto tulee mitatusta hakutilasta (fetchStatus.ts) eikä
+ * datan iästä pääteltynä.
+ *
+ * Kanavakohtainen "osa kanavista ei vastannut" -palkki jää tänne: se on
+ * lähdelistan tietoa, jota jaettu kehys ei tunne.
  */
 
 const MAX_ROWS = 5
-
-/** Kellonaika, ja päivämäärä mukaan jos haku ei ole tältä päivältä. */
-function fetchLabel(ms: number): string {
-  const d = new Date(ms)
-  const klo = d.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
-  const tanaan = new Date().toDateString() === d.toDateString()
-  return tanaan ? klo : `${d.toLocaleDateString('fi-FI', { day: 'numeric', month: 'numeric' })} ${klo}`
-}
 
 /** "2 h sitten" — karkea ja luettava, ei minuutin tarkkuutta. */
 function ageLabel(publishedAt: number | null): string {
@@ -51,34 +49,24 @@ function ageLabel(publishedAt: number | null): string {
 }
 
 export async function Channels({ delay }: { delay?: number }) {
-  const [cached, status] = await Promise.all([
-    readCached<ChannelVideo[]>(CHANNELS_CACHE_KEY),
-    readFetchStatus(CHANNELS_CACHE_KEY),
-  ])
+  const cached = await readCached<ChannelVideo[]>(CHANNELS_CACHE_KEY)
   const videos = (cached?.data ?? []).slice(0, MAX_ROWS)
-
-  // Viimeisin yritys epäonnistui kokonaan jos sen jälkeen ei ole onnistuttu.
-  // Vertailu on tarkka tieto hakutilasta, ei arvio datan iästä: ajojen väli on
-  // yön yli laillisesti 12 h, joten ikäraja joko hälyttäisi turhaan tai vaikenisi.
-  const stale =
-    status !== null && (status.lastSuccess === null || status.lastSuccess < status.lastAttempt)
+  const status = await panelFetchState(CHANNELS_CACHE_KEY, cached?.fetchedAt)
 
   // Osittainenkin epäonnistuminen on kerrottava. Neljä viidestä kanavasta
   // kaatuneena lista näyttäisi muuten aivan terveeltä, koska kaatuneiden
   // kohdalle jää edellisen ajon video — se on oikea valinta datalle mutta
   // väärä ainoana signaalina.
-  const failed = status?.failed ?? []
-
-  const fetchedAt = status?.lastSuccess ?? cached?.fetchedAt ?? null
+  const { stale, failed, fetchedAt, attemptedAt } = status
 
   return (
     <Panel
       title="Kanavat"
       delay={delay}
-      meta={fetchedAt ? fetchLabel(fetchedAt) : undefined}
+      refresh={{ job: UI_REFRESH_JOBS.kanavat, state: status }}
       empty={
-        stale && status
-          ? `Videoita ei saatu haettua — viimeisin yritys ${fetchLabel(status.lastAttempt)} epäonnistui.`
+        stale && attemptedAt
+          ? `Videoita ei saatu haettua — viimeisin yritys ${fetchLabel(attemptedAt)} epäonnistui.`
           : 'Ei vielä videoita — haetaan seuraavassa ajastetussa ajossa.'
       }
     >
@@ -87,7 +75,7 @@ export async function Channels({ delay }: { delay?: number }) {
           {failed.length > 0 ? (
             <p className="mb-2.5 rounded-md border border-ax-down/30 bg-ax-down/10 px-2.5 py-1.5 text-[9px] leading-relaxed text-ax-down">
               {stale ? 'Data vanhentunut — haku epäonnistui ' : 'Osa kanavista ei vastannut '}
-              {status ? fetchLabel(status.lastAttempt) : ''} ({failed.join(', ')}).
+              {attemptedAt ? fetchLabel(attemptedAt) : ''} ({failed.join(', ')}).
               {fetchedAt ? ` Näytetään ${fetchLabel(fetchedAt)} haettu lista.` : ''}
             </p>
           ) : null}

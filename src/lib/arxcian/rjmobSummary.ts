@@ -493,6 +493,17 @@ export type RjMobRefreshResult = {
   computed: number
   /** Kuukaudet joiden laskenta epäonnistui */
   failed: string[]
+  /**
+   * Kaatuiko **uusin** kuukausi, eli se jonka hub näyttää.
+   *
+   * Erillään `failed`istä siksi, että vanhan kuukauden kaatuminen ei näy
+   * hubissa mitenkään: `rjmob:summary` kirjoitetaan vain uusimmasta. Ilman
+   * tätä erottelua ajastettu työ kirjaisi onnistuneen haun silloinkin kun
+   * juuri se luku jota paneeli näyttää jäi päivittämättä — ja paneeli
+   * näyttäisi tuoretta kellonaikaa eilisille luvuille. Se on täsmälleen se
+   * vika jonka takia hakuaika ylipäätään näytetään.
+   */
+  newestFailed: boolean
 }
 
 /**
@@ -521,6 +532,7 @@ export async function refreshRjMobSummaries(): Promise<RjMobRefreshResult> {
   const targets = await loadMonthTargets(sheets[0].id)
   const months: string[] = []
   const failed: string[] = []
+  let newestFailed = false
   let computed = 0
 
   const wanted = sheets.slice(0, MAX_HISTORY_MONTHS + 1)
@@ -556,6 +568,7 @@ export async function refreshRjMobSummaries(): Promise<RjMobRefreshResult> {
     } catch (error) {
       console.error(`[rjmob-summary] kuukauden ${sheet.month} laskenta epäonnistui`, error)
       failed.push(sheet.month)
+      if (isNewest) newestFailed = true
     }
   }
 
@@ -565,7 +578,7 @@ export async function refreshRjMobSummaries(): Promise<RjMobRefreshResult> {
 
   await writeCached(RJMOB_MONTHS_KEY, months, MONTH_TTL_SECONDS)
 
-  return { months, computed, failed }
+  return { months, computed, failed, newestFailed }
 }
 
 /**
