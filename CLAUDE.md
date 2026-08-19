@@ -812,8 +812,25 @@ ilmoituksen. Ilman sitä `tuntematon` jäisi pysyväksi tilaksi riveille jotka
 ovat kenttää vanhempia — todettu 20.8.2026: testi-push meni molempiin
 laitteisiin klo 22.48, mutta kumpikin näytti yhä kirjaamattomalta, koska
 selaimessa pyöri sivun aiemmasta latauksesta vanha JS eikä automaattinen
-uudelleentilaus ajanut. Selaimen uusinta korjaa `vanha`n, tämä korjaa
-`tuntematon`in, eikä kumpikaan vaadi käyttäjältä mitään.
+uudelleentilaus ajanut.
+
+**Ero mekanismien välillä ei ole tila vaan se mitä ne vaativat tapahtuakseen.**
+Selaimen uusinta laukeaa molemmista tiloista (`vanha` ja `tuntematon`), mutta
+vaatii että Trading-sivu avataan **tuoreella JS:llä** — juuri se ehto jäi
+täyttymättä 20.8. Palvelinleimaus ei vaadi mitään: se tapahtuu ensimmäisen
+onnistuneen lähetyksen yhteydessä, myös laitteille jotka eivät koskaan avaa
+sivua uudelleen.
+
+**Leimaus muuttaa yhden poistotapauksen, ja se on tarkoitus.** Kerran
+onnistuneesti toimittanut rivi on `nykyinen`, joten sitä ei enää poisteta
+`tuntematon`-perusteella vaan sen 403 luokitellaan palvelimen vikaan. Se on
+oikein: `tuntematon`-poisto oli arvaus, ja mitattu todiste syrjäyttää
+arvauksen. Jos tilaus on todistetusti kelvannut nykyiselle avaimelle eikä
+avain ole vaihtunut, 403 ei voi johtua tämän tilauksen avaimesta — kuollut
+tilaus vastaisi 404/410.
+
+Sivuhyöty: leimattu rivi ei enää laukaise turhaa unsubscribe+subscribe
+-kierrosta jokaisella sivun latauksella.
 
 **Tilaus tallentaa sen avaimen jolla se tehtiin** ([subscriptions.ts](src/lib/arxcian/push/subscriptions.ts)).
 Ilman kenttää vanhaan avaimeen sidottua tilausta ei voi erottaa palvelimen
