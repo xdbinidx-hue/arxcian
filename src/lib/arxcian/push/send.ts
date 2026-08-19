@@ -25,13 +25,43 @@ export type PushPayload = {
   url: string
 }
 
+/**
+ * Yksi epäonnistunut lähetys, sen verran kuin kutsuja tarvitsee syyn
+ * kertomiseen.
+ *
+ * **Päätepisteen koko osoitetta ei oteta mukaan.** Se sisältää laitekohtaisen
+ * tunnisteen, jolla kuka tahansa voi lähettää ilmoituksen laitteeseen — se ei
+ * kuulu HTTP-vastaukseen eikä lokiriville. Isäntänimi riittää kertomaan
+ * kumman palvelun (Apple, Google, Mozilla) kanssa on ongelma.
+ */
+export type SendFailure = {
+  /** 0 = ei HTTP-vastausta lainkaan (verkkovirhe, aikakatkaisu). */
+  statusCode: number
+  /** Push-palvelun oma virheteksti, esim. "BadJwtToken". Katkaistu. */
+  body?: string
+  /** Vain isäntä, ei polkua eikä tunnistetta. */
+  endpointHost?: string
+}
+
 export type SendResult = {
   delivered: number
   /** Kuolleet tilaukset jotka poistettiin. */
   pruned: number
   /** Muut virheet: verkko, palvelun katko. Näitä ei poisteta. */
   failed: number
+  /**
+   * Syyt `failed`-virheille.
+   *
+   * Pelkkä laskuri kertoo että jokin meni pieleen muttei mikä, ja kutsuja
+   * joutuu arvaamaan. Väärä arvaus maksaa: kun VAPID-avainpari oli epäsuhta,
+   * Apple vastasi 403 BadJwtToken ja testireitti kehotti sallimaan
+   * ilmoitukset — asian joka oli jo kunnossa.
+   */
+  failures: SendFailure[]
 }
+
+/** Palvelun virheteksti voi olla pitkä HTML-sivu; vastaukseen riittää alku. */
+const BODY_MAX = 200
 
 let configured = false
 
@@ -67,14 +97,14 @@ export function vapidPublicKey(): string | null {
  */
 export async function sendToUser(user: UserId, payload: PushPayload): Promise<SendResult> {
   const subscriptions = await getSubscriptions(user)
-  if (subscriptions.length === 0) return { delivered: 0, pruned: 0, failed: 0 }
+  if (subscriptions.length === 0) return { delivered: 0, pruned: 0, failed: 0, failures: [] }
 
   configure()
 
   const body = JSON.stringify(payload)
   const delivered: string[] = []
   const dead: string[] = []
-  let failed = 0
+  const failures: SendFailure[] = []
 
   // Rinnakkain: laitteita on korkeintaan kymmenen, ja peräkkäin lähetettynä
   // yhden hitaan päätepisteen aikakatkaisu viivästyttäisi kaikkia muita.
@@ -94,15 +124,40 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
         const status = error instanceof WebPushError ? error.statusCode : 0
         if (status === 404 || status === 410) {
           dead.push(sub.endpoint)
-        } else {
-          failed++
-          console.error(`[push] lähetys epäonnistui (${status || 'verkko'})`, error)
+          return
         }
+
+        const failure: SendFailure = {
+          statusCode: status,
+          body: failureBody(error),
+          endpointHost: hostOf(sub.endpoint),
+        }
+        failures.push(failure)
+        // Rakenteisena ja kerran: lokista ja vastauksesta on löydyttävä
+        // sama totuus, muuten toinen niistä johtaa väärään päätelmään.
+        console.error('[push] lähetys epäonnistui', failure)
       }
     }),
   )
 
   await reconcileSubscriptions(user, { delivered, dead })
 
-  return { delivered: delivered.length, pruned: dead.length, failed }
+  return { delivered: delivered.length, pruned: dead.length, failed: failures.length, failures }
+}
+
+/** Push-palvelun virheteksti, katkaistuna. */
+function failureBody(error: unknown): string | undefined {
+  const raw = error instanceof WebPushError ? error.body : error instanceof Error ? error.message : ''
+  const trimmed = raw?.trim()
+  if (!trimmed) return undefined
+  return trimmed.length > BODY_MAX ? `${trimmed.slice(0, BODY_MAX)}…` : trimmed
+}
+
+/** Vain isäntä: päätepisteen polussa on laitekohtainen tunniste. */
+function hostOf(endpoint: string): string | undefined {
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return undefined
+  }
 }
