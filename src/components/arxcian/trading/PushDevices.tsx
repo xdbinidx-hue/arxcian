@@ -186,10 +186,19 @@ export function PushDevices() {
 
     korjattu.current = true
     setBusy(true)
+    // Syy luetaan ennen liitosta: `refresh` päivittää tilan `nykyinen`ksi,
+    // jolloin jälkikäteen luettuna kerrottaisiin väärä syy. Ja ne ovat eri
+    // syyt — `vanha` on kirjattu ero nykyiseen avaimeen, `tuntematon` on
+    // kirjaamaton rivi. Vain toinen tarkoittaa että avain oli väärä.
+    const syy =
+      thisDevice?.avainTila === 'vanha'
+        ? 'oli tehty vanhalla avaimella'
+        : 'oli tallennettu ennen kuin avain alettiin kirjata'
+
     void (async () => {
       try {
         await liita(publicKey)
-        setNotice('Tämän laitteen tilaus oli vanhalla avaimella — laite liitettiin uudelleen.')
+        setNotice(`Tämän laitteen tilaus ${syy} — laite liitettiin uudelleen.`)
       } catch (e) {
         // Sama järjestys kuin `enable`ssä: haku ensin, viesti sen jälkeen.
         await refresh()
@@ -202,7 +211,7 @@ export function PushDevices() {
         setBusy(false)
       }
     })()
-  }, [busy, liita, loading, publicKey, refresh, thisEndpoint, vanhentunut])
+  }, [busy, liita, loading, publicKey, refresh, thisDevice, thisEndpoint, vanhentunut])
 
   const remove = async (endpoint: string) => {
     setError(null)
