@@ -9,6 +9,7 @@ import { refreshCalendar } from './trading/calendar'
 import { planAllUsers } from './push/schedule'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
+import { readFetchStatus } from './fetchStatus'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
 import { importWinposReports } from '@/lib/winpos/kassamyynti'
@@ -52,6 +53,14 @@ export type JobResult = {
    * Cron-reitti pudottaa työn `ok`-tilan kun tämä on `stale`.
    */
   source?: 'network' | 'cache' | 'stale'
+  /**
+   * Lähteet jotka kaatuivat, vaikka työ muuten onnistui.
+   *
+   * Osittainen onnistuminen ei saa näyttää täydeltä: neljä viidestä kanavasta
+   * kaatuneena `"items": 1` lukisi samalta kuin terve ajo pienellä listalla.
+   * Eri asiat eri lukuina — `items` on saatuja, tämä menetettyjä.
+   */
+  failedSources?: string[]
 }
 
 export type CronJob = {
@@ -176,7 +185,13 @@ const hubJobs: CronJob[] = [
       // force: ilman sitä tuore välimuisti ohittaa haun kokonaan ja
       // ajastettu työ on tyhjäkäyntiä — mitattu 51 ms viidelle "haulle".
       const result = await getChannelVideos(true)
-      return { key: CHANNELS_CACHE_KEY, items: result.data.length, source: result.source }
+      const status = await readFetchStatus(CHANNELS_CACHE_KEY)
+      return {
+        key: CHANNELS_CACHE_KEY,
+        items: result.data.length,
+        source: result.source,
+        failedSources: status?.failed?.length ? status.failed : undefined,
+      }
     },
   },
   {

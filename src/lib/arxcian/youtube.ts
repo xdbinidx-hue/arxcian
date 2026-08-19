@@ -46,6 +46,21 @@ const YOUTUBE_HEADERS = {
 const ATTEMPTS = 3
 
 /**
+ * Yhden yrityksen aikakatkaisu.
+ *
+ * Pakollinen, ei hienosäätöä: ilman `signal`ia Noden oletus on 300 s
+ * otsakkeille, jolloin yksi jumittunut yhteys kolmella yrityksellä veisi
+ * neljätoista minuuttia. Uutispolku menetti tässä välissä oman 12 s
+ * rajansa, eikä sen ketjussa ole `fetchAndCache`n kattoa lainkaan — yksi
+ * roikkuva yhteys olisi voinut viedä koko cron-ajon aikakatkaisuun.
+ *
+ * Budjetti: 3 × 7 s + viiveet (0,5 + 1,5 s + hajonta) ≈ 23,5 s, eli mahtuu
+ * channels.ts:n 30 s kokonaisrajaan niin että uudelleenyritykset ehtivät
+ * oikeasti loppuun.
+ */
+const ATTEMPT_TIMEOUT_MS = 7_000
+
+/**
  * Viive ennen kutakin yritystä, millisekunteina. Ensimmäinen menee heti.
  *
  * Hajonta lisätään päälle, jottei viisi rinnakkaista kanavahakua osu
@@ -117,7 +132,10 @@ export async function fetchYoutubeFeedUrl(url: string, label: string): Promise<s
 
     tehdyt++
     try {
-      const res = await fetch(url, { headers: YOUTUBE_HEADERS })
+      const res = await fetch(url, {
+        headers: YOUTUBE_HEADERS,
+        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+      })
 
       if (res.ok) return await res.text()
 
@@ -126,7 +144,7 @@ export async function fetchYoutubeFeedUrl(url: string, label: string): Promise<s
       // Esim. 400 tai 410 ei parane uusimalla — turha odottaa loppuun asti.
       if (!worthRetrying(res.status)) break
     } catch (e) {
-      // Verkkovirhe (DNS, katkennut yhteys). Uusitaan aina.
+      // Verkkovirhe tai aikakatkaisu. Uusitaan aina.
       lastStatus = null
       lastCause = e
     }

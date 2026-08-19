@@ -57,11 +57,17 @@ export async function Channels({ delay }: { delay?: number }) {
   ])
   const videos = (cached?.data ?? []).slice(0, MAX_ROWS)
 
-  // Viimeisin yritys epäonnistui jos sen jälkeen ei ole onnistuttu. Vertailu
-  // on tarkka tieto hakutilasta, ei arvio datan iästä: ajojen väli on yön yli
-  // laillisesti 12 h, joten ikäraja joko hälyttäisi turhaan tai vaikenisi.
+  // Viimeisin yritys epäonnistui kokonaan jos sen jälkeen ei ole onnistuttu.
+  // Vertailu on tarkka tieto hakutilasta, ei arvio datan iästä: ajojen väli on
+  // yön yli laillisesti 12 h, joten ikäraja joko hälyttäisi turhaan tai vaikenisi.
   const stale =
     status !== null && (status.lastSuccess === null || status.lastSuccess < status.lastAttempt)
+
+  // Osittainenkin epäonnistuminen on kerrottava. Neljä viidestä kanavasta
+  // kaatuneena lista näyttäisi muuten aivan terveeltä, koska kaatuneiden
+  // kohdalle jää edellisen ajon video — se on oikea valinta datalle mutta
+  // väärä ainoana signaalina.
+  const failed = status?.failed ?? []
 
   const fetchedAt = status?.lastSuccess ?? cached?.fetchedAt ?? null
 
@@ -78,58 +84,57 @@ export async function Channels({ delay }: { delay?: number }) {
     >
       {videos.length > 0 ? (
         <>
-        {stale ? (
-          <p className="mb-2.5 rounded-md border border-ax-down/30 bg-ax-down/10 px-2.5 py-1.5 text-[9px] leading-relaxed text-ax-down">
-            Data vanhentunut — haku epäonnistui{' '}
-            {status && status.lastAttempt ? fetchLabel(status.lastAttempt) : ''}
-            {status && status.failed.length > 0 ? ` (${status.failed.join(', ')})` : ''}.
-            {fetchedAt ? ` Näytetään ${fetchLabel(fetchedAt)} haettu lista.` : ''}
-          </p>
-        ) : null}
+          {failed.length > 0 ? (
+            <p className="mb-2.5 rounded-md border border-ax-down/30 bg-ax-down/10 px-2.5 py-1.5 text-[9px] leading-relaxed text-ax-down">
+              {stale ? 'Data vanhentunut — haku epäonnistui ' : 'Osa kanavista ei vastannut '}
+              {status ? fetchLabel(status.lastAttempt) : ''} ({failed.join(', ')}).
+              {fetchedAt ? ` Näytetään ${fetchLabel(fetchedAt)} haettu lista.` : ''}
+            </p>
+          ) : null}
 
-        <ul>
-          {videos.map(video => (
-            <li key={video.id} className="ax-glass-divide border-b last:border-none">
-              <a
-                href={video.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex gap-3 py-2.5 transition-opacity hover:opacity-80"
-              >
-                <span className="relative h-9 w-14 shrink-0 overflow-hidden rounded-md border border-ax-line/15 bg-black/40">
-                  {video.thumbnail ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={video.thumbnail}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : null}
-                  <span className="absolute inset-0 flex items-center justify-center text-[9px] text-ax-down">
-                    ▶
+          <ul>
+            {videos.map(video => (
+              <li key={video.id} className="ax-glass-divide border-b last:border-none">
+                <a
+                  href={video.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex gap-3 py-2.5 transition-opacity hover:opacity-80"
+                >
+                  <span className="relative h-9 w-14 shrink-0 overflow-hidden rounded-md border border-ax-line/15 bg-black/40">
+                    {video.thumbnail ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={video.thumbnail}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : null}
+                    <span className="absolute inset-0 flex items-center justify-center text-[9px] text-ax-down">
+                      ▶
+                    </span>
                   </span>
-                </span>
 
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[11px] text-ax-text">{video.channel}</span>
-                  <span className="block truncate text-[9px] text-ax-faint">{video.title}</span>
-                </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] text-ax-text">{video.channel}</span>
+                    <span className="block truncate text-[9px] text-ax-faint">{video.title}</span>
+                  </span>
 
-                <span className="shrink-0 self-center font-mono text-[8px] text-ax-faint">
-                  {ageLabel(video.publishedAt)}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
+                  <span className="shrink-0 self-center font-mono text-[8px] text-ax-faint">
+                    {ageLabel(video.publishedAt)}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
 
-        <Link
-          href="/arxcian/trading"
-          className="mt-3 inline-flex items-center gap-1 text-[10px] text-ax-accent transition-colors hover:text-ax-text"
-        >
-          Näytä kaikki kanavat →
-        </Link>
+          <Link
+            href="/arxcian/trading"
+            className="mt-3 inline-flex items-center gap-1 text-[10px] text-ax-accent transition-colors hover:text-ax-text"
+          >
+            Näytä kaikki kanavat →
+          </Link>
         </>
       ) : null}
     </Panel>

@@ -1,5 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
-import { fetchAndCache } from './cache'
+import { fetchAndCache, readCached } from './cache'
 import { kv } from './kv'
 import { readFetchStatus, writeFetchStatus } from './fetchStatus'
 import { fetchYoutubeFeed, YoutubeFeedError } from './youtube'
@@ -16,7 +16,7 @@ import { fetchYoutubeFeed, YoutubeFeedError } from './youtube'
  * yhteisenä kaikille kolmelle kutsujalle.
  *
  * Kanava-ID:t on ratkaistu kanavasivuilta ja syötteet varmistettu käsin
- * toimiviksi 19.8.2026 (kaikki kuusi HTTP 200). ID on pysyvä vaikka kanava
+ * toimiviksi 19.8.2026 (kaikki viisi HTTP 200). ID on pysyvä vaikka kanava
  * vaihtaisi nimeä tai @-tunnusta, joten se on oikea asia kovakoodata —
  * @-tunnus ei olisi.
  */
@@ -118,7 +118,23 @@ async function fetchLatest(channel: Channel): Promise<ChannelVideo | null> {
  */
 async function bumpFailCount(channelId: string): Promise<number | null> {
   try {
-    return await kv().incr(`arxcian:youtube:fail:${channelId}`)
+    const key = `arxcian:youtube:fail:${channelId}`
+    const n = await kv().incr(key)
+
+    // TTL joka kerta uudelleen: listalta poistetun kanavan laskuri ei jää
+    // Redisiin ikuisesti, ja yhä kaatuva kanava pitää omansa elossa.
+    //
+    // Omassa try/catchissaan, koska tämä on siivousta: jos vanhenemisen
+    // asetus kaatuu, laskuri on silti kasvanut ja sen lukema on oikea. Saman
+    // catchin alla epäonnistunut expire palauttaisi `null`in ja estäisi
+    // ikuisesti nousun "lähde poissa" -tilaan, vaikka luku kasvaisi.
+    try {
+      await kv().expire(key, 30 * 24 * 60 * 60)
+    } catch {
+      // Vanheneminen jää asettamatta — laskuri toimii silti.
+    }
+
+    return n
   } catch (e) {
     console.error(`[channels] laskurin kasvatus epäonnistui: ${channelId}`, e)
     return null
@@ -149,11 +165,18 @@ function statusOf(reason: unknown): string {
  * voi päättää poistaako kanavan listalta. Erotin on sen sijaan **saman ajon
  * muiden kanavien tulos**:
  *
- * - Ei yhtään onnistumista → vika on hakuyhteydessä, ei kanavissa. Yksi
- *   lokirivi koko ajosta, eikä kanavakohtaisia laskureita kosketa — muuten
- *   kolmen vuorokauden katkos merkitsisi kaikki kanavat poistuneiksi.
- * - Osa onnistui → kaatunut kanava on aidosti oma tapauksensa. Kasvatetaan
- *   sen laskuria, ja vasta rajan ylittyessä sanotaan sen olevan poissa.
+ * - **Enemmistö kaatui** → vika on hakuyhteydessä, ei kanavissa. Yksi lokirivi
+ *   koko ajosta, eikä kanavakohtaisia laskureita kosketa — muuten kolmen
+ *   vuorokauden katkos merkitsisi kaikki kanavat poistuneiksi.
+ * - **Enemmistö onnistui** → kaatunut kanava on aidosti oma tapauksensa.
+ *   Kasvatetaan sen laskuria, ja vasta rajan ylittyessä sanotaan se poissa.
+ *
+ * Raja on enemmistössä eikä yhdessä onnistujassa, koska esto osuu osittain:
+ * sama ajo lokitti sekä 404:iä että 500:ia. Yksi läpi päässyt kanava ei saa
+ * riittää siihen että neljä muuta elävää kanavaa merkitään poistuneiksi.
+ * Kääntöpuoli on tiedostettu: jos enemmistö kanavista oikeasti kuolisi
+ * yhtaikaa, niitä ei merkittäisi poissaoleviksi. Se on harvinaisempi ja
+ * halvempi virhe kuin elävän kanavan poistaminen listalta.
  */
 async function reportOutcome(
   onnistuneet: Channel[],
@@ -164,12 +187,17 @@ async function reportOutcome(
     return
   }
 
-  if (onnistuneet.length === 0) {
+  if (kaatuneet.length > onnistuneet.length) {
     const statukset = kaatuneet.map(k => `${k.channel.name} ${statusOf(k.reason)}`).join(', ')
+    const laajuus =
+      onnistuneet.length === 0
+        ? `kaikki ${kaatuneet.length} kanavaa`
+        : `${kaatuneet.length}/${CHANNELS.length} kanavaa`
     console.error(
-      `[channels] haku rikki — kaikki ${kaatuneet.length} kanavaa kaatuivat (${statukset}). ` +
+      `[channels] haku rikki — ${laajuus} kaatui (${statukset}). ` +
         'Yhteinen syy, ei kanavavika: YouTube rajoittaa konesali-IP:tä. Kanavia ei merkitä poistuneiksi.',
     )
+    await Promise.all(onnistuneet.map(c => clearFailCount(c.channelId)))
     return
   }
 
@@ -217,6 +245,25 @@ async function fetchChannels(): Promise<ChannelVideo[]> {
   })
 
   await reportOutcome(onnistuneet, kaatuneet)
+
+  // Kaatuneen kanavan viimeksi tunnettu video säilytetään.
+  //
+  // `fetchAndCache` korvaa listan kokonaan eikä yhdistä, joten ilman tätä yksi
+  // kaatunut kanava pyyhkisi senkin videon jonka edellinen ajo haki — paneeli
+  // kutistuisi viidestä neljään vaikka mitään ei ole poistunut. Sama periaate
+  // kuin vanhentuneen datan palauttamisessa, vain kanavan tarkkuudella.
+  //
+  // **Vain osittaisessa onnistumisessa.** Jos kaikki kaatuivat, listaa ei saa
+  // täydentää: silloin `videos` ei jäisi tyhjäksi, alla oleva heitto jäisi
+  // tekemättä ja cron raportoisi `"ok": true` haulle jota ei tapahtunut —
+  // täsmälleen se bugi jota tämä muutos korjaa.
+  if (kaatuneet.length > 0 && onnistuneet.length > 0) {
+    const edellinen = (await readCached<ChannelVideo[]>(CHANNELS_CACHE_KEY))?.data ?? []
+    for (const { channel } of kaatuneet) {
+      const vanhaVideo = edellinen.find(v => v.channel === channel.name)
+      if (vanhaVideo) videos.push(vanhaVideo)
+    }
+  }
 
   // Tila kirjoitetaan ennen mahdollista heittoa, jotta myös täysin
   // epäonnistunut ajo jättää jäljen. Ilman tätä käyttöliittymä näkisi vain

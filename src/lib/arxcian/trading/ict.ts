@@ -9,8 +9,17 @@ const ICT_CHANNEL_ID = 'UCtjxa77NqamhVC8atV85Rog'
 const CACHE_KEY = 'trading:ict-videos'
 const TTL_SECONDS = 60 * 60
 
-/** Kolme yritystä viiveineen ei mahdu cache.ts:n 15 s oletukseen. */
-const TIMEOUT_MS = 30_000
+/**
+ * Cron saa odottaa kolme yritystä viiveineen, sivulataus ei.
+ *
+ * `IctFeed` on palvelinkomponentti ilman Suspense-kääreä, eli se blokkaa koko
+ * Trading-sivun renderöinnin. TTL on tunti ja cron ajaa neljästi vuorokaudessa,
+ * joten sivulataus osuu usein verkkopolulle — 30 s katto tarkoittaisi 30 s
+ * valkoista sivua. Cron-polulla (`force`) katto saa olla väljä, koska siellä
+ * uudelleenyritysten on ehdittävä loppuun.
+ */
+const TIMEOUT_CRON_MS = 30_000
+const TIMEOUT_PAGE_MS = 15_000
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -58,7 +67,12 @@ async function fetchIctVideos(): Promise<IctVideo[]> {
 /** `force` on cronia varten — ilman sitä ajastettu haku lukee vain välimuistin. */
 export async function getIctVideos(force = false) {
   return fetchAndCache(
-    { key: CACHE_KEY, ttl: TTL_SECONDS, timeout: TIMEOUT_MS, force },
+    {
+      key: CACHE_KEY,
+      ttl: TTL_SECONDS,
+      timeout: force ? TIMEOUT_CRON_MS : TIMEOUT_PAGE_MS,
+      force,
+    },
     fetchIctVideos,
   )
 }

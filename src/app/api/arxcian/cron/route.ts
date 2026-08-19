@@ -63,12 +63,26 @@ export async function GET(req: NextRequest) {
 
   const failed = results.filter(r => !r.ok).length
 
+  // Vanhentunut data ja kaatunut työ ovat eri vakavuusluokkaa, vaikka
+  // molemmat ovat epäonnistumisia. `stale` tarkoittaa että ulkoinen lähde ei
+  // vastannut mutta sivu näyttää vanhaa dataa — järjestelmä sietää sen
+  // tarkoituksella. `hardFailed` on se joka vaatii ihmistä.
+  //
+  // Ero on tässä eikä workflow'ssa siksi, että ajon oma vastaus on ainoa
+  // paikka jossa kummankin syy tiedetään. Ilman erottelua GitHub Actions
+  // menisi punaiseksi joka kerta kun YouTube estää konesali-IP:n — eli
+  // suunnilleen päivittäin — ja punainen joka päivä lakkaa olemasta signaali.
+  const stale = results.filter(r => 'source' in r && r.source === 'stale').map(r => r.id)
+  const hardFailed = results.filter(r => !r.ok && !stale.includes(r.id)).length
+
   return NextResponse.json({
     ok: failed === 0,
     via: auth.via,
     schedule: schedule ?? 'kaikki',
     jobs: results.length,
     failed,
+    hardFailed,
+    stale,
     ms: Date.now() - started,
     results,
   })
