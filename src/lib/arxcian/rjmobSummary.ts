@@ -9,10 +9,13 @@ import { todayISOHelsinki } from './time'
  * Luvut tulevat samasta lähteestä ja saman laskennan läpi kuin
  * tuottoseurannan sivu: myyntiseurantataulukot järjestetään samalla
  * `vuosi × 100 + kuukausi` -säännöllä, ja kentät ovat ne joita sivu
- * itse näyttää yhteenvetolaatoissaan (liittKpl + liittEur, fsecKpl, kassa).
+ * itse näyttää yhteenvetolaatoissaan (liittKpl + liittEur, fsecKpl).
  * Näin hubin luku ei voi ajautua eri suuntaan kuin se luku jota sivulla
  * katsotaan — liittymärivi näyttää kappaleet ja provision samana parina kuin
  * tuottoseurannan oma laatta.
+ *
+ * Kassakate on poikkeus: se luetaan myymälätaulukosta eikä `totals.kassa`sta,
+ * koska ne ovat eri asteikkoa. Ks. `kassakateOf`.
  *
  * **Muutosprosentti on ennuste vain kuluvassa kuukaudessa.** Kesken oleva
  * kuukausi on lähes tyhjä alussa, joten kertymän vertaaminen edellisen
@@ -28,7 +31,7 @@ import { todayISOHelsinki } from './time'
  * | Avain | Sisältö |
  * |---|---|
  * | `rjmob:summary` | uusin kuukausi, TTL 6 h — kertymä kasvaa päivän mittaan |
- * | `rjmob:summary:<YYYY-MM>` | valmis kuukausi, TTL vuosi — luvut eivät enää muutu |
+ * | `rjmob:summary:v2:<YYYY-MM>` | valmis kuukausi, TTL vuosi — luvut eivät enää muutu |
  * | `rjmob:summary:months` | saatavilla olevat kuukaudet, uusin ensin |
  *
  * Kuluva kuukausi pysyy tarkoituksella avaimessa `rjmob:summary`: hub lukee
@@ -60,6 +63,13 @@ const MAX_HISTORY_MONTHS = 12
  * noin ×4 ja luku alkaa kertoa jotain. Koskee vain kuluvaa kuukautta.
  */
 const MIN_DAYS_FOR_PROJECTION = 7
+
+/**
+ * Kassaprovisiosta kassakatteeseen. Sama luku kuin `KASSAKATE_JAKAJA`
+ * [rjmobSheets.ts](../../rjmobSheets.ts):ssä, mutta toiseen suuntaan — ks.
+ * `kassakateOf`. Käytössä vain varalähteessä.
+ */
+const KASSAKATE_KERROIN = 10
 
 export type RjMobMetric = {
   /** Valmiiksi muotoiltu kuukauden kertymä, esim. "342" tai "18,9k €" */
@@ -98,9 +108,18 @@ type SeurantaSheet = {
   month: string
 }
 
-/** Avain yhden valmiin kuukauden yhteenvedolle. */
+/**
+ * Avain yhden valmiin kuukauden yhteenvedolle.
+ *
+ * Versio-osa on avaimessa siksi että valmiin kuukauden merkintä elää vuoden
+ * eikä sitä lasketa uudelleen. Kun laskenta korjautuu, vanhat merkinnät eivät
+ * korjaudu itsestään: `v2` otettiin käyttöön kun kassakate vaihtui
+ * kassaprovisioasteikosta myyntiseurannan asteikkoon (ks. `kassakateOf`), eli
+ * vanhoissa merkinnöissä kassakate on kymmenesosa oikeasta. Nosta versiota
+ * aina kun jonkin kentän merkitys muuttuu — vanhat avaimet vanhenevat itse.
+ */
 export function monthCacheKey(month: string): string {
-  return `${RJMOB_SUMMARY_KEY}:${month}`
+  return `${RJMOB_SUMMARY_KEY}:v2:${month}`
 }
 
 /** Kuluva kuukausi YYYY-MM Helsingin aikaa. */
@@ -151,6 +170,40 @@ function fmtEur(n: number): string {
 function changeOf(current: number, previous: number, factor: number): number | null {
   if (previous <= 0) return null
   return ((current * factor - previous) / previous) * 100
+}
+
+/**
+ * Kuukauden kassakate myyntiseurannan asteikolla.
+ *
+ * **Tämä ei ole `totals.kassa`.** Kassakate ja kassaprovisio ovat kaksi eri
+ * asteikkoa, ja ne eroavat kymmenkertaisesti:
+ *
+ * | Kenttä | Asteikko | Lähde |
+ * |---|---|---|
+ * | `totals.kassa` (= Σ myyjien `kassa`) | kassaprovisio ×1 | Kassamyynti-välilehden Kate(alv0) ÷ 10 |
+ * | `stores[].kassa` | kassakate ×10 | Myyjät Myymälöittäin -välilehden kassaprovisio × 10 |
+ *
+ * Hub näytti aiemmin `totals.kassa`n otsikolla "Kassakate", jolloin luku oli
+ * kymmenesosa siitä kassakatteesta jonka myyntiseuranta näyttää: 678,98 €
+ * siellä missä taulukossa luki 6 789,80 €. Kerroin on kuvattu
+ * [rjmobSheets.ts](../../rjmobSheets.ts):n `KASSAKATE_JAKAJA`ssa ja
+ * `readStores`issa — ne menevät tarkoituksella eri suuntiin, joten hubin on
+ * valittava puoli eikä yhdenmukaistettava kertoimia.
+ *
+ * Myymälätaulukko on myös oikea rajaus: se kattaa RJ-Mobin viisi myymälää
+ * ständimyyjät poistettuina, kun taas myyjätaulukko kattaa koko organisaation
+ * myymälät. Hubin paneeli kertoo RJ-Mobin omasta myynnistä.
+ */
+function kassakateOf(data: DashData): number {
+  const stores = Object.values(data.stores)
+
+  // Myymälärivit puuttuvat joistakin käsin ylläpidetyistä kopioista kokonaan.
+  // Silloin sama asteikko saadaan myyjien kassaprovisiosta kertomalla, ja se
+  // on parempi kuin nolla: nolla näyttäisi siltä että kassaa ei myyty.
+  // Rajaus on tällöin laveampi (koko organisaatio), mutta asteikko on oikea.
+  if (stores.length === 0) return data.totals.kassa * KASSAKATE_KERROIN
+
+  return stores.reduce((sum, store) => sum + store.kassa, 0)
 }
 
 /**
@@ -218,7 +271,8 @@ async function summaryFor(
   // Kesken olevasta kuukaudesta ei näytetä vertailua ennen kuin kertymää on
   // tarpeeksi. Isot luvut näkyvät silti heti — vain muutosprosentti odottaa.
   const tooEarly = isRunningMonth && daysElapsed < MIN_DAYS_FOR_PROJECTION
-  const prev = tooEarly ? undefined : previous?.totals
+  const prevData = tooEarly ? null : previous
+  const prev = prevData?.totals
 
   return {
     month: sheet.month,
@@ -234,8 +288,10 @@ async function summaryFor(
         changePercent: prev ? changeOf(current.totals.liittKpl, prev.liittKpl, factor) : null,
       },
       kassakate: {
-        display: fmtEur(current.totals.kassa),
-        changePercent: prev ? changeOf(current.totals.kassa, prev.kassa, factor) : null,
+        display: fmtEur(kassakateOf(current)),
+        changePercent: prevData
+          ? changeOf(kassakateOf(current), kassakateOf(prevData), factor)
+          : null,
       },
       fsecure: {
         display: `${fmtKpl(current.totals.fsecKpl)} kpl`,
