@@ -1,6 +1,14 @@
-'use client'
-
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  GROUP_LABELS,
+  GROUP_ORDER,
+  dueToday,
+  groupOf,
+  localDate,
+  reminderMs,
+  shiftDays,
+  type Group,
+} from '@/lib/arxcian/personal/todoGroups'
 import type { Todo } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
 
@@ -9,53 +17,12 @@ type Props = {
   currentUser: Owner
 }
 
-/** YYYY-MM-DD selaimen paikallisesta ajasta, ei UTC:sta (ks. Todo.date). */
-function localDate(d: Date): string {
-  const kk = `${d.getMonth() + 1}`.padStart(2, '0')
-  const pp = `${d.getDate()}`.padStart(2, '0')
-  return `${d.getFullYear()}-${kk}-${pp}`
-}
-
-/** Keskipäivä lähtökohtana, jotta kesäaikasiirtymä ei heitä päivää yli. */
-function shiftDays(date: string, days: number): string {
-  const d = new Date(`${date}T12:00:00`)
-  d.setDate(d.getDate() + days)
-  return localDate(d)
-}
-
-/** Muistutuksen hetki paikallisena aikaleimana, tai null jos ei ajoitettu. */
-function reminderMs(todo: Todo): number | null {
-  if (!todo.date || !todo.remindAt) return null
-  const ms = new Date(`${todo.date}T${todo.remindAt}:00`).getTime()
-  return Number.isNaN(ms) ? null : ms
-}
-
-type Group = 'myohassa' | 'tanaan' | 'huomenna' | 'myohemmin' | 'joskus'
-
-const GROUP_ORDER: readonly Group[] = ['myohassa', 'tanaan', 'huomenna', 'myohemmin', 'joskus']
-
-const GROUP_LABELS: Record<Group, string> = {
-  myohassa: 'Myöhässä',
-  tanaan: 'Tänään',
-  huomenna: 'Huomenna',
-  myohemmin: 'Myöhemmin',
-  joskus: 'Ei ajankohtaa',
-}
-
 const GROUP_COLORS: Record<Group, string> = {
   myohassa: 'text-ax-down',
   tanaan: 'text-ax-accent',
   huomenna: 'text-ax-dim',
   myohemmin: 'text-ax-dim',
   joskus: 'text-ax-faint',
-}
-
-function groupOf(todo: Todo, today: string): Group {
-  if (!todo.date) return 'joskus'
-  if (todo.date < today) return 'myohassa'
-  if (todo.date === today) return 'tanaan'
-  if (todo.date === shiftDays(today, 1)) return 'huomenna'
-  return 'myohemmin'
 }
 
 // Kuitatut muistutukset selaimen muistiin: ilman tätä sivun lataus laukaisisi
@@ -218,12 +185,7 @@ export function TodoList({ initialTodos, currentUser }: Props) {
 
   const pending = todos.filter(t => !t.done)
   const done = todos.filter(t => t.done)
-  const openToday = today
-    ? pending.filter(t => {
-        const g = groupOf(t, today)
-        return g === 'tanaan' || g === 'myohassa'
-      }).length
-    : 0
+  const openToday = today ? dueToday(pending, today).length : 0
 
   const groups = today
     ? GROUP_ORDER.map(g => ({ id: g, items: pending.filter(t => groupOf(t, today) === g) })).filter(

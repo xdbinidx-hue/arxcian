@@ -1,44 +1,11 @@
 import { readCached, writeCached } from '../cache'
 import { canView, visibleTo, type Owner, type SessionUser } from '@/lib/session'
+import { normalizeDate, normalizeTime, sortTodos } from './todoGroups'
 import type { Todo } from './types'
 
 const CACHE_KEY = 'personal:todos'
 const TTL_SECONDS = 5 * 365 * 24 * 60 * 60 // "pysyvä", kuten tavoitteilla
 const MAX_TODOS = 500
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const TIME_PATTERN = /^\d{2}:\d{2}$/
-
-/** Hylkää muodottoman päivän hiljaisesti — tallennettu roska rikkoisi lajittelun. */
-export function normalizeDate(value: unknown): string | null {
-  return typeof value === 'string' && DATE_PATTERN.test(value) ? value : null
-}
-
-/** Kellonaika kelpaa vain päivän kanssa, ks. Todo.remindAt. */
-export function normalizeTime(value: unknown, date: string | null): string | null {
-  if (!date) return null
-  return typeof value === 'string' && TIME_PATTERN.test(value) ? value : null
-}
-
-/**
- * Ajoitetut ensin päivän ja kellonajan mukaan, päivättömät perään, tehdyt
- * viimeisenä. Lajittelu tehdään tallennuksessa, jotta jokainen lukija saa
- * saman järjestyksen ilman omaa vertailufunktiotaan.
- */
-function sortTodos(todos: Todo[]): Todo[] {
-  return [...todos].sort((a, b) => {
-    if (a.done !== b.done) return a.done ? 1 : -1
-    if (a.date !== b.date) {
-      if (!a.date) return 1
-      if (!b.date) return -1
-      return a.date < b.date ? -1 : 1
-    }
-    const timeA = a.remindAt ?? '99:99'
-    const timeB = b.remindAt ?? '99:99'
-    if (timeA !== timeB) return timeA < timeB ? -1 : 1
-    return b.createdAt - a.createdAt
-  })
-}
 
 async function getAll(): Promise<Todo[]> {
   const cached = await readCached<Todo[]>(CACHE_KEY)
