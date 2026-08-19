@@ -437,6 +437,62 @@ julkaisuille (T-15 min) ja myöhemmin YouTube-kanavien uusille videoille, ks.
 samaan ongelmaan on juuri se mitä ei haluta, joten ajastin ja tilaukset
 rakennetaan yleisiksi ja `MarketEvent` on yksi lähde niiden päällä.
 
+### BadJwtToken on kolme eri vikaa, ei yksi
+
+Apple vastaa `403 BadJwtToken` kolmeen eri syyhyn, eikä statuskoodi erota
+niitä. Tuotanto lokitti 19.8.2026 yhdeksän tällaista, ja koska syytä ei voinut
+päätellä, testi-push kehotti sallimaan ilmoitukset — asian joka oli jo
+kunnossa.
+
+| Syy | Korjaus | Miten todetaan |
+|---|---|---|
+| Palvelimen avainpari on epäsuhta | uusi pari Verceliin | `vapidKeyCheck()` johtaa julkisen avaimen yksityisestä (P-256) ja vertaa |
+| Tilaus on tehty vanhalla julkisella avaimella | uusi tilaus laitteella | tilaukseen tallennettu `appServerKey` vs. nykyinen |
+| `VAPID_SUBJECT` ei ole `mailto:` tai `https:` | muuttujan korjaus | muototarkistus |
+
+**403:sta ei saa poistaa tilausta pelkän koodin perusteella.** Erotin ei ole
+statuskoodi vaan palvelimen oman avainparin tila — sama päättely kuin
+YouTube-hauissa, joissa erotin on saman ajon muiden kanavien tulos. Jos pari on
+epäsuhta, jokainen laite saa 403:n riippumatta omasta avaimestaan, ja
+koodisidonnainen poisto tyhjentäisi koko laitelistan joka ajolla. Vasta kun
+pari on todistetusti eheä, jäljelle jää tilauksen oma avain — silloin tilaus on
+kuollut ja poistetaan. `SendResult` pitää nämä eri lukuina (`pruned` vs.
+`prunedStale`), koska niiden korjaus on eri: kuollut vaatii ilmoitusluvan
+uudelleen, vanhentunut vain uuden tilauksen samalla luvalla.
+
+**Tilaus tallentaa sen avaimen jolla se tehtiin** ([subscriptions.ts](src/lib/arxcian/push/subscriptions.ts)).
+Ilman kenttää vanhaan avaimeen sidottua tilausta ei voi erottaa palvelimen
+asetusvirheestä, ja laite jäisi listalle näyttämään toimivalta. Arvo otetaan
+palvelimen ympäristöstä eikä asiakkaan rungosta. Puuttuva arvo tarkoittaa
+"tuntematon" (rivi on kenttää vanhempi), ei "ei täsmää" — mutta korjaus on
+sama, joten kumpikin uusitaan.
+
+Vanhentunut tilaus **uusitaan selaimessa itsestään** kun Trading-sivu avataan
+([PushDevices](src/components/arxcian/trading/PushDevices.tsx)). Ilmoituslupa
+ei liity VAPID-avaimeen, joten selain ei kysy mitään eikä käyttäjän tarvitse
+poistaa ja antaa lupia uudelleen. Uusinta ajetaan korkeintaan kerran latausta
+kohti, ettei epäonnistuva tilaus jää silmukkaan.
+
+**VAPID-avaimet ovat vain Production-ympäristössä, tarkoituksella.** Kaikki
+kolme ympäristöä jakavat saman Redis-kannan, joten preview'n oma avainpari
+kirjoittaisi tuotannon laitelistaan tilauksen jota tuotannon avain ei koskaan
+kelpuuta — eli tuottaisi juuri sen vian jota tämä osio kuvaa. Push lähtee vain
+tuotannosta. `QSTASH_TOKEN` sen sijaan on kaikissa kolmessa.
+
+**Vika todetaan mittaamalla, ei odottamalla aamucronia.** Kolme reittiä,
+kaikki istunnolla käsin ajettavia:
+
+| Reitti | Kertoo |
+|---|---|
+| `GET /api/arxcian/push/diag` | avainpari, subject, laitteiden avaintila, jonon koko, QStashin vastaus, ympäristömuuttujien olemassaolo **ajavassa deployssa** |
+| `POST /api/arxcian/push/test` | oikea lähetys ja sen syy jos kaatuu |
+| `GET /api/arxcian/push/plan` | suunnittelee jonon heti, idempotentti |
+
+`diag` lukee ympäristömuuttujat ajavasta prosessista eikä `vercel env ls`:stä,
+koska muuttuja astuu voimaan vasta uudessa deployssa: asetettu muuttuja ja
+käytössä oleva muuttuja ovat eri asia. Salaisuuksia ei palauteta — yksityisestä
+avaimesta vain onko se pari julkiselle, päätepisteistä vain isäntä.
+
 ### Yksityiskohdat
 
 Kanavia on kolme (selainilmoitus, banneri, ääni) erikseen kytkettävinä, koska
