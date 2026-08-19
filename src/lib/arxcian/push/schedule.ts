@@ -1,5 +1,6 @@
 import { Client } from '@upstash/qstash'
 import { USER_IDS, type UserId } from '@/lib/session'
+import { getCalendar } from '../trading/calendar'
 import { marketEvents, type MarketEvent } from '../trading/marketEvents'
 import { getNotifySettings, getTradingTimes } from '../trading/notifyStore'
 import { getSubscriptions } from './subscriptions'
@@ -42,6 +43,15 @@ const HORIZON_MS = 48 * 60 * 60 * 1000
  * väärään aikaan tullut "Lontoo avautuu" on väärää tietoa.
  */
 const LEAD_FLOOR_MS = 60_000
+
+/**
+ * Kalenterijulkaisujen avainetuliite.
+ *
+ * Sidos `marketEvents`in avainmuotoon on tahallinen mutta kapea: vain nämä
+ * rivit saavat jäädä jonoon silloin kun kalenteria ei saatu luettua.
+ * Istuntoajat lasketaan säännöistä eivätkä voi olla "tuntemattomia".
+ */
+const CALENDAR_KEY_PREFIX = 'calendar-release:'
 
 let client: Client | null = null
 
@@ -166,8 +176,26 @@ export async function planForUser(user: UserId, now = Date.now()): Promise<PlanR
     }
   }
 
-  const times = await getTradingTimes(user)
-  const wanted = dueForScheduling(marketEvents(now, settings, times), now)
+  const [times, calendar] = await Promise.all([getTradingTimes(user), getCalendar()])
+
+  /**
+   * Puuttuva välimuisti ei ole tyhjä kalenteri.
+   *
+   * `readCached` nielee Redis-virheen ja palauttaa `null`, joten yksikin
+   * lukublippi antaisi tyhjän listan — ja koska poistuneet perutaan, se
+   * peruisi kaikki jo jonotetut julkaisut ja jonottaisi ne uudelleen
+   * seuraavalla ajolla. Sen lisäksi että se on turhaa työtä, peru-ja-julkaise
+   * saman `deduplicationId`n kanssa voi osua QStashin dedup-ikkunaan, jolloin
+   * viesti jää toimittamatta kokonaan.
+   *
+   * Sama erottelu kuin muualla arxcianissa: kalenteritilien tyhjä indeksi `[]`
+   * tarkoittaa "kaikki katkaistu" ja puuttuva avain "ei tiedetä", ja watch
+   * jättää merkitsemättä nähdyksi kun kaikki lähteet kaatuvat.
+   */
+  const kalenteriTuntematon = calendar === null
+
+  // Vain välimuistista: kalenterin haku on rate-limitattu ja kuuluu cronille.
+  const wanted = dueForScheduling(marketEvents(now, settings, times, calendar?.data ?? []), now)
   const wantedKeys = new Set(wanted.map(e => e.key))
 
   const next: PlannedMap = {}
@@ -183,6 +211,13 @@ export async function planForUser(user: UserId, now = Date.now()): Promise<PlanR
     }
     // Ei enää haluttu: aika poistettiin tai istunto kytkettiin pois.
     if (!wantedKeys.has(eventKey)) {
+      // Paitsi jos kalenteria ei saatu luettua: julkaisu ei ole poistunut,
+      // sitä ei vain tiedetä. Ks. `kalenteriTuntematon` yllä.
+      if (kalenteriTuntematon && eventKey.startsWith(CALENDAR_KEY_PREFIX)) {
+        next[eventKey] = entry
+        kept++
+        continue
+      }
       await cancelQuietly(entry.messageId)
       cancelled++
       continue

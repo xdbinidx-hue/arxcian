@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { marketEvents, type MarketEvent } from '@/lib/arxcian/trading/marketEvents'
-import type { NotifySettings, TradingTime } from '@/lib/arxcian/trading/types'
+import type { CalendarEvent, NotifySettings, TradingTime } from '@/lib/arxcian/trading/types'
 import { playChime, showSystemNotification } from '@/lib/arxcian/notify'
 
 /**
@@ -32,6 +32,17 @@ export type MarketAlertsUpdate = {
   settings: NotifySettings
   times: TradingTime[]
 }
+
+/**
+ * Kalenteri ei kulje `MarketAlertsUpdate`ssa vaan pelkkänä propsina.
+ *
+ * Asetuspaneeli voi muuttaa asetuksia ja omia aikoja, muttei kalenteria — se
+ * tulee cronin päivittämästä välimuistista ja vaihtuu neljästi vuorokaudessa.
+ * Sen liittäminen samaan tapahtumaan tarkoittaisi että paneeli lähettäisi
+ * kalenterikopion joka kytkimen napautuksella, tai pahempaa: unohtaisi sen ja
+ * tyhjentäisi ajastimen kalenterin.
+ */
+type Props = MarketAlertsUpdate & { calendar: CalendarEvent[] }
 
 /**
  * Viimeksi toimitetun ilmoituksen hetki. Selaimessa eikä palvelimella, koska
@@ -82,7 +93,11 @@ function writeMarker(value: number): void {
   }
 }
 
-export function MarketAlerts({ settings: initialSettings, times: initialTimes }: MarketAlertsUpdate) {
+export function MarketAlerts({
+  settings: initialSettings,
+  times: initialTimes,
+  calendar,
+}: Props) {
   const [settings, setSettings] = useState(initialSettings)
   const [times, setTimes] = useState(initialTimes)
   const [banners, setBanners] = useState<MarketEvent[]>([])
@@ -92,8 +107,10 @@ export function MarketAlerts({ settings: initialSettings, times: initialTimes }:
   // ja voisi hypätä juuri avaushetken yli.
   const settingsRef = useRef(settings)
   const timesRef = useRef(times)
+  const calendarRef = useRef(calendar)
   settingsRef.current = settings
   timesRef.current = times
+  calendarRef.current = calendar
 
   useEffect(() => {
     const onUpdate = (event: Event) => {
@@ -148,7 +165,7 @@ export function MarketAlerts({ settings: initialSettings, times: initialTimes }:
     const tick = () => {
       const now = Date.now()
       const marker = readMarker() ?? now
-      const events = marketEvents(now, settingsRef.current, timesRef.current)
+      const events = marketEvents(now, settingsRef.current, timesRef.current, calendarRef.current)
       const due = events.filter(e => e.notifyAt > marker && e.notifyAt <= now)
       if (due.length === 0) return
 

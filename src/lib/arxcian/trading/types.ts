@@ -114,9 +114,49 @@ export type NotifySettings = {
   sessionClose: boolean
   /** Mitkä istunnot ilmoitetaan. */
   sessions: string[]
+  /**
+   * Ilmoita talouskalenterin punaisista (High) julkaisuista.
+   *
+   * Oma kytkimensä eikä istuntojen alla, koska lähde ja luotettavuus ovat eri:
+   * istuntoajat ovat sääntöjä ja laskettavissa miten kauas tahansa, julkaisut
+   * tulevat ForexFactoryn dokumentoimattomasta syötteestä joka kattaa vain
+   * kuluvan viikon. Kun syöte pettää, tämän saa pois ilman että istunnot
+   * lakkaavat.
+   */
+  calendarHigh: boolean
+  /**
+   * Mistä valuutoista punaiset julkaisut ilmoitetaan.
+   *
+   * **Rajaus on ajallinen, ei vain aihepiirin.** Aasian ja Oseanian julkaisut
+   * osuvat Suomen yöhön — AUD Employment tulee klo 4.15 — joten rajaamaton
+   * lista tarkoittaisi että ilmoitukset herättävät useita kertoja viikossa.
+   * Tyhjä lista = ei yhtään, ei "kaikki": muuten valuuttojen poistaminen yksi
+   * kerrallaan kääntyisi viimeisellä poistolla päinvastaiseksi.
+   */
+  calendarCurrencies: string[]
   /** Kuinka monta minuuttia ennen istunnon vaihdosta ilmoitetaan. */
   leadMinutes: number
 }
+
+/**
+ * Valuutat joita talouskalenteri käyttää, valittavina asetuksissa.
+ *
+ * Kiinteä lista eikä syötteestä johdettu: syöte kattaa vain kuluvan viikon,
+ * joten hiljaisen viikon valuutta katoaisi valitsimesta kokonaan ja käyttäjän
+ * valinta näyttäisi kadonneen. Järjestys on karkeasti sen mukaan kuinka usein
+ * valuutalla on punaisia julkaisuja.
+ */
+export const CALENDAR_CURRENCIES = [
+  'USD',
+  'EUR',
+  'GBP',
+  'CAD',
+  'AUD',
+  'JPY',
+  'CHF',
+  'NZD',
+  'CNY',
+] as const
 
 export const DEFAULT_NOTIFY_SETTINGS: NotifySettings = {
   push: true,
@@ -127,5 +167,9 @@ export const DEFAULT_NOTIFY_SETTINGS: NotifySettings = {
   // koneella, sulku vain toteaa että ei enää tarvitse.
   sessionClose: false,
   sessions: ['asia', 'london', 'new-york'],
+  calendarHigh: true,
+  // USD ja EUR liikuttavat treidattavia pareja ja julkaistaan Suomen aikaa
+  // päivällä. Muut valuutat saa lisätä asetuksista.
+  calendarCurrencies: ['USD', 'EUR'],
   leadMinutes: 5,
 }

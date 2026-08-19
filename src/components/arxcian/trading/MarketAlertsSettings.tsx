@@ -5,6 +5,7 @@ import { Panel } from '@/components/arxcian/Panel'
 import { SESSIONS } from '@/lib/arxcian/trading/sessions'
 import { tradingTimeOccurrences } from '@/lib/arxcian/trading/marketEvents'
 import { countdown } from '@/lib/arxcian/time'
+import { CALENDAR_CURRENCIES } from '@/lib/arxcian/trading/types'
 import type { NotifySettings, TradingTime } from '@/lib/arxcian/trading/types'
 import {
   notifyPermission,
@@ -183,6 +184,13 @@ export function MarketAlertsSettings({ initialSettings, initialTimes, user }: Pr
     void patchSettings({ sessions: next })
   }
 
+  const toggleCurrency = (currency: string, on: boolean) => {
+    const next = on
+      ? [...settings.calendarCurrencies, currency]
+      : settings.calendarCurrencies.filter(c => c !== currency)
+    void patchSettings({ calendarCurrencies: next })
+  }
+
   const toggleDay = (iso: number) => {
     setDays(current =>
       current.includes(iso) ? current.filter(d => d !== iso) : [...current, iso].sort(),
@@ -306,7 +314,47 @@ export function MarketAlertsSettings({ initialSettings, initialTimes, user }: Pr
             onChange={v => patchSettings({ sessionClose: v })}
             label="Istunnon sulkeutuminen"
           />
+          {/* Oma kytkin eikä istuntojen alla: lähde on eri ja epäluotettavampi,
+              joten tämän saa pois ilman että istunnot lakkaavat. */}
+          <Toggle
+            checked={settings.calendarHigh}
+            onChange={v => patchSettings({ calendarHigh: v })}
+            label="Talouskalenterin punaiset (15 min ennen)"
+          />
         </div>
+
+        {settings.calendarHigh && (
+          <div className="mt-2">
+            <div
+              className={`mb-1.5 text-[10px] ${
+                settings.calendarCurrencies.length === 0 ? 'text-ax-down' : 'text-ax-faint'
+              }`}
+            >
+              {settings.calendarCurrencies.length === 0
+                ? 'Ei yhtään valuuttaa valittuna — julkaisuista ei ilmoiteta.'
+                : 'Valuutat — Aasian julkaisut osuvat Suomen yöhön'}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {CALENDAR_CURRENCIES.map(currency => {
+                const on = settings.calendarCurrencies.includes(currency)
+                return (
+                  <button
+                    key={currency}
+                    onClick={() => toggleCurrency(currency, !on)}
+                    aria-pressed={on}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition-colors ${
+                      on
+                        ? 'border-ax-accent/40 bg-ax-accent/10 text-ax-accent'
+                        : 'border-ax-line text-ax-faint hover:text-ax-dim'
+                    }`}
+                  >
+                    {currency}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-1.5">
           {SESSIONS.map(session => {
