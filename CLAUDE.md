@@ -18,10 +18,31 @@ RJ-Mobin sivut saavat arxcianin tumman kehyksen (Shell), mutta niiden **data pys
 
 ## Työtapa
 
-- Edetään vaihe kerrallaan. Vaiheen valmistuttua: pysähdy, kerro mitä tehtiin ja mitä pitää testata, odota vahvistus.
-- Committaa pieninä loogisina kokonaisuuksina jokaisen alavaiheen jälkeen, ei isoa kasaa kerralla.
-- Kysy ennen uusia isoja riippuvuuksia tai maksullisia palveluita.
-- Jos datalähde ei ole luotettava (esim. Forex Factory), sano se suoraan — älä paikkaa hataralla ratkaisulla ilman lupaa.
+- Edetään vaihe kerrallaan. Committaa pieninä loogisina kokonaisuuksina jokaisen
+  alavaiheen jälkeen, ei isoa kasaa kerralla.
+
+**Valmis vaihe viedään tuotantoon itse. Portti on testit, ei Albinin vahvistus.**
+Kun vaihe on valmis:
+
+1. `npm run typecheck && npm run test && npm run build`
+2. jos kaikki menee läpi: merge `main`iin ja `git push origin main`
+3. poista mergetty haara: `git push origin --delete <haara>` ja `git branch -d <haara>`
+4. **älä aja `vercel deploy` tai `vercel --prod`** — GitHub-integraatio deployaa
+   pushista automaattisesti. Manuaalinen komento tekee toisen samanlaisen buildin
+   turhaan.
+5. kerro vasta sitten mitä tehtiin ja mitä kannattaa testata selaimessa
+
+**Jos typecheck, testi tai build kaatuu: pysähdy.** Älä mergeä, älä pushaa mainiin.
+Kerro mikä hajosi ja mitä se tarkoittaa.
+
+**Kysy silti ennen kuin teet nämä** — automaatio ei koske näitä:
+- uusi maksullinen palvelu tai iso riippuvuus
+- mikä tahansa mitä ei saa peruttua: datan poisto, avaimen vaihto, tuotannon
+  ympäristömuuttujan muutos, Drive-taulukkoon kirjoittaminen ensimmäistä kertaa
+- arkkitehtuuripäätös joka koskee useaa osiota kerralla
+
+- Jos datalähde ei ole luotettava (esim. Forex Factory), sano se suoraan — älä
+  paikkaa hataralla ratkaisulla ilman lupaa.
 
 **Jos vika näkyy lokissa mutta ei vastauksessa, se on bugi — ei kosmetiikkaa.**
 Jokainen `"ok": true` jonka takana ei oikeasti tapahtunut mitään maksaa puoli
