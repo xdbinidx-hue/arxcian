@@ -179,7 +179,11 @@ export async function planForUser(user: UserId, now = Date.now()): Promise<PlanR
       notBefore: Math.floor(event.notifyAt / 1000),
       // Toinen lukko kartan päälle: jos julkaisu onnistuu mutta kartan
       // kirjoitus kaatuu, seuraava ajo ei jonota samaa tapahtumaa uudelleen.
-      deduplicationId: `${user}:${event.key}`,
+      // QStash hylkää kaksoispisteen deduplikaatiotunnisteessa (400), ja
+      // arxcianin avainkonventio käyttää sitä erottimena. Vain tunniste
+      // siivotaan — event.key pysyy ennallaan, koska se on sekä
+      // planned-kartan avain että ilmoituksen tag.
+      deduplicationId: `${user}:${event.key}`.replace(/:/g, '-'),
       // Markkinan avautuminen on ajankohtainen sen istunnon ajan. Kolme
       // uudelleenyritystä riittää ohimenevään katkoon; sen jälkeen ilmoitus
       // olisi joka tapauksessa myöhässä.
