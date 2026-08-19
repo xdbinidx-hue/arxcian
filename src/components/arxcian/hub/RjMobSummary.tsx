@@ -81,9 +81,12 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                       {value.display}
                     </span>
                     {/* Tarkentava luku puuttuu vanhasta välimuistimerkinnästä,
-                        joten rivi on rakennettava toimimaan ilman sitä. */}
+                        joten rivi on rakennettava toimimaan ilman sitä.
+                        Sama koko ja paino kuin pääluvulla — provisio on luku
+                        jota luetaan, ei alaviite. Sävy on himmeämpi, jotta
+                        rivillä näkee yhä kumpi on otsikon mukainen luku. */}
                     {value.sub && (
-                      <span className="block font-mono text-[10px] tabular-nums text-ax-faint">
+                      <span className="block text-xl font-light tabular-nums text-ax-faint">
                         {value.sub}
                       </span>
                     )}

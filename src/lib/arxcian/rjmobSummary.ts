@@ -182,6 +182,27 @@ function changeOf(current: number, previous: number, factor: number): number | n
 }
 
 /**
+ * Kuukauden F-Secure-kappaleet **RJ-Mobin myymälöistä**.
+ *
+ * `totals.fsecKpl` tuottaa jo tämän saman luvun — se suosii myymälätaulukkoa
+ * ja käyttää myyjätaulukkoa vain kun myymälärivit puuttuvat
+ * ([rjmobSheets.ts](../../rjmobSheets.ts), kaikki kolme jäsennintä). Rajaus on
+ * silti kirjoitettu tähän auki, koska se on hubin oma vaatimus eikä
+ * `totals`-kentän lupaus: paneeli kertoo RJ-Mobin viiden myymälän tuloksen,
+ * kun myyjätaulukko kattaa koko organisaation myymälät. Näin rajaus ei voi
+ * muuttua hiljaa siitä että `totals`in sisäinen valinta joskus vaihtuu.
+ */
+function fsecKplOf(data: DashData): number {
+  const stores = Object.values(data.stores)
+
+  // Sama varalähde ja sama järjestys kuin kassakatteessa. Ilman myymälärivejä
+  // myyjätaulukko on ainoa lähde; se on laveampi rajaus mutta oikea suure.
+  if (stores.length === 0) return data.totals.fsecKpl
+
+  return stores.reduce((sum, store) => sum + store.fsecKpl, 0)
+}
+
+/**
  * Kuukauden kassakate myyntiseurannan asteikolla.
  *
  * **Tämä ei ole `totals.kassa`.** Kassakate ja kassaprovisio ovat kaksi eri
@@ -303,8 +324,10 @@ async function summaryFor(
           : null,
       },
       fsecure: {
-        display: `${fmtKpl(current.totals.fsecKpl)} kpl`,
-        changePercent: prev ? changeOf(current.totals.fsecKpl, prev.fsecKpl, factor) : null,
+        display: `${fmtKpl(fsecKplOf(current))} kpl`,
+        changePercent: prevData
+          ? changeOf(fsecKplOf(current), fsecKplOf(prevData), factor)
+          : null,
       },
     },
   }
