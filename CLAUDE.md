@@ -75,6 +75,16 @@ Noudata olemassa olevan koodin tyyliä:
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Calendar (käyttäjän oma tili, arxcian) |
 | `ANTHROPIC_API_KEY` | AI-tiivistelmät |
 | `WATCH_SOURCES_SHEET_ID` | watchin lähdelistan taulukko (valinnainen — ilman sitä varalista) |
+
+**`GOOGLE_SERVICE_ACCOUNT_KEY` on rikki development-ympäristössä** (todettu
+19.8.2026): arvo on kolme merkkiä (`"{"`) sekä Vercelissä että
+`.env.local`issa, joten `JSON.parse` kaatuu ja kaikki palvelutiliä käyttävä
+työ on **paikallisesti** poikki — RJ-Mobin Sheets-luku, Driven ohjeet ja
+watchin lähdelista. Tuotanto ja preview ovat kunnossa, eikä niiden arvoa saa
+takaisin: muuttuja on niissä Sensitive. Korjaus vaatii palvelutilin oman
+JSON-avaimen, ja sen jälkeen `./scripts/korjaa-dev-avain.sh <polku>` hoitaa
+loput. Huom. ettei `private_key`n `\n`-escapeja saa korvata — korvaus rikkoo
+avaimen.
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis -välimuisti |
 
 Kaksi eri Google-tunnistautumista tarkoituksella: RJ-Mob lukee jaettuja taulukoita **palvelutilillä**, arxcianin kalenteri vaatii **käyttäjän oman OAuth-luvan** omaan kalenteriinsa. Näitä ei voi yhdistää.
