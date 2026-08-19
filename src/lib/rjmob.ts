@@ -173,6 +173,36 @@ export function tehoTaso(teho: number, liittyma = false): 'hyva' | 'rajalla' | '
   return 'heikko'
 }
 
+/** Myymälärivin ne kentät joista teho lasketaan. */
+export type MyymalaTehoLahde = {
+  liittEur: number
+  kassaRjmob: number
+  fsecEur?: number
+  tunnit: number
+}
+
+/**
+ * Myymälän kolme teholukua, sama kolmijako kuin myyjillä.
+ *
+ * Kassakatteena on **`kassaRjmob` (×1) eikä `kassa` (×10)**: myyjän `kassa` on
+ * kassaprovisio ja myymälän `kassa` siitä johdettu kassakate, joten ilman tätä
+ * myymälän teho olisi kymmenkertainen myyjiin nähden eikä 7/9 €/h tarkoittaisi
+ * samaa lukua molemmissa taulukoissa.
+ *
+ * Täällä eikä sivulla, koska sekä myyntiseuranta että yhteenveto tarvitsevat
+ * tämän. Ne pitivät ennen omia kopioitaan, joiden kommentit osoittivat
+ * toisiinsa — eli kaksi totuutta joita mikään ei pitänyt synkassa.
+ */
+export function myymalanTehot(s: MyymalaTehoLahde) {
+  const h = s.tunnit
+  if (h <= 0) return { liitt: 0, kassa: 0, total: 0 }
+  return {
+    liitt: s.liittEur / h,
+    kassa: (s.liittEur + s.kassaRjmob) / h,
+    total: (s.liittEur + s.kassaRjmob + (s.fsecEur ?? 0)) / h,
+  }
+}
+
 export function isOwner(nimi: string): boolean {
   return OWNER_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
 }

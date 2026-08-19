@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
-import { tehoaEiArvioida as eiTehoa, tehoTaso } from '@/lib/rjmob'
+import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso } from '@/lib/rjmob'
 
 interface SellerResult {
   nimi: string
@@ -124,21 +124,6 @@ export default function EtelanHaratPage() {
     tunnit: Object.values(stores).reduce((s,r) => s+r.tunnit, 0),
   }
 
-  /**
-   * Myymälän kolme teholukua (myyntiseuranta_ohje).
-   *
-   * Kassakatteena on `kassaRjmob` (×1) eikä `kassa` (×10): myyjän `kassa` on
-   * kassaprovisio ja myymälän `kassa` siitä johdettu kassakate, joten ilman
-   * tätä myymälän teho olisi kymmenkertainen myyjiin nähden eikä 7/9 €/h
-   * -kynnys tarkoittaisi samaa molemmissa taulukoissa. Sama valinta kuin
-   * rjmobInsights.ts:n myymalanTeho-funktiossa.
-   */
-  const myymalanTehot = (s: StoreData) => ({
-    liitt: s.tunnit > 0 ? s.liittEur / s.tunnit : 0,
-    kassa: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob) / s.tunnit : 0,
-    total: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob + (s.fsecEur ?? 0)) / s.tunnit : 0,
-  })
-
   // Albin jää keskiarvon ulkopuolelle samasta syystä kuin hänen rivinsä
   // teholuvuista: hän ei tee myyntivuoroja, joten hänen tuntinsa ja
   // provisionsa vääristäisivät tiimin lukua kumpaankin suuntaan.
@@ -172,11 +157,11 @@ export default function EtelanHaratPage() {
   }
   const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, color: tehoColor(teho, liittyma), fontWeight:500})
   const tehoTot = (teho: number, liittyma = false) => ({...totStyle, color: tehoColor(teho, liittyma)})
-  // Kolmen tehosarakkeen solu. `key` on myös sarakkeen järjestysnumero, ja
-  // ensimmäinen niistä on liittymäteho — siitä lippu johdetaan, ettei
-  // asteikkoa tarvitse toistaa jokaisessa kutsupaikassa.
-  const tehoTd = (n: number | undefined, key: number) => Number.isFinite(n)
-    ? <td key={key} style={tehoSolu(n as number, key === 0)}>{fmt(n as number)} €/h</td>
+  // Kolmen tehosarakkeen solu. Asteikko annetaan eksplisiittisesti eikä
+  // päätellä indeksistä: sarakejärjestyksen vaihtaminen siirtäisi muuten
+  // liittymän 8,5-rajan hiljaa väärään sarakkeeseen ilman että mikään kaatuu.
+  const tehoTd = (n: number | undefined, key: number, liittyma = false) => Number.isFinite(n)
+    ? <td key={key} style={tehoSolu(n as number, liittyma)}>{fmt(n as number)} €/h</td>
     : <td key={key} style={{...tdStyle, color:'#bbb'}}>—</td>
 
   const [viesti, setViesti] = useState('')
@@ -279,7 +264,9 @@ Generoi viesti:`
                             <td style={tdStyle} colSpan={3} />
                           ) : (
                             <>
-                              {[s.myyntiTehoLiitt, s.myyntiTeho, s.myyntiTehoTotal].map(tehoTd)}
+                              {tehoTd(s.myyntiTehoLiitt, 0, true)}
+                              {tehoTd(s.myyntiTeho, 1)}
+                              {tehoTd(s.myyntiTehoTotal, 2)}
                             </>
                           )}
                         </tr>

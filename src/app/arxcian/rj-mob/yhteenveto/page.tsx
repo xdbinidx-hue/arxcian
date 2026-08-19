@@ -30,6 +30,23 @@ const TEHO_VARI: Record<TehoTila, { teksti: string; tausta: string } | null> = {
   'ei-arviota': null,
 }
 
+/**
+ * Tehon tila **paljaana tekstinä valkoisella**, ilman täyttöä.
+ *
+ * `VARIT` on täyttöpaletti: sen `teksti` on valittu toimimaan oman `tausta`nsa
+ * päällä eikä kortin valkoisella. Erityisesti `matala` (#eab308) jää noin
+ * 1,9:1 kontrastiin valkoista vasten eli käytännössä näkymättömäksi — ja
+ * "rajalla" on juuri se tila johon suurin osa myyjistä osuu, joten yleisin
+ * tapaus olisi se joka katoaa. Nämä ovat samat tummat sävyt joita
+ * myyntiseuranta käyttää teholuvuissaan.
+ */
+const TEHO_TEKSTIVARI: Record<TehoTila, string | null> = {
+  alle: '#A32D2D',
+  rajalla: '#854F0B',
+  yli: '#3B6D11',
+  'ei-arviota': null,
+}
+
 const TEHO_TEKSTI: Record<TehoTila, string> = {
   alle: 'alle tehojen',
   rajalla: 'rajalla',
@@ -115,13 +132,14 @@ function VertailuSolu({ vertailu }: { vertailu: Vertailu }) {
  */
 function TehoSolu({ teho, tila, korostus = false }: { teho: number; tila: TehoTila; korostus?: boolean }) {
   const vari = TEHO_VARI[tila]
-  if (!vari) {
+  const tekstiVari = TEHO_TEKSTIVARI[tila]
+  if (!vari || !tekstiVari) {
     return <td style={{ ...td, color: '#bbb' }}>—</td>
   }
   return (
     <td style={korostus
       ? { ...td, background: vari.tausta, color: vari.teksti, fontWeight: 600 }
-      : { ...td, color: vari.teksti, fontWeight: 500 }}>
+      : { ...td, color: tekstiVari, fontWeight: 500 }}>
       {fmt(teho, 2)} €/h
     </td>
   )
@@ -223,7 +241,7 @@ export default async function YhteenvetoPage() {
               <div style={korttiOtsikko}>
                 <span style={{ fontWeight: 500, fontSize: 14 }}>Myyjät</span>
                 <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
-                  heikoin teho ensin · kolme tehoa: liittymäprovisio / tunnit, siihen lisättynä kassakate, ja lopuksi F-Secure — kaikki €/h ilman bonuksia. Tila ja järjestys tulevat keskimmäisestä. · mittarisolussa toteuma / tavoite ja alla saavutus-% sekä ero kuukauden kuluneeseen osuuteen
+                  heikoin teho ensin · kolme tehoa: liittymäprovisio / tunnit, siihen lisättynä kassakate, ja lopuksi F-Secure — kaikki €/h ilman bonuksia. Jokainen luku on väritetty omalla arvollaan; Tila-sarake ja korostettu tausta kertovat ratkaisevan eli keskimmäisen, josta myös järjestys tulee. · mittarisolussa toteuma / tavoite ja alla saavutus-% sekä ero kuukauden kuluneeseen osuuteen
                 </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
@@ -260,7 +278,7 @@ export default async function YhteenvetoPage() {
                         </td>
                         <TehoSolu teho={m.tehoLiitt} tila={m.tehoLiittTila} />
                         <TehoSolu teho={m.teho} tila={m.tehoTila} korostus />
-                        <TehoSolu teho={m.tehoTotal} tila={m.tehoTila} />
+                        <TehoSolu teho={m.tehoTotal} tila={m.tehoTotalTila} />
                         <td style={{ ...td, fontSize: 11, color: '#888' }}>
                           {m.tyyppi !== 'owner' ? TEHO_TEKSTI[m.tehoTila] : 'ei arvioida'}
                         </td>
@@ -308,7 +326,7 @@ export default async function YhteenvetoPage() {
                         <td style={tdL}>{my.nimi}</td>
                         <TehoSolu teho={my.tehoLiitt} tila={my.tehoLiittTila} />
                         <TehoSolu teho={my.teho} tila={my.tehoTila} korostus />
-                        <TehoSolu teho={my.tehoTotal} tila={my.tehoTila} />
+                        <TehoSolu teho={my.tehoTotal} tila={my.tehoTotalTila} />
                         <td style={{ ...td, fontSize: 11, color: '#888' }}>{TEHO_TEKSTI[my.tehoTila]}</td>
                         <td style={td}>{fmt(my.tunnit)}</td>
                         {my.vertailut.map(v => <VertailuSolu key={v.laji} vertailu={v} />)}

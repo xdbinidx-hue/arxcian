@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { SellerResult, getTuntipalkka, LAPIMENO } from '@/lib/rjmob'
+import { SellerResult, getTuntipalkka, LAPIMENO, TEHO_HEIKKO, tehoTaso } from '@/lib/rjmob'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 interface DashData {
@@ -84,8 +84,11 @@ function TehoLabel({ teho, tyyppi }: { teho: number; tyyppi: string }) {
   if (tyyppi === 'owner') return <span style={{color:'#185FA5',fontWeight:500}}>Owner</span>
   // Krenarilla ei ole enää omaa neutraalia väriään: hänen tehonsa arvioidaan
   // samalla portaikolla kuin muidenkin.
-  if (teho >= 9) return <span style={{color:'#3B6D11',fontWeight:500}}>{fmt(teho, 1)}</span>
-  if (teho >= 7) return <span style={{color:'#854F0B',fontWeight:500}}>{fmt(teho, 1)}</span>
+  // Portaikko tulee jaettuna rjmob.ts:stä. Tuottoseuranta käyttää yhteistä
+  // 9/7-asteikkoa (ei liittymätehon omaa 8,5:tä), eli luvut eivät muutu.
+  const taso = tehoTaso(teho)
+  if (taso === 'hyva') return <span style={{color:'#3B6D11',fontWeight:500}}>{fmt(teho, 1)}</span>
+  if (taso === 'rajalla') return <span style={{color:'#854F0B',fontWeight:500}}>{fmt(teho, 1)}</span>
   return <span style={{color:'#A32D2D',fontWeight:500}}>{fmt(teho, 1)}</span>
 }
 
@@ -108,8 +111,8 @@ function generateAlerts(data: DashData) {
   const active = data.sellers.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
   const negative = active.filter(r => r.tyyppi === 'normal' && r.netto < 0)
   if (negative.length > 0) alerts.push({type:'red',text:`${negative.length} myyjää tappiollisia: ${negative.map(r=>`${r.nimi} (${fmt(r.netto)} €)`).join(', ')}`})
-  const belowMin = active.filter(r => r.tyyppi === 'normal' && r.teho < 7)
-  if (belowMin.length > 0) alerts.push({type:'red',text:`Alle 7 €/h: ${belowMin.map(r=>`${r.nimi} (${fmt(r.teho,1)} €/h)`).join(', ')}`})
+  const belowMin = active.filter(r => r.tyyppi === 'normal' && r.teho < TEHO_HEIKKO)
+  if (belowMin.length > 0) alerts.push({type:'red',text:`Alle ${TEHO_HEIKKO} €/h: ${belowMin.map(r=>`${r.nimi} (${fmt(r.teho,1)} €/h)`).join(', ')}`})
   const krenar = active.find(r => r.tyyppi === 'krenar')
   if (krenar && krenar.netto < 0) alerts.push({type:'amber',text:`Krenar: ${krenar.liittKpl} liittymää mutta netto ${fmt(krenar.netto)} €`})
   return alerts
