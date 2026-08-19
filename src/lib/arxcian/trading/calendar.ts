@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { readCached, writeCached } from '../cache'
 import type { CalendarEvent, CalendarImpact } from './types'
 
@@ -131,10 +132,15 @@ export async function refreshCalendar(): Promise<CalendarEvent[]> {
   return events
 }
 
-/** Sivut lukevat tätä. Ei koskaan hae lähteestä — ks. rate limit yllä. */
-export async function getCalendar() {
-  return readCached<CalendarEvent[]>(CACHE_KEY)
-}
+/**
+ * Sivut lukevat tätä. Ei koskaan hae lähteestä — ks. rate limit yllä.
+ *
+ * Kääritty Reactin `cache()`iin, koska Trading-sivu lukee kalenterin kahdesti
+ * samalla renderöinnillä: layout ilmoitusajastinta varten ja sivu itse
+ * listaa varten. Ilman käärettä se olisi kaksi Upstash-kierrosta samasta
+ * avaimesta. Sama syy kuin `getCalendarStatus`illa.
+ */
+export const getCalendar = cache(async () => readCached<CalendarEvent[]>(CACHE_KEY))
 
 /**
  * Punaiset tapahtumat hälytysikkunassa: juuri julkaistut ja kaikki tulevat.

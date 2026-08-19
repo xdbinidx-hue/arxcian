@@ -45,7 +45,11 @@ export default async function ArxcianLayout({ children }: { children: React.Reac
       <MarketAlerts
         settings={notifySettings}
         times={tradingTimes}
-        calendar={calendar?.data ?? []}
+        // Vain punaiset selaimeen: koko kalenteri on ~98 riviä ja
+        // serialisoituisi jokaisella /arxcian/*-sivulla, vaikka vain High
+        // päätyy koskaan ilmoitukseksi. Valuuttasuodatus jää selaimeen, koska
+        // asetus voi vaihtua ilman sivun uudelleenlatausta.
+        calendar={(calendar?.data ?? []).filter(e => e.impact === 'High')}
       />
       <ServiceWorkerRegister />
     </div>

@@ -325,8 +325,14 @@ export function MarketAlertsSettings({ initialSettings, initialTimes, user }: Pr
 
         {settings.calendarHigh && (
           <div className="mt-2">
-            <div className="mb-1.5 text-[10px] text-ax-faint">
-              Valuutat — Aasian julkaisut osuvat Suomen yöhön
+            <div
+              className={`mb-1.5 text-[10px] ${
+                settings.calendarCurrencies.length === 0 ? 'text-ax-down' : 'text-ax-faint'
+              }`}
+            >
+              {settings.calendarCurrencies.length === 0
+                ? 'Ei yhtään valuuttaa valittuna — julkaisuista ei ilmoiteta.'
+                : 'Valuutat — Aasian julkaisut osuvat Suomen yöhön'}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {CALENDAR_CURRENCIES.map(currency => {

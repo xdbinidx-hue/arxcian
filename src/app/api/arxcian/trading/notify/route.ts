@@ -20,8 +20,20 @@ export async function PUT(req: NextRequest) {
 
   // Kentät poimitaan nimeltä eikä levitetä sellaisenaan: rungosta tulisi
   // muuten mitä tahansa avaimia suoraan KV:hen tallennettavaan olioon.
+  //
+  // **Uusi asetus on lisättävä tähän listaan.** Ilman sitä kenttä putoaa
+  // rungosta hiljaa ja reitti vastaa 200:lla vanhoilla arvoilla: kytkin
+  // näyttää kääntyvän ja palautuu ennalleen ilman virhettä. Näin kävi
+  // `calendarHigh`ille ensimmäisessä versiossa.
   const patch: Partial<NotifySettings> = {}
-  for (const key of ['push', 'banner', 'sound', 'sessionOpen', 'sessionClose'] as const) {
+  for (const key of [
+    'push',
+    'banner',
+    'sound',
+    'sessionOpen',
+    'sessionClose',
+    'calendarHigh',
+  ] as const) {
     if (typeof body[key] === 'boolean') patch[key] = body[key]
   }
   if (typeof body.leadMinutes === 'number' && Number.isFinite(body.leadMinutes)) {
@@ -29,6 +41,12 @@ export async function PUT(req: NextRequest) {
   }
   if (Array.isArray(body.sessions)) {
     patch.sessions = body.sessions.filter((s): s is string => typeof s === 'string')
+  }
+  // Tunnetut valuutat suodatetaan `saveNotifySettings`issä, tässä vain muoto.
+  if (Array.isArray(body.calendarCurrencies)) {
+    patch.calendarCurrencies = body.calendarCurrencies.filter(
+      (c): c is string => typeof c === 'string',
+    )
   }
 
   const settings = await saveNotifySettings(user, patch)
