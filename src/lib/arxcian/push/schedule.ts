@@ -76,6 +76,23 @@ export function sendUrl(): string {
   return `${baseUrl()}/api/arxcian/push/send`
 }
 
+/**
+ * Vastaako QStash tällä tunnuksella.
+ *
+ * Diagnostiikkaa varten, ja nimenomaan lukukutsulla: `publishJSON` todistaisi
+ * saman mutta jättäisi jonoon viestin jota kukaan ei tilannut. Tunnuksen
+ * puuttuminen ja väärä tunnus erottuvat viestistä — molemmat näyttivät
+ * 19.8.2026 lokissa samalta rivinä "suunnittelu epäonnistui".
+ */
+export async function qstashReachable(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await qstash().schedules.list()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 export type PlanResult = {
   user: UserId
   scheduled: number
