@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
-import { tehoaEiArvioida as eiTehoa } from '@/lib/rjmob'
+import { tehoaEiArvioida as eiTehoa, tehoTaso } from '@/lib/rjmob'
 
 interface SellerResult {
   nimi: string
@@ -162,12 +162,21 @@ export default function EtelanHaratPage() {
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign:'left' as const}
 
-  // Sama kynnys kuin tuottoseurannassa ja run ratessa: 9 €/h hyvä, 7 €/h raja.
-  const tehoColor = (teho: number) => teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
-  const tehoSolu = (teho: number) => ({...tdStyle, color: tehoColor(teho), fontWeight:500})
-  const tehoTot = (teho: number) => ({...totStyle, color: tehoColor(teho)})
+  // Kynnys tulee jaettuna rjmob.ts:stä, jotta se on sama kuin tuottoseurannassa,
+  // run ratessa ja yhteenvedossa. `liittyma`-lippu valitsee liittymätehon oman
+  // matalamman vihreän rajan (8,5 €/h): liittymäteho on kolmesta aina pienin,
+  // joten yhteisellä 9:llä se olisi punainen myös kunnossa olevalla myynnillä.
+  const tehoColor = (teho: number, liittyma = false) => {
+    const taso = tehoTaso(teho, liittyma)
+    return taso === 'hyva' ? '#3B6D11' : taso === 'rajalla' ? '#854F0B' : '#A32D2D'
+  }
+  const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, color: tehoColor(teho, liittyma), fontWeight:500})
+  const tehoTot = (teho: number, liittyma = false) => ({...totStyle, color: tehoColor(teho, liittyma)})
+  // Kolmen tehosarakkeen solu. `key` on myös sarakkeen järjestysnumero, ja
+  // ensimmäinen niistä on liittymäteho — siitä lippu johdetaan, ettei
+  // asteikkoa tarvitse toistaa jokaisessa kutsupaikassa.
   const tehoTd = (n: number | undefined, key: number) => Number.isFinite(n)
-    ? <td key={key} style={tehoSolu(n as number)}>{fmt(n as number)} €/h</td>
+    ? <td key={key} style={tehoSolu(n as number, key === 0)}>{fmt(n as number)} €/h</td>
     : <td key={key} style={{...tdStyle, color:'#bbb'}}>—</td>
 
   const [viesti, setViesti] = useState('')
@@ -285,7 +294,7 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
-                      <td style={tehoTot(sellerTeho.liitt)}>{fmt(sellerTeho.liitt)} €/h</td>
+                      <td style={tehoTot(sellerTeho.liitt, true)}>{fmt(sellerTeho.liitt)} €/h</td>
                       <td style={tehoTot(sellerTeho.kassa)}>{fmt(sellerTeho.kassa)} €/h</td>
                       <td style={tehoTot(sellerTeho.total)}>{fmt(sellerTeho.total)} €/h</td>
                     </tr>
@@ -329,7 +338,7 @@ Generoi viesti:`
                           <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
-                          <td style={tehoSolu(t.liitt)}>{fmt(t.liitt)} €/h</td>
+                          <td style={tehoSolu(t.liitt, true)}>{fmt(t.liitt)} €/h</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
                           <td style={tehoSolu(t.total)}>{fmt(t.total)} €/h</td>
                         </tr>
@@ -343,7 +352,7 @@ Generoi viesti:`
                       <td style={totStyle}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
-                      <td style={tehoTot(storeTeho.liitt)}>{fmt(storeTeho.liitt)} €/h</td>
+                      <td style={tehoTot(storeTeho.liitt, true)}>{fmt(storeTeho.liitt)} €/h</td>
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
                       <td style={tehoTot(storeTeho.total)}>{fmt(storeTeho.total)} €/h</td>
                     </tr>

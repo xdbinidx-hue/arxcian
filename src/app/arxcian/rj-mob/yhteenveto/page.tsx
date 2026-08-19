@@ -106,13 +106,22 @@ function VertailuSolu({ vertailu }: { vertailu: Vertailu }) {
   )
 }
 
-function TehoSolu({ teho, tila }: { teho: number; tila: TehoTila }) {
+/**
+ * Teholuku värillisenä. `korostus` erottaa ratkaisevan luvun kahdesta muusta:
+ * täytetty tausta vain sillä sarakkeella jonka mukaan rivi on järjestetty ja
+ * jonka tila-sarake kertoo, muuten pelkkä tekstiväri. Kolme yhtä vahvaa
+ * väripalkkia rinnakkain tekisi taulukosta lukukelvottoman eikä kertoisi
+ * kumpaa lukua pitäisi katsoa.
+ */
+function TehoSolu({ teho, tila, korostus = false }: { teho: number; tila: TehoTila; korostus?: boolean }) {
   const vari = TEHO_VARI[tila]
   if (!vari) {
     return <td style={{ ...td, color: '#bbb' }}>—</td>
   }
   return (
-    <td style={{ ...td, background: vari.tausta, color: vari.teksti, fontWeight: 600 }}>
+    <td style={korostus
+      ? { ...td, background: vari.tausta, color: vari.teksti, fontWeight: 600 }
+      : { ...td, color: vari.teksti, fontWeight: 500 }}>
       {fmt(teho, 2)} €/h
     </td>
   )
@@ -214,7 +223,7 @@ export default async function YhteenvetoPage() {
               <div style={korttiOtsikko}>
                 <span style={{ fontWeight: 500, fontSize: 14 }}>Myyjät</span>
                 <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
-                  heikoin teho ensin · mittarisolussa toteuma / tavoite ja alla saavutus-% sekä ero kuukauden kuluneeseen osuuteen
+                  heikoin teho ensin · kolme tehoa: liittymäprovisio / tunnit, siihen lisättynä kassakate, ja lopuksi F-Secure — kaikki €/h ilman bonuksia. Tila ja järjestys tulevat keskimmäisestä. · mittarisolussa toteuma / tavoite ja alla saavutus-% sekä ero kuukauden kuluneeseen osuuteen
                 </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
@@ -222,7 +231,9 @@ export default async function YhteenvetoPage() {
                   <thead>
                     <tr>
                       <th style={thL}>Myyjä</th>
-                      <th style={th}>Teho</th>
+                      <th style={th}>Liittymä</th>
+                      <th style={th}>+ kassa</th>
+                      <th style={th}>+ F-Sec</th>
                       <th style={th}>Tila</th>
                       <th style={th}>Tunnit</th>
                       <th style={th}>Työpäivät</th>
@@ -247,7 +258,9 @@ export default async function YhteenvetoPage() {
                             </span>
                           )}
                         </td>
-                        <TehoSolu teho={m.teho} tila={m.tehoTila} />
+                        <TehoSolu teho={m.tehoLiitt} tila={m.tehoLiittTila} />
+                        <TehoSolu teho={m.teho} tila={m.tehoTila} korostus />
+                        <TehoSolu teho={m.tehoTotal} tila={m.tehoTila} />
                         <td style={{ ...td, fontSize: 11, color: '#888' }}>
                           {m.tyyppi !== 'owner' ? TEHO_TEKSTI[m.tehoTila] : 'ei arvioida'}
                         </td>
@@ -279,7 +292,9 @@ export default async function YhteenvetoPage() {
                   <thead>
                     <tr>
                       <th style={thL}>Myymälä</th>
-                      <th style={th}>Teho</th>
+                      <th style={th}>Liittymä</th>
+                      <th style={th}>+ kassa</th>
+                      <th style={th}>+ F-Sec</th>
                       <th style={th}>Tila</th>
                       <th style={th}>Tunnit</th>
                       <th style={th}>Liittymät</th>
@@ -291,7 +306,9 @@ export default async function YhteenvetoPage() {
                     {insights.myymalat.map(my => (
                       <tr key={my.nimi}>
                         <td style={tdL}>{my.nimi}</td>
-                        <TehoSolu teho={my.teho} tila={my.tehoTila} />
+                        <TehoSolu teho={my.tehoLiitt} tila={my.tehoLiittTila} />
+                        <TehoSolu teho={my.teho} tila={my.tehoTila} korostus />
+                        <TehoSolu teho={my.tehoTotal} tila={my.tehoTila} />
                         <td style={{ ...td, fontSize: 11, color: '#888' }}>{TEHO_TEKSTI[my.tehoTila]}</td>
                         <td style={td}>{fmt(my.tunnit)}</td>
                         {my.vertailut.map(v => <VertailuSolu key={v.laji} vertailu={v} />)}

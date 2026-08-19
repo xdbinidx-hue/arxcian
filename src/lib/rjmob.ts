@@ -145,6 +145,34 @@ export function tehoaEiArvioida(nimi: string): boolean {
   return NO_TEHO_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
 }
 
+/**
+ * Tehon statusrajat €/h.
+ *
+ * **Liittymäteholla on oma, matalampi vihreän raja.** Se on kolmesta
+ * teholuvusta aina pienin — pelkkä liittymäprovisio ilman kassakatetta ja
+ * F-Securea — joten yhteinen 9 €/h olisi sille käytännössä saavuttamaton ja
+ * sarake näyttäisi punaista silloinkin kun liittymämyynti on kunnossa. Heikon
+ * raja on sama 7 €/h molemmilla asteikoilla.
+ *
+ * Rajat ovat täällä eivätkä sivuilla, koska sama portaikko luetaan
+ * myyntiseurannassa, yhteenvedossa, tuottoseurannassa ja run ratessa. Jos ne
+ * ajautuvat erilleen, "alle tehojen" tarkoittaa eri lukua eri sivulla.
+ */
+export const TEHO_HYVA = 9
+export const TEHO_LIITT_HYVA = 8.5
+export const TEHO_HEIKKO = 7
+
+/**
+ * Teho suhteessa portaikkoon. `liittyma` valitsee matalamman vihreän rajan.
+ * Kutsuja päättää mitä taso tarkoittaa (väri, teksti, merkki) — tässä
+ * päätetään vain kumman puolen rajaa luku ylittää.
+ */
+export function tehoTaso(teho: number, liittyma = false): 'hyva' | 'rajalla' | 'heikko' {
+  if (teho >= (liittyma ? TEHO_LIITT_HYVA : TEHO_HYVA)) return 'hyva'
+  if (teho >= TEHO_HEIKKO) return 'rajalla'
+  return 'heikko'
+}
+
 export function isOwner(nimi: string): boolean {
   return OWNER_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
 }
@@ -386,9 +414,10 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
   // omaa ansiota tunnille, ja Krenarin nelinkertainen provisio on hänen
   // todellinen ansionsa — ei siis erikoistapaus. Omistajilla arviota ei tehdä,
   // koska heillä ei ole provisiopohjaista palkkaa lainkaan.
+  const taso = tehoTaso(teho)
   const tehoStatus = tyyppi === 'owner' ? 'special'
-    : teho >= 9 ? 'green'
-    : teho >= 7 ? 'amber'
+    : taso === 'hyva' ? 'green'
+    : taso === 'rajalla' ? 'amber'
     : 'red'
 
   return {
