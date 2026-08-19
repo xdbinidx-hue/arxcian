@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { readCached } from '@/lib/arxcian/cache'
+import { readFetchStatus } from '@/lib/arxcian/fetchStatus'
 import { CHANNELS_CACHE_KEY, type ChannelVideo } from '@/lib/arxcian/channels'
 import { Panel } from '@/components/arxcian/Panel'
 
@@ -15,9 +16,24 @@ import { Panel } from '@/components/arxcian/Panel'
  * next/imagen kautta: kuvat ovat pieniä ja vaihtuvat tunnin välein, joten
  * optimoinnista ei olisi hyötyä mutta remotePatterns-määrittely olisi yksi
  * ylläpidettävä asia lisää.
+ *
+ * **Vanhentuneisuus näytetään, ei piiloteta.** Paneeli näytti aiemmin
+ * välimuistin sisällön kertomatta milloin se haettiin, joten viikon vanha
+ * lista näytti täsmälleen samalta kuin tunnin vanha — ja kun YouTube esti
+ * haun, vika näkyi vain lokissa. Otsikkorivillä on nyt hakuaika, ja jos
+ * viimeisin yritys epäonnistui, sen kertoo erillinen rivi. Tieto tulee
+ * mitatusta hakutilasta (fetchStatus.ts) eikä datan iästä pääteltynä.
  */
 
 const MAX_ROWS = 5
+
+/** Kellonaika, ja päivämäärä mukaan jos haku ei ole tältä päivältä. */
+function fetchLabel(ms: number): string {
+  const d = new Date(ms)
+  const klo = d.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
+  const tanaan = new Date().toDateString() === d.toDateString()
+  return tanaan ? klo : `${d.toLocaleDateString('fi-FI', { day: 'numeric', month: 'numeric' })} ${klo}`
+}
 
 /** "2 h sitten" — karkea ja luettava, ei minuutin tarkkuutta. */
 function ageLabel(publishedAt: number | null): string {
@@ -35,17 +51,42 @@ function ageLabel(publishedAt: number | null): string {
 }
 
 export async function Channels({ delay }: { delay?: number }) {
-  const cached = await readCached<ChannelVideo[]>(CHANNELS_CACHE_KEY)
+  const [cached, status] = await Promise.all([
+    readCached<ChannelVideo[]>(CHANNELS_CACHE_KEY),
+    readFetchStatus(CHANNELS_CACHE_KEY),
+  ])
   const videos = (cached?.data ?? []).slice(0, MAX_ROWS)
+
+  // Viimeisin yritys epäonnistui jos sen jälkeen ei ole onnistuttu. Vertailu
+  // on tarkka tieto hakutilasta, ei arvio datan iästä: ajojen väli on yön yli
+  // laillisesti 12 h, joten ikäraja joko hälyttäisi turhaan tai vaikenisi.
+  const stale =
+    status !== null && (status.lastSuccess === null || status.lastSuccess < status.lastAttempt)
+
+  const fetchedAt = status?.lastSuccess ?? cached?.fetchedAt ?? null
 
   return (
     <Panel
       title="Kanavat"
       delay={delay}
-      empty="Ei vielä videoita — haetaan seuraavassa ajastetussa ajossa."
+      meta={fetchedAt ? fetchLabel(fetchedAt) : undefined}
+      empty={
+        stale && status
+          ? `Videoita ei saatu haettua — viimeisin yritys ${fetchLabel(status.lastAttempt)} epäonnistui.`
+          : 'Ei vielä videoita — haetaan seuraavassa ajastetussa ajossa.'
+      }
     >
       {videos.length > 0 ? (
         <>
+        {stale ? (
+          <p className="mb-2.5 rounded-md border border-ax-down/30 bg-ax-down/10 px-2.5 py-1.5 text-[9px] leading-relaxed text-ax-down">
+            Data vanhentunut — haku epäonnistui{' '}
+            {status && status.lastAttempt ? fetchLabel(status.lastAttempt) : ''}
+            {status && status.failed.length > 0 ? ` (${status.failed.join(', ')})` : ''}.
+            {fetchedAt ? ` Näytetään ${fetchLabel(fetchedAt)} haettu lista.` : ''}
+          </p>
+        ) : null}
+
         <ul>
           {videos.map(video => (
             <li key={video.id} className="ax-glass-divide border-b last:border-none">

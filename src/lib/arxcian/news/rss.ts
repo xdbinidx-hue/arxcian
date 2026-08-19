@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { fetchYoutubeFeedUrl } from '../youtube'
 import type { RawItem, Source } from './types'
 
 const parser = new XMLParser({
@@ -88,8 +89,21 @@ function parseAtom(xml: string, source: Source): RawItem[] {
   })
 }
 
+function isYoutubeFeed(url: string): boolean {
+  return url.startsWith('https://www.youtube.com/feeds/videos.xml')
+}
+
 /** Hakee ja jäsentää yhden lähteen. Ei välimuistita — kutsuja hoitaa sen. */
 export async function fetchFeed(source: Source, timeoutMs = 12_000): Promise<RawItem[]> {
+  // YouTube-lähteet (Mark Moss) kulkevat yhteisen hakijan kautta: alla oleva
+  // "arxcian/1.0" on juuri se bottimainen User-Agent jolla YouTube ei palvele,
+  // eikä tässä ole uudelleenyritystä jota konesali-IP:n rajoitus vaatii.
+  // Tavalliset RSS-lähteet eivät tarvitse kumpaakaan, joten ne jäävät tähän.
+  if (isYoutubeFeed(source.url)) {
+    const xml = await fetchYoutubeFeedUrl(source.url, source.name)
+    return parseAtom(xml, source).filter(i => i.link && i.title)
+  }
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 

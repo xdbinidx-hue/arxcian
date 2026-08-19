@@ -46,7 +46,13 @@ export async function GET(req: NextRequest) {
         // lokia — "ok":true jonka takana ei tapahtunut mitään on bugi.
         // Vertailu undefinediin eikä totuusarvoon: tyhjä virheviesti on yhä
         // virhe, eikä sen kuulu palauttaa työtä ok-tilaan.
-        return { id: job.id, ok: result.planError === undefined, ...result, ms: Date.now() - jobStarted }
+        //
+        // `source === 'stale'` on sama asia toisesta suunnasta: haku kaatui ja
+        // vastaus tulee vanhentuneesta välimuistista. Se on oikea tapa pitää
+        // sivu pystyssä, mutta nielty tulos on silti kerrottava — muuten
+        // vastaus lupaa `"items": 5` datasta jota ei haettu.
+        const ok = result.planError === undefined && result.source !== 'stale'
+        return { id: job.id, ok, ...result, ms: Date.now() - jobStarted }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error(`[cron] työ epäonnistui: ${job.id}`, error)

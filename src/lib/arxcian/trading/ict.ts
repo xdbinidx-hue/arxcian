@@ -1,14 +1,16 @@
 import { XMLParser } from 'fast-xml-parser'
 import { fetchAndCache } from '../cache'
+import { fetchYoutubeFeed } from '../youtube'
 import type { IctVideo } from './types'
 
 // Virallinen ICT-kanava (The Inner Circle Trader, @innercircletrader).
 // Kanava-ID varmistettu käsin kanavan sivulta 2026-07-27.
 const ICT_CHANNEL_ID = 'UCtjxa77NqamhVC8atV85Rog'
-const FEED_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${ICT_CHANNEL_ID}`
-
 const CACHE_KEY = 'trading:ict-videos'
 const TTL_SECONDS = 60 * 60
+
+/** Kolme yritystä viiveineen ei mahdu cache.ts:n 15 s oletukseen. */
+const TIMEOUT_MS = 30_000
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -26,20 +28,10 @@ function attr(node: unknown, key: string): string {
 }
 
 async function fetchIctVideos(): Promise<IctVideo[]> {
-  // Selainmaiset otsakkeet: bottimaisella User-Agentilla YouTube ei palvele
-  // konesalista, jolloin haku kaatuu Vercelissä vaikka toimii kotiverkosta
-  // (havaittu 11.8.2026). Sama korjaus kuin lib/arxcian/channels.ts:ssä.
-  const res = await fetch(FEED_URL, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-      Cookie: 'CONSENT=YES+cb',
-    },
-  })
-  if (!res.ok) throw new Error(`ICT-kanava: HTTP ${res.status}`)
-
-  const doc = parser.parse(await res.text())
+  // Otsakkeet ja uudelleenyritys ovat lib/arxcian/youtube.ts:ssä, yhteisenä
+  // kaikille YouTube-kutsujille. Uudelleenyritys on se mikä tässä merkitsee:
+  // YouTube rajoittaa Vercelin konesali-IP:tä ajoittain (ks. youtube.ts).
+  const doc = parser.parse(await fetchYoutubeFeed(ICT_CHANNEL_ID, 'ICT-kanava'))
   const rawEntries = doc?.feed?.entry
   const entries: unknown[] = Array.isArray(rawEntries) ? rawEntries : rawEntries ? [rawEntries] : []
 
@@ -63,6 +55,10 @@ async function fetchIctVideos(): Promise<IctVideo[]> {
   })
 }
 
-export async function getIctVideos() {
-  return fetchAndCache({ key: CACHE_KEY, ttl: TTL_SECONDS }, fetchIctVideos)
+/** `force` on cronia varten — ilman sitä ajastettu haku lukee vain välimuistin. */
+export async function getIctVideos(force = false) {
+  return fetchAndCache(
+    { key: CACHE_KEY, ttl: TTL_SECONDS, timeout: TIMEOUT_MS, force },
+    fetchIctVideos,
+  )
 }

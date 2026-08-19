@@ -42,6 +42,16 @@ export type JobResult = {
    * kasvattaa ajon `failed`-laskuria.
    */
   planError?: string
+  /**
+   * Mistä työn data oikeasti tuli.
+   *
+   * **`stale` tarkoittaa että haku kaatui** ja `fetchAndCache` palautti
+   * vanhentuneen datan. Ilman tätä kenttää se näytti vastauksessa täsmälleen
+   * samalta kuin onnistunut haku: `hub-channels` raportoi `"ok": true,
+   * "items": 5` samalla kun jokainen viidestä YouTube-hausta oli kaatunut.
+   * Cron-reitti pudottaa työn `ok`-tilan kun tämä on `stale`.
+   */
+  source?: 'network' | 'cache' | 'stale'
 }
 
 export type CronJob = {
@@ -84,8 +94,8 @@ const tradingJobs: CronJob[] = [
     id: 'trading-ict',
     description: 'Trading: ICT-videot',
     run: async () => {
-      const result = await getIctVideos()
-      return { key: 'trading:ict-videos', items: result.data.length }
+      const result = await getIctVideos(true)
+      return { key: 'trading:ict-videos', items: result.data.length, source: result.source }
     },
   },
   {
@@ -163,8 +173,10 @@ const hubJobs: CronJob[] = [
     id: 'hub-channels',
     description: 'Hub: seurattujen YouTube-kanavien tuoreimmat',
     run: async () => {
-      const result = await getChannelVideos()
-      return { key: CHANNELS_CACHE_KEY, items: result.data.length }
+      // force: ilman sitä tuore välimuisti ohittaa haun kokonaan ja
+      // ajastettu työ on tyhjäkäyntiä — mitattu 51 ms viidelle "haulle".
+      const result = await getChannelVideos(true)
+      return { key: CHANNELS_CACHE_KEY, items: result.data.length, source: result.source }
     },
   },
   {
