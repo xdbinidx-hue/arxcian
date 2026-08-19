@@ -427,13 +427,18 @@ pituudesta. Ennen ensimmäistä 31 päivän kuukautta on tarkistettava ulottuuko
 
 ### Säännöt tulevat referenssilistasta, eivät koodista taaksepäin
 
-Syyskuun 2026 lista tehtiin Coworkissa käsin ja se toimii. Generaattori on
-portattu siitä, ja golden-testi vaatii **päivälleen saman tuloksen**: Alec 156 ·
-Joona 155 · Arbnor 131 · Kasperi 126 · Hamza 125 · Vladimir 124 · Krenar 122 ·
-Lauri 119 · Ramin 82 · Antti 33 · Albin 11 = 1 184 h, ja täsmälleen yksi vaje
-(pe 18.9., Arbnor Nizzassa). Jos muutat sääntöä ja testi hajoaa, **oletus on
-että muutos on väärä** — älä päivitä odotettuja lukuja ilman uutta
-referenssilistaa.
+Syyskuun 2026 lista tehtiin Coworkissa käsin, ja generaattori portattiin
+siitä. **Alkuperäinen referenssi (1 184 h) on vanhentunut**: Albin muutti
+sääntöjä 19.8.2026 (lauantain miehitys 7 → 4 vuoroa, Antti vain Kivistöön,
+Malmi tasan kokoaikaisten kesken). Testi pitää nyt kirjaa **nykyisten sääntöjen
+tuottamasta tilannekuvasta**: Alec 156 · Joona 155 · Arbnor 131 · Lauri 122 ·
+Kasperi 122 · Krenar 117 · Vladimir 107 · Hamza 103 · Ramin 85 · Albin 13
+= 1 111 h, yksi vajepäivä (pe 18.9., Arbnor Nizzassa).
+
+Suhtautuminen testiin ei muutu: jos muutat logiikkaa ja luvut muuttuvat,
+**oletus on että muutos on väärä**. Päivitä odotukset vasta kun olet lukenut
+uuden listan läpi ja todennut sen paremmaksi — ei koskaan siksi että testi on
+punainen.
 
 Neljä sääntöä syntyi oikeista virheistä eivätkä ole tyylikysymyksiä:
 
@@ -447,6 +452,20 @@ Neljä sääntöä syntyi oikeista virheistä eivätkä ole tyylikysymyksiä:
 4. **Päällikölle pisin *vapaa* vuoro.** Keskiviikkoisin kolme päällikköä jakaa
    Malmin kolme paikkaa, ja pelkkä "pisin" pudotti kolmannen kokonaan pois.
 
+**Malmi jaetaan tasan kokoaikaisten kesken.** Malmi on paras myyntipaikka, joten
+sen jakautuminen on oma tavoitteensa eikä tuntitasauksen sivutuote: viikkoankkurit
+annetaan sille jolla on vähiten Malmia takanaan, ja Malmin paikkausvuoro menee
+samalla perusteella. Aiempi kiinteä +2-kierto jakoi Malmin tasan vasta viidessä
+viikossa eikä lainkaan tasan kuukauden sisällä. Arbnor on Malmin päällikkö eli
+siellä joka tapauksessa; Ramin ja Antti ovat osa-aikaisia eivätkä kuulu jakoon.
+
+**Antti tekee vain Kivistöä.** Rajaus on varajärjestyksessä eikä toiveena —
+muuten hän päätyisi Malmille aina kun vaje sattuu sinne. ⚠️ Huomaa seuraus:
+lauantain keventämisen jälkeen kokoaikaiset ehtivät täyttää Kivistön vuorot
+ennen häntä, joten syyskuussa hän jää **nollaan tuntiin**. Jos hänelle halutaan
+taattu määrä vuoroja, se pitää lisätä samaan tapaan kuin Raminin kahden vuoron
+etuoikeus `fallbackFor`issa.
+
 Keskiviikon sääntö (**kaikki kolme päällikköä Malmilla**) on ehdoton, ei toive.
 Onnenpäivänä kyseiseen myymälään merkitään vain päällikkö, mutta **muut myymälät
 toimivat normaalisti** — aiempi toteutus jätti ne miehittämättä.
@@ -455,8 +474,10 @@ Ramin päätyy syyskuussa 82 h eli kaksi tuntia yli 60–80 h tavoitehaarukan. S
 tiedossa ja hyväksytty: haarukka on tavoite eikä kova raja, ja kiristäminen
 rikkoisi golden-testin.
 
-**Miehitys on matemaattisesti tiukka:** tarve 46 vuoroa/viikko, kapasiteetti 48
-kun kaikki ovat paikalla ja alle tarpeen heti kun joku on lomalla. Siksi vajeet
+**Miehitys on tiukka mutta ei enää yhtä tiukka:** lauantain keventäminen
+seitsemästä vuorosta neljään vapautti kolme vuoroa viikossa arjen käyttöön.
+Perjantai (Malmi 4 + Easton 3) on nyt se päivä joka ensimmäisenä jää vajaaksi
+kun joku on lomalla. Siksi vajeet
 näytetään käyttöliittymässä päivineen — tyhjä solu jonka voi ohittaa vahingossa
 on vaarallisempi kuin näkyvä varoitus.
 
