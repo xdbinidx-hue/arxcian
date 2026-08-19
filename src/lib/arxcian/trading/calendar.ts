@@ -139,6 +139,12 @@ export async function refreshCalendar(): Promise<CalendarEvent[]> {
  * samalla renderöinnillä: layout ilmoitusajastinta varten ja sivu itse
  * listaa varten. Ilman käärettä se olisi kaksi Upstash-kierrosta samasta
  * avaimesta. Sama syy kuin `getCalendarStatus`illa.
+ *
+ * **Kääre on pyyntökohtainen, joten järjestys cron-pyynnön sisällä ratkaisee.**
+ * `trading-calendar` ajaa `refreshCalendar()`in ennen suunnittelijaa, joten
+ * suunnittelija näkee tuoreen datan. Jos joku kutsuu tätä samassa pyynnössä
+ * *ennen* päivitystä, kääre tarjoilee vanhan tuloksen loppupyynnön ajan
+ * hiljaa.
  */
 export const getCalendar = cache(async () => readCached<CalendarEvent[]>(CACHE_KEY))
 

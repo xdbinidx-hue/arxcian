@@ -215,6 +215,13 @@ function slug(title: string): string {
  * Kumpikin voi olla tyhjä — syöte ei lupaa niitä — ja tyhjä kenttä
  * näytettäisiin muuten muodossa "ennuste  · edellinen ", mikä näyttää
  * rikkinäiseltä eikä puuttuvalta.
+ *
+ * **Jonotetussa pushissa luku jäätyy jonotushetkeen.** Runko lähtee QStashiin
+ * jopa 48 h etukäteen, ja ForexFactory päivittää ennusteita neljästi
+ * vuorokaudessa. Vaihtoehto olisi laittaa ennuste avaimeen, jolloin jokainen
+ * ennusteen muutos peruisi ja jonottaisi viestin uudelleen — avaimen vakaus
+ * on tärkeämpi kuin rungon tuoreus. Sovelluksen sisäinen banneri laskee
+ * tekstin tikityksessä eikä kärsi tästä.
  */
 function julkaisunKuvaus(event: CalendarEvent): string {
   const osat = ['Talouskalenteri · korkea vaikutus']
