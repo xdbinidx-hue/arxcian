@@ -21,7 +21,7 @@ type Device = {
 }
 
 type Diag = {
-  avainpari: 'eheä' | 'epäsuhta' | 'puuttuu'
+  avainpari: 'eheä' | 'epäsuhta' | 'viallinen' | 'puuttuu'
   subject: { arvo: string | null; kelpaa: boolean }
   sendUrl: string
   jonossa: { yhteensa: number; tulevat: number }
@@ -56,6 +56,14 @@ export function PushDevices() {
   // silmukka jossa selain kysyy lupaa loputtomiin.
   const korjattu = useRef(false)
 
+  /**
+   * Laitelista palvelimelta ja tämän laitteen tilaus selaimesta.
+   *
+   * Molemmat samassa funktiossa, koska ne muuttuvat aina yhdessä: palvelin
+   * tietää mitä laitteita on olemassa, mutta vain selain tietää kumpi niistä
+   * on tämä. Erikseen haettuina kesken jäänyt uudelleentilaus jättäisi
+   * näkymän tilaan jossa laite on listalla mutta selain ei tunne sitä.
+   */
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/arxcian/push/subscribe')
@@ -65,34 +73,39 @@ export function PushDevices() {
     } catch {
       setError('Laitelistan haku epäonnistui.')
     } finally {
+      setThisEndpoint((await currentSubscription())?.endpoint ?? null)
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void refresh()
-    // Selaimen oma tilaus luetaan erikseen: palvelin tietää mitä laitteita on
-    // olemassa, mutta vain selain tietää kumpi niistä on tämä.
-    void currentSubscription().then(sub => setThisEndpoint(sub?.endpoint ?? null))
   }, [refresh])
 
   const thisDevice = devices.find(d => d.endpoint === thisEndpoint) ?? null
   const enabledHere = Boolean(thisDevice)
-  // Vanha tai tuntematon avain tarkoittaa samaa lopputulosta: push-palvelu
-  // hylkää lähetyksen eikä laite saa mitään. Rivi on listalla, joten mikään
-  // muu näkymässä ei kertoisi siitä.
-  const vanhentunut = Boolean(thisDevice && thisDevice.avainTila !== 'nykyinen')
+  // Kolme tilaa luetaan nimeltä eikä poissulkemalla `nykyinen`: puuttuva
+  // kenttä tarkoittaa "palvelin ei kertonut" — vanha versio uutta vasten tai
+  // päinvastoin — eikä sitä saa tulkita vanhentuneeksi avaimeksi, koska
+  // silloin jokainen sivun avaus tekisi turhan uudelleentilauskierroksen.
+  const vanhentunut = thisDevice?.avainTila === 'vanha' || thisDevice?.avainTila === 'tuntematon'
 
   /**
-   * Tilaa tämän laitteen — myös silloin kun tilaus on jo olemassa mutta
-   * sidottu vanhaan VAPID-avaimeen.
+   * Tilaa tämän laitteen — myös silloin kun selaimessa on jo tilaus.
    *
-   * Selaimen vanha tilaus perutaan ensin: `pushManager.subscribe` hylkää
-   * uuden `applicationServerKey`n jos tilaus on jo voimassa toisella
-   * avaimella, joten ilman peruutusta korjaus ei tekisi mitään.
+   * **Vanha tilaus perutaan aina**, ei vain kun palvelin kertoo sen olevan
+   * vanhentunut: `pushManager.subscribe` hylkää uuden `applicationServerKey`n
+   * `InvalidStateError`illa jos tilaus on jo voimassa toisella avaimella.
+   * Ehdollinen peruutus jättäisi umpikujan, jossa palvelin on jo poistanut
+   * rivin mutta selaimen tilaus elää — silloin listalla ei näy mitään
+   * korjattavaa eikä "ota käyttöön" toimisi.
+   *
+   * Peruutettava päätepiste luetaan selaimesta eikä tilasta, koska se on
+   * ainoa lähde joka tietää mitä siellä oikeasti on.
    */
   const liita = useCallback(
-    async (avain: string, edellinen: string | null) => {
+    async (avain: string) => {
+      const edellinen = (await currentSubscription())?.endpoint ?? null
       if (edellinen) await unsubscribeThisDevice()
 
       const subscription = await subscribeThisDevice(avain)
@@ -111,7 +124,6 @@ export function PushDevices() {
         })
       }
 
-      setThisEndpoint(subscription.endpoint)
       await refresh()
     },
     [refresh],
@@ -126,10 +138,14 @@ export function PushDevices() {
 
     setBusy(true)
     try {
-      await liita(publicKey, vanhentunut ? thisEndpoint : null)
-      setNotice(vanhentunut ? 'Laite liitettiin uudelleen.' : 'Laite lisätty.')
+      await liita(publicKey)
+      setNotice(enabledHere ? 'Laite liitettiin uudelleen.' : 'Laite lisätty.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Tilaus epäonnistui.')
+      // Vanha tilaus on jo peruttu tässä vaiheessa, joten laite on ilman
+      // tilausta. Se on kerrottava, muuten käyttäjä luulee tilanteen olevan
+      // ennallaan.
+      await refresh()
     } finally {
       setBusy(false)
     }
@@ -148,17 +164,22 @@ export function PushDevices() {
 
     korjattu.current = true
     setBusy(true)
-    void liita(publicKey, thisEndpoint)
+    void liita(publicKey)
       .then(() => setNotice('Tämän laitteen tilaus oli vanhalla avaimella — laite liitettiin uudelleen.'))
       .catch(e =>
         setError(
           `Laitteen automaattinen uudelleenliitos epäonnistui: ${
             e instanceof Error ? e.message : 'tuntematon syy'
-          }`,
+          }. Paina "Ota käyttöön tällä laitteella".`,
         ),
       )
-      .finally(() => setBusy(false))
-  }, [busy, liita, loading, publicKey, thisEndpoint, vanhentunut])
+      // Lista haetaan uudelleen myös epäonnistuessa: vanha tilaus on jo
+      // peruttu, joten näkymä olisi muuten väärässä.
+      .finally(() => {
+        setBusy(false)
+        void refresh()
+      })
+  }, [busy, liita, loading, publicKey, refresh, thisEndpoint, vanhentunut])
 
   const remove = async (endpoint: string) => {
     setError(null)

@@ -67,20 +67,31 @@ function syy(result: SendResult): string {
     // statusCode 0 = ei HTTP-vastausta lainkaan, jolloin koodia ei ole mitä näyttää.
     const koodiTeksti = koodi ? `HTTP ${koodi}` : 'ei vastausta push-palvelulta'
 
+    // Palvelun oma syy mukaan vain jos se on lyhyt tunniste ("BadJwtToken").
+    // Pitkä tai monirivinen runko on HTML-sivu eikä kuulu viestiin.
+    const syyteksti =
+      failure.body && failure.body.length <= 40 && !failure.body.includes('\n')
+        ? `, ${failure.body}`
+        : ''
+
     if (failure.syy === 'palvelimen-avain') {
-      // Palvelun oma syy mukaan vain jos se on lyhyt tunniste ("BadJwtToken").
-      // Pitkä tai monirivinen runko on HTML-sivu eikä kuulu viestiin.
-      const syyteksti =
-        failure.body && failure.body.length <= 40 && !failure.body.includes('\n')
-          ? `, ${failure.body}`
-          : ''
-      return `Palvelimen VAPID-avaimet eivät ole pari keskenään (${koodiTeksti}${syyteksti}). Tämä on palvelinpuolen asetusvirhe, ei sinun laitteessasi.`
+      // Tämän laitteen tilaus on tehty nykyisellä avaimella, joten vika on
+      // palvelimessa: avainpari, VAPID_SUBJECT tai kello. Diagnostiikka
+      // kertoo kumpi — arvaaminen maksoi 19.8.2026 puoli päivää.
+      return `Push-palvelu hylkäsi palvelimen allekirjoituksen (${koodiTeksti}${syyteksti}). Vika on palvelimen asetuksissa, ei sinun laitteessasi — katso Diagnostiikka-painike.`
     }
+
+    if (failure.syy === 'avain-epäselvä') {
+      return `Push-palvelu hylkäsi allekirjoituksen (${koodiTeksti}${syyteksti}), eikä yksikään laite saanut ilmoitusta. Tilausta ei poistettu, koska vika voi olla palvelimessa — katso Diagnostiikka-painike.`
+    }
+
     return `Lähetys epäonnistui (${koodiTeksti}).`
   }
 
   if (result.prunedStale > 0) {
-    return `${result.prunedStale} tilausta oli tehty vanhalla VAPID-avaimella eikä kelvannut enää. Ne poistettiin ja laite liitetään uudelleen automaattisesti — kokeile testiä hetken päästä uudelleen.`
+    // Ei luvata automaattista korjausta: paneeli uusii vain sen laitteen jolla
+    // sivu on auki, ja muut laitteet vaativat oman käyntinsä.
+    return `${result.prunedStale} tilausta oli tehty vanhalla VAPID-avaimella eikä kelvannut enää, joten ne poistettiin. Ota push käyttöön uudelleen tällä laitteella — muut laitteet uusivat tilauksensa itse kun tämä sivu avataan niillä.`
   }
 
   if (result.pruned > 0) return 'Tilaus oli vanhentunut ja poistettiin. Salli ilmoitukset uudelleen.'

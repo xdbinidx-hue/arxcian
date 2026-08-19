@@ -77,7 +77,9 @@ export async function GET() {
       tulevat: Object.values(planned).filter(entry => entry.at > now).length,
     },
 
-    qstash,
+    // Kolmannen osapuolen teksti läpiviennissä, joten katkaistuna kuten
+    // push-palvelun omat virheet.
+    qstash: { ok: qstash.ok, error: qstash.error?.slice(0, 200) },
   })
 }
 

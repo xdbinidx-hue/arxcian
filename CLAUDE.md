@@ -450,15 +450,30 @@ kunnossa.
 | Tilaus on tehty vanhalla julkisella avaimella | uusi tilaus laitteella | tilaukseen tallennettu `appServerKey` vs. nykyinen |
 | `VAPID_SUBJECT` ei ole `mailto:` tai `https:` | muuttujan korjaus | muototarkistus |
 
-**403:sta ei saa poistaa tilausta pelkän koodin perusteella.** Erotin ei ole
-statuskoodi vaan palvelimen oman avainparin tila — sama päättely kuin
-YouTube-hauissa, joissa erotin on saman ajon muiden kanavien tulos. Jos pari on
-epäsuhta, jokainen laite saa 403:n riippumatta omasta avaimestaan, ja
-koodisidonnainen poisto tyhjentäisi koko laitelistan joka ajolla. Vasta kun
-pari on todistetusti eheä, jäljelle jää tilauksen oma avain — silloin tilaus on
-kuollut ja poistetaan. `SendResult` pitää nämä eri lukuina (`pruned` vs.
-`prunedStale`), koska niiden korjaus on eri: kuollut vaatii ilmoitusluvan
-uudelleen, vanhentunut vain uuden tilauksen samalla luvalla.
+**403:sta ei saa poistaa tilausta pelkän koodin perusteella, eikä avainparin
+eheys yksin riitä erottimeksi.** Taulukon kolmas rivi on syy: eheälläkin
+parilla 403 syntyy väärästä `sub`-kentästä ja palvelimen kellosta, ja silloin
+jokainen laite saa saman virheen riippumatta omasta avaimestaan.
+Koodisidonnainen poisto tyhjentäisi koko laitelistan yhdellä ajolla.
+
+Erotin on sama kuin YouTube-hauissa: **saman ajon muiden laitteiden tulos.**
+Poistopäätös tehdään vasta kun koko erä on lähetetty
+([send.ts](src/lib/arxcian/push/send.ts):n `ratkaiseAvainvirheet`), ja
+poistetaan kaksi tapausta:
+
+- tilauksen tallennettu avain on eri kuin nykyinen (`vanha`) — suoraa
+  todistetta, ei päättelyä;
+- avainta ei ole kirjattu (`tuntematon`) **ja** jokin toinen laite sai
+  ilmoituksen samassa erässä, mikä todistaa palvelinpään kunnossa olevaksi.
+
+Tilaus jonka avain täsmää ei poistu koskaan, eikä mitään poisteta ajossa jossa
+yksikään lähetys ei mennyt perille. Runkotekstin "vapid"-osumaan ei myöskään
+luoteta yksinään: se kelpaa vain 400:n kanssa, muuten 429 tai 502 luokittuisi
+avainvirheeksi ja veisi tilauksia mukanaan.
+
+`SendResult` pitää poistot eri lukuina (`pruned` vs. `prunedStale`), koska
+niiden korjaus on eri: kuollut vaatii ilmoitusluvan uudelleen, vanhentunut vain
+uuden tilauksen samalla luvalla.
 
 **Tilaus tallentaa sen avaimen jolla se tehtiin** ([subscriptions.ts](src/lib/arxcian/push/subscriptions.ts)).
 Ilman kenttää vanhaan avaimeen sidottua tilausta ei voi erottaa palvelimen
@@ -472,6 +487,15 @@ Vanhentunut tilaus **uusitaan selaimessa itsestään** kun Trading-sivu avataan
 ei liity VAPID-avaimeen, joten selain ei kysy mitään eikä käyttäjän tarvitse
 poistaa ja antaa lupia uudelleen. Uusinta ajetaan korkeintaan kerran latausta
 kohti, ettei epäonnistuva tilaus jää silmukkaan.
+
+Kaksi yksityiskohtaa joita ei saa "siistiä" pois: selaimen vanha tilaus
+perutaan **aina** ennen uutta, koska `pushManager.subscribe` hylkää uuden
+`applicationServerKey`n `InvalidStateError`illa jos tilaus on jo voimassa
+toisella avaimella — ehdollinen peruutus jättää umpikujan jossa palvelin on jo
+poistanut rivin mutta selaimen tilaus elää. Ja avaintila luetaan kolmena
+nimettynä arvona eikä `!== 'nykyinen'`-vertailuna: puuttuva kenttä tarkoittaa
+"palvelin ei kertonut" (vanha PWA uutta palvelinta vasten), ei "avain on
+vanha".
 
 **VAPID-avaimet ovat vain Production-ympäristössä, tarkoituksella.** Kaikki
 kolme ympäristöä jakavat saman Redis-kannan, joten preview'n oma avainpari

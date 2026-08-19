@@ -68,7 +68,9 @@ export async function POST(req: NextRequest) {
     url: payload.url ?? '/arxcian/trading',
   })
 
-  // Aina 200, myös kun laitteita ei ollut: QStash yrittäisi muuten uudelleen
-  // kolmesti, eikä tilaukseton käyttäjä ole ohimenevä vika vaan pysyvä tila.
-  return NextResponse.json({ ok: true, result })
+  // Aina HTTP 200, myös kun mikään ei mennyt perille: QStash yrittäisi muuten
+  // uudelleen kolmesti, eikä tilaukseton käyttäjä ole ohimenevä vika vaan
+  // pysyvä tila. `ok` kertoo silti totuuden — nielty toimitus ei saa jäädä
+  // `ok: true`:n taakse, vaikka pyyntö itsessään käsiteltiin.
+  return NextResponse.json({ ok: result.delivered > 0, result })
 }

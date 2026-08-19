@@ -33,13 +33,17 @@ export type PushPayload = {
 /**
  * Mikä avainvirheen aiheutti.
  *
- * Apple vastaa 403 `BadJwtToken` sekä silloin kun palvelimen avainpari on
- * epäsuhta että silloin kun tilaus on tehty jollain muulla julkisella
- * avaimella. Ne ovat eri vika ja vaativat eri korjauksen — toinen tehdään
+ * Apple vastaa 403 `BadJwtToken` sekä silloin kun vika on palvelimessa
+ * (avainpari, `sub`-kenttä, kello) että silloin kun tilaus on tehty jollain
+ * muulla julkisella avaimella. Ne vaativat eri korjauksen — toinen tehdään
  * Vercelin ympäristömuuttujiin, toinen puhelimessa — joten pelkkä statuskoodi
  * ei riitä vastaukseen.
+ *
+ * `tilauksen-avain` ei esiinny tässä listassa: sellainen tilaus poistetaan
+ * eikä jää virheeksi kerrottavaksi. `avain-epäselvä` on rehellinen kolmas
+ * tila — allekirjoitus hylättiin, eikä kumpaakaan voi osoittaa.
  */
-export type FailureCause = 'palvelimen-avain' | 'tilauksen-avain' | 'muu'
+export type FailureCause = 'palvelimen-avain' | 'avain-epäselvä' | 'muu'
 
 /**
  * Yksi epäonnistunut lähetys, sen verran kuin kutsuja tarvitsee syyn
@@ -112,7 +116,7 @@ export function vapidPublicKey(): string | null {
   return process.env.VAPID_PUBLIC_KEY ?? null
 }
 
-export type VapidKeyCheck = 'eheä' | 'epäsuhta' | 'puuttuu'
+export type VapidKeyCheck = 'eheä' | 'epäsuhta' | 'viallinen' | 'puuttuu'
 
 let keyCheck: VapidKeyCheck | null = null
 
@@ -143,13 +147,12 @@ export function vapidKeyCheck(): VapidKeyCheck {
     const ecdh = createECDH('prime256v1')
     ecdh.setPrivateKey(Buffer.from(privateKey, 'base64url'))
     const derived = ecdh.getPublicKey().toString('base64url')
-    // Vertailu base64url-muodossa: tallennettu avain voi olla täytteellä tai
-    // ilman, ja Bufferin kautta kierrätetty arvo on aina samassa muodossa.
-    const stored = Buffer.from(publicKey, 'base64url').toString('base64url')
-    return (keyCheck = derived === stored ? 'eheä' : 'epäsuhta')
+    return (keyCheck = sameKey(derived, publicKey) ? 'eheä' : 'epäsuhta')
   } catch {
-    // Kelpaamaton yksityinen avain ei ole pari millekään julkiselle avaimelle.
-    return (keyCheck = 'epäsuhta')
+    // Muotovirhe on eri vika kuin väärä pari, ja korjaus on eri: toinen on
+    // väärin kopioitu arvo, toinen väärästä parista poimittu. Sama sana
+    // molemmille lähettäisi etsimään väärää asiaa.
+    return (keyCheck = 'viallinen')
   }
 }
 
@@ -164,8 +167,25 @@ export function vapidKeyCheck(): VapidKeyCheck {
 export type KeyState = 'nykyinen' | 'vanha' | 'tuntematon'
 
 export function subscriptionKeyState(sub: PushSubscriptionRecord): KeyState {
-  if (!sub.appServerKey) return 'tuntematon'
-  return sub.appServerKey === vapidPublicKey() ? 'nykyinen' : 'vanha'
+  const nykyinen = vapidPublicKey()
+  if (!sub.appServerKey || !nykyinen) return 'tuntematon'
+  return sameKey(sub.appServerKey, nykyinen) ? 'nykyinen' : 'vanha'
+}
+
+/**
+ * Sama avain, vaikka esitysmuoto eroaisi.
+ *
+ * Base64url-arvo voi olla täytteellä tai ilman, ja merkkijonovertailu
+ * merkitsisi silloin jokaisen laitteen vanhentuneeksi — eli käynnistäisi
+ * turhan uudelleentilauksen jokaisella laitteella. Bufferin kautta
+ * kierrätetty arvo on aina samassa muodossa.
+ */
+function sameKey(a: string, b: string): boolean {
+  try {
+    return Buffer.from(a, 'base64url').equals(Buffer.from(b, 'base64url'))
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -177,7 +197,7 @@ export function subscriptionKeyState(sub: PushSubscriptionRecord): KeyState {
  * ohimeneviä eikä niistä saa poistaa mitään: yksi Applen palvelukatko
  * tyhjentäisi silloin koko tilauslistan.
  *
- * **401 ja 403 poistavat vain ehdollisesti**, ks. `avainvirheenTulos`.
+ * **401 ja 403 poistavat vain ehdollisesti**, ks. `ratkaiseAvainvirheet`.
  */
 export async function sendToUser(user: UserId, payload: PushPayload): Promise<SendResult> {
   const subscriptions = await getSubscriptions(user)
@@ -190,7 +210,7 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
   const body = JSON.stringify(payload)
   const delivered: string[] = []
   const dead: string[] = []
-  const stale: string[] = []
+  const avainvirheet: Avainvirhe[] = []
   const failures: SendFailure[] = []
 
   // Rinnakkain: laitteita on korkeintaan kymmenen, ja peräkkäin lähetettynä
@@ -215,14 +235,9 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
         }
 
         const teksti = failureBody(error)
-        const syy = onAvainvirhe(status, teksti) ? avainvirheenSyy(sub) : 'muu'
-
-        if (syy === 'tilauksen-avain') {
-          stale.push(sub.endpoint)
-          console.warn('[push] tilaus sidottu vanhaan avaimeen, poistetaan', {
-            endpointHost: hostOf(sub.endpoint),
-            label: sub.label,
-          })
+        // Avainvirheet kerätään ja ratkaistaan vasta erän jälkeen, ks. alta.
+        if (onAvainvirhe(status, teksti)) {
+          avainvirheet.push({ sub, status, body: teksti })
           return
         }
 
@@ -230,7 +245,7 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
           statusCode: status,
           body: teksti,
           endpointHost: hostOf(sub.endpoint),
-          syy,
+          syy: 'muu',
         }
         failures.push(failure)
         // Rakenteisena ja kerran: lokista ja vastauksesta on löydyttävä
@@ -240,6 +255,7 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
     }),
   )
 
+  const stale = ratkaiseAvainvirheet(avainvirheet, delivered.length, failures)
   await reconcileSubscriptions(user, { delivered, dead: [...dead, ...stale] })
 
   return {
@@ -251,24 +267,60 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
   }
 }
 
+/** Yksi hylätty allekirjoitus, odottamassa erän muuta tulosta. */
+type Avainvirhe = { sub: PushSubscriptionRecord; status: number; body?: string }
+
 /**
- * Kumpi avain on väärin — ja saako tilauksen poistaa.
+ * Kuka poistetaan ja kuka ei — vasta kun koko erän tulos on tiedossa.
  *
- * **Erotin ei ole statuskoodi vaan palvelimen oman avainparin tila.** Jos pari
- * on epäsuhta, jokainen laite saa 403:n riippumatta omasta avaimestaan, ja
- * koodiin sidottu poisto tyhjentäisi koko laitelistan joka ajolla — sama
- * virhe kuin se, jota `404 → kanava poissa` -päättely olisi tehnyt
- * YouTube-hauissa. Silloin ei poisteta mitään ja vika osoitetaan palvelimeen.
+ * **Erotin ei ole statuskoodi vaan saman ajon muiden laitteiden tulos**, sama
+ * päättely kuin YouTube-hauissa: jos yksikään lähetys ei mennyt perille, vika
+ * on lähettävässä päässä eikä yhdessäkään tilauksessa, eikä silloin kosketa
+ * mitään. Avainparin eheys ei riitä erottimeksi yksinään, koska eheälläkin
+ * parilla 403 syntyy väärästä `sub`-kentästä ja palvelimen kellosta — ja
+ * silloin koodisidonnainen poisto veisi koko laitelistan yhdellä ajolla.
  *
- * Vasta kun pari on todistetusti eheä, Applen "allekirjoitus ei kelpaa" voi
- * johtua enää tilauksen omasta avaimesta: se on tehty jollain aiemmalla
- * julkisella avaimella eikä kelpaa enää koskaan. Tuntematon avain lasketaan
- * samaksi — kenttä lisättiin vasta 19.8.2026, ja sitä vanhempi rivi on
- * nimenomaan avainten vaihdon ajalta.
+ * Kaksi tapausta poistetaan:
+ *
+ * - `vanha`: tilaukseen tallennettu avain on eri kuin nykyinen. Tämä on
+ *   suoraa todistetta eikä päättelyä — tilaus ei kelpaa enää koskaan.
+ * - `tuntematon` **ja** jokin toinen laite sai ilmoituksen: avainta ei ole
+ *   kirjattu (rivi on kenttää vanhempi), mutta onnistunut lähetys samassa
+ *   erässä todistaa että palvelinpää on kunnossa.
+ *
+ * `nykyinen` ei koskaan poistu: sen avain täsmää, joten vika on muualla.
  */
-function avainvirheenSyy(sub: PushSubscriptionRecord): FailureCause {
-  if (vapidKeyCheck() !== 'eheä') return 'palvelimen-avain'
-  return subscriptionKeyState(sub) === 'nykyinen' ? 'muu' : 'tilauksen-avain'
+function ratkaiseAvainvirheet(
+  virheet: Avainvirhe[],
+  onnistuneita: number,
+  failures: SendFailure[],
+): string[] {
+  const stale: string[] = []
+
+  for (const { sub, status, body } of virheet) {
+    const tila = subscriptionKeyState(sub)
+
+    if (tila === 'vanha' || (tila === 'tuntematon' && onnistuneita > 0)) {
+      stale.push(sub.endpoint)
+      console.warn('[push] tilaus sidottu vanhaan avaimeen, poistetaan', {
+        endpointHost: hostOf(sub.endpoint),
+        label: sub.label,
+        avainTila: tila,
+      })
+      continue
+    }
+
+    const failure: SendFailure = {
+      statusCode: status,
+      body,
+      endpointHost: hostOf(sub.endpoint),
+      syy: tila === 'nykyinen' ? 'palvelimen-avain' : 'avain-epäselvä',
+    }
+    failures.push(failure)
+    console.error('[push] lähetys epäonnistui', { ...failure, avainpari: vapidKeyCheck() })
+  }
+
+  return stale
 }
 
 /**
@@ -277,9 +329,16 @@ function avainvirheenSyy(sub: PushSubscriptionRecord): FailureCause {
  * 401 ja 403 tarkoittavat molemmilla suurilla palveluilla samaa: pyyntöä ei
  * hyväksytty avainten takia. Apple kertoo syyn tekstinä ("BadJwtToken"),
  * Google pelkkänä koodina.
+ *
+ * **Runkotekstiin ei luoteta yksinään.** Sanan "vapid" osuma missä tahansa
+ * vastauksessa luokittelisi myös 429:n ja 502:n avainvirheeksi, ja koska tämä
+ * predikaatti nyt ohjaa poistoa eikä vain virheviestiä, ohimenevä katko
+ * veisi tilauksia mukanaan. Siksi teksti kelpaa vain 400:n kanssa, jota osa
+ * palveluista käyttää VAPID-virheeseen.
  */
 function onAvainvirhe(status: number, body?: string): boolean {
-  return status === 401 || status === 403 || /badjwttoken|vapid/i.test(body ?? '')
+  if (status === 401 || status === 403) return true
+  return status === 400 && /badjwttoken|vapid/i.test(body ?? '')
 }
 
 /** Push-palvelun virheteksti, katkaistuna. */
