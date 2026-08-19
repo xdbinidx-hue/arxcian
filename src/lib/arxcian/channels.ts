@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser'
 import { fetchAndCache, readCached } from './cache'
 import { kv } from './kv'
-import { readFetchStatus, writeFetchStatus } from './fetchStatus'
+import { writeAttempt } from './fetchStatus'
 import { fetchYoutubeFeed, YoutubeFeedError } from './youtube'
 
 /**
@@ -268,17 +268,9 @@ async function fetchChannels(): Promise<ChannelVideo[]> {
   // Tila kirjoitetaan ennen mahdollista heittoa, jotta myös täysin
   // epäonnistunut ajo jättää jäljen. Ilman tätä käyttöliittymä näkisi vain
   // vanhan onnistumisen eikä tietäisi että sen jälkeen on yritetty ja kaaduttu.
-  const now = Date.now()
-  await writeFetchStatus(CHANNELS_CACHE_KEY, {
-    lastAttempt: now,
-    // Epäonnistunut ajo ei saa pyyhkiä edellistä onnistumishetkeä — juuri se
-    // on se tieto jonka käyttöliittymä näyttää ("haettu viimeksi eilen 20:22").
-    lastSuccess:
-      onnistuneet.length > 0
-        ? now
-        : ((await readFetchStatus(CHANNELS_CACHE_KEY))?.lastSuccess ?? null),
-    failed: kaatuneet.map(k => k.channel.name),
+  await writeAttempt(CHANNELS_CACHE_KEY, {
     ok: onnistuneet.length,
+    failed: kaatuneet.map(k => k.channel.name),
   })
 
   // Jos jokainen kanava kaatui, heitetään — muuten fetchAndCache tallentaisi

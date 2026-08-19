@@ -50,6 +50,30 @@ export async function writeFetchStatus(key: string, status: FetchStatus): Promis
   }
 }
 
+/**
+ * Kirjaa yhden hakuyrityksen tuloksen.
+ *
+ * Säilyttää edellisen onnistumishetken kun yritys epäonnistuu — juuri se on
+ * tieto jonka käyttöliittymä näyttää ("haettu viimeksi eilen 20:22"). Tämä on
+ * omana apurinaan siksi, että sama logiikka tarvitaan jokaisessa lähteessä ja
+ * kolme kopiota ajautuisi erilleen.
+ *
+ * `ok` = montako lähdettä saatiin, `failed` = niiden nimet jotka kaatuivat.
+ * Yksilähteisellä haulla ok on 1 tai 0.
+ */
+export async function writeAttempt(
+  key: string,
+  result: { ok: number; failed: string[] },
+): Promise<void> {
+  const now = Date.now()
+  await writeFetchStatus(key, {
+    lastAttempt: now,
+    lastSuccess: result.ok > 0 ? now : ((await readFetchStatus(key))?.lastSuccess ?? null),
+    failed: result.failed,
+    ok: result.ok,
+  })
+}
+
 /** Lukee hakuyrityksen tilan, tai null jos sitä ei ole. */
 export async function readFetchStatus(key: string): Promise<FetchStatus | null> {
   try {

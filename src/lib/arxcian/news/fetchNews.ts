@@ -2,6 +2,7 @@ import { fetchFeed } from './rss'
 import { sourcesFor } from './sources'
 import { curateArticles, CANDIDATE_LIMIT } from './summarize'
 import { readCached, writeCached } from '../cache'
+import { writeAttempt } from '../fetchStatus'
 import { isoDateHelsinki } from '../time'
 import { CATEGORY_FOCUS, type Article, type Category, type RawItem } from './types'
 
@@ -45,19 +46,23 @@ function keptDays(): Set<string> {
 }
 
 /** Hakee kaikki kategorian lähteet rinnakkain. Yhden lähteen kaatuminen ei vie muita mukanaan. */
-async function fetchCategoryRaw(category: Category): Promise<RawItem[]> {
+async function fetchCategoryRaw(
+  category: Category,
+): Promise<{ items: RawItem[]; ok: number; failed: string[] }> {
   const sources = sourcesFor(category)
   const results = await Promise.allSettled(sources.map(s => fetchFeed(s)))
 
   const items: RawItem[] = []
+  const failed: string[] = []
   results.forEach((result, i) => {
     if (result.status === 'fulfilled') {
       items.push(...result.value)
     } else {
+      failed.push(sources[i].name)
       console.error(`[news] lähde epäonnistui: ${sources[i].name}`, result.reason)
     }
   })
-  return items
+  return { items, ok: sources.length - failed.length, failed }
 }
 
 /**
@@ -70,10 +75,15 @@ async function fetchCategoryRaw(category: Category): Promise<RawItem[]> {
  * niitä ei ehtisi lukea heti. Yhden lähteen kaatuminen ei estä päivitystä.
  */
 export async function refreshCategory(category: Category): Promise<{ total: number; new: number }> {
-  const [raw, existing] = await Promise.all([
+  const [haku, existing] = await Promise.all([
     fetchCategoryRaw(category),
     readCached<Article[]>(cacheKeyFor(category)),
   ])
+  const raw = haku.items
+
+  // Kirjataan yritys ennen tiivistystä: kaatunut lähde on kaatunut vaikka
+  // muut onnistuisivat, eikä sitä saa nähdä vain lokista.
+  await writeAttempt(cacheKeyFor(category), { ok: haku.ok, failed: haku.failed })
 
   const existingArticles = existing?.data ?? []
   const existingIds = new Set(existingArticles.map(a => a.id))

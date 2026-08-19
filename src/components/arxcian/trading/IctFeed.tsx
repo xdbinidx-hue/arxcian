@@ -1,5 +1,14 @@
-import { getIctVideos } from '@/lib/arxcian/trading/ict'
+import { getIctVideos, ICT_CACHE_KEY } from '@/lib/arxcian/trading/ict'
+import { readFetchStatus } from '@/lib/arxcian/fetchStatus'
 import { Panel } from '@/components/arxcian/Panel'
+
+/** Kellonaika, ja päivämäärä mukaan jos haku ei ole tältä päivältä. */
+function fetchLabel(ms: number): string {
+  const d = new Date(ms)
+  const klo = d.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
+  const tanaan = new Date().toDateString() === d.toDateString()
+  return tanaan ? klo : `${d.toLocaleDateString('fi-FI', { day: 'numeric', month: 'numeric' })} ${klo}`
+}
 
 function timeAgo(ms: number | null): string {
   if (!ms) return ''
@@ -17,8 +26,24 @@ export async function IctFeed() {
     videos = null
   }
 
+  // Vanhentuneisuus mitatusta hakutilasta, ei datan iästä pääteltynä — sama
+  // periaate kuin hubin KANAVAT-paneelissa (ks. CLAUDE.md).
+  const status = await readFetchStatus(ICT_CACHE_KEY)
+  const stale =
+    status !== null && (status.lastSuccess === null || status.lastSuccess < status.lastAttempt)
+
   return (
-    <Panel title="ICT-kirjasto" meta="The Inner Circle Trader">
+    <Panel
+      title="ICT-kirjasto"
+      meta={status?.lastSuccess ? fetchLabel(status.lastSuccess) : 'The Inner Circle Trader'}
+    >
+      {stale && status ? (
+        <p className="mb-3 rounded-md border border-ax-down/30 bg-ax-down/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-ax-down">
+          Data vanhentunut — haku epäonnistui {fetchLabel(status.lastAttempt)}.
+          {status.lastSuccess ? ` Näytetään ${fetchLabel(status.lastSuccess)} haettu lista.` : ''}
+        </p>
+      ) : null}
+
       {!videos || videos.length === 0 ? (
         <p className="py-4 text-center text-[13px] text-ax-faint">Ei videoita saatavilla.</p>
       ) : (

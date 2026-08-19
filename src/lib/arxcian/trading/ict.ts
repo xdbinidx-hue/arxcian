@@ -1,12 +1,15 @@
 import { XMLParser } from 'fast-xml-parser'
 import { fetchAndCache } from '../cache'
 import { fetchYoutubeFeed } from '../youtube'
+import { writeAttempt } from '../fetchStatus'
 import type { IctVideo } from './types'
 
 // Virallinen ICT-kanava (The Inner Circle Trader, @innercircletrader).
 // Kanava-ID varmistettu käsin kanavan sivulta 2026-07-27.
 const ICT_CHANNEL_ID = 'UCtjxa77NqamhVC8atV85Rog'
-const CACHE_KEY = 'trading:ict-videos'
+/** Vietynä, jotta paneeli voi lukea saman avaimen hakutilan. */
+export const ICT_CACHE_KEY = 'trading:ict-videos'
+const CACHE_KEY = ICT_CACHE_KEY
 const TTL_SECONDS = 60 * 60
 
 /**
@@ -40,7 +43,19 @@ async function fetchIctVideos(): Promise<IctVideo[]> {
   // Otsakkeet ja uudelleenyritys ovat lib/arxcian/youtube.ts:ssä, yhteisenä
   // kaikille YouTube-kutsujille. Uudelleenyritys on se mikä tässä merkitsee:
   // YouTube rajoittaa Vercelin konesali-IP:tä ajoittain (ks. youtube.ts).
-  const doc = parser.parse(await fetchYoutubeFeed(ICT_CHANNEL_ID, 'ICT-kanava'))
+  // Tila kirjataan myös kaatuneesta yrityksestä: välimuistin kirjekuori
+  // kirjoitetaan vain onnistumisesta, joten ilman tätä käyttöliittymä ei
+  // erottaisi tuoretta dataa viikon vanhasta. Sama kuvio kuin channels.ts:ssä.
+  let xml: string
+  try {
+    xml = await fetchYoutubeFeed(ICT_CHANNEL_ID, 'ICT-kanava')
+  } catch (e) {
+    await writeAttempt(CACHE_KEY, { ok: 0, failed: ['ICT-kanava'] })
+    throw e
+  }
+  await writeAttempt(CACHE_KEY, { ok: 1, failed: [] })
+
+  const doc = parser.parse(xml)
   const rawEntries = doc?.feed?.entry
   const entries: unknown[] = Array.isArray(rawEntries) ? rawEntries : rawEntries ? [rawEntries] : []
 
