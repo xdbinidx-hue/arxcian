@@ -55,6 +55,23 @@ export function nowMinutesHelsinki(): number {
   return hour * 60 + minute
 }
 
+/**
+ * Kuluva hetki Helsingin aikaa muodossa "YYYY-MM-DDTHH:MM".
+ *
+ * Vertailtavissa sellaisenaan Open-Meteon vyöhykemerkinnättömiin leimoihin
+ * ("2026-08-20T09:00"): ISO-muotoiset paikallisajat ovat merkkijonoina
+ * samassa järjestyksessä kuin ajallisesti. new Date() ei kelpaa vertailuun,
+ * koska se tulkitsee vyöhykkeettömän leiman palvelimen omalla vyöhykkeellä —
+ * Vercelin UTC-ympäristössä kolme tuntia väärin. Sama ansa jonka sunClock
+ * kiertää lukemalla kellonajan merkkijonosta.
+ */
+export function nowLocalISOHelsinki(): string {
+  const min = nowMinutesHelsinki()
+  const hh = String(Math.floor(min / 60)).padStart(2, '0')
+  const mm = String(min % 60).padStart(2, '0')
+  return `${todayISOHelsinki()}T${hh}:${mm}`
+}
+
 /** "05:26" → minuutteja keskiyöstä. null jos muoto ei kelpaa. */
 export function clockToMinutes(clock: string): number | null {
   const match = /^(\d{2}):(\d{2})$/.exec(clock)

@@ -26,9 +26,18 @@ export async function SunWeather({ delay }: { delay?: number }) {
   let cached
   try {
     cached = await getWeather()
-  } catch {
+  } catch (e) {
+    // getWeather heittää vain jos haku kaatuu EIKÄ välimuistissa ole mitään.
+    // Virhe lokiin ja virkistysnappi jäljelle: ilman nappia paneeli on
+    // umpikuja, ja ilman lokia vian syy katoaa kokonaan.
+    console.error('[hub] sään haku epäonnistui', e)
     return (
-      <Panel title="Sää & aurinko" delay={delay} empty="Sää ei ole juuri nyt saatavilla." />
+      <Panel
+        title="Sää & aurinko"
+        delay={delay}
+        refresh={{ job: UI_REFRESH_JOBS.saa, state: await panelFetchState(WEATHER_CACHE_KEY) }}
+        empty="Sää ei ole juuri nyt saatavilla. Seuraava ajastettu haku yrittää uudelleen."
+      />
     )
   }
 

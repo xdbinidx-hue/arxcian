@@ -1,6 +1,7 @@
 import { fetchAndCache } from './cache'
 import { DEFAULT_LOCATION } from './weather'
-import { todayISOHelsinki, clockToMinutes } from './time'
+import { todayISOHelsinki } from './time'
+import { PRAYERS, addDays, type PrayerDay, type PrayerKey } from './prayerLogic'
 
 /**
  * Islamilaiset rukousajat Helsingin aikaan hubin etusivulle.
@@ -10,31 +11,19 @@ import { todayISOHelsinki, clockToMinutes } from './time'
  * itse: laskenta vaatisi auringon deklinaation ja tuntikulman kullekin
  * hetkelle sekä korkean leveysasteen erityissäännöt, eli käytännössä oman
  * kirjaston. Rajapinta hoitaa saman ilman uutta riippuvuutta.
+ *
+ * Rukouslista, tyypit ja "mikä on seuraava" ovat prayerLogic.ts:ssä, jotta ne
+ * ovat testattavissa ilman verkkoa. Ne viedään täältä eteenpäin, joten
+ * kutsujien ei tarvitse tietää jaosta.
  */
 
-/**
- * Viisi rukousta. Shuruq (auringonnousu) ei ole rukous vaan Fajrin ajan
- * päätepiste, ja se näkyy jo aurinkopaneelissa — siksi sitä ei toisteta
- * tässä listassa.
- */
-export const PRAYERS = [
-  { key: 'Fajr', label: 'Fajr', gloss: 'aamu' },
-  { key: 'Dhuhr', label: 'Dhuhr', gloss: 'keskipäivä' },
-  { key: 'Asr', label: 'Asr', gloss: 'iltapäivä' },
-  { key: 'Maghrib', label: 'Maghrib', gloss: 'auringonlasku' },
-  { key: 'Isha', label: 'Isha', gloss: 'ilta' },
-] as const
-
-export type PrayerKey = (typeof PRAYERS)[number]['key']
-
-export type PrayerDay = {
-  /** YYYY-MM-DD Helsingin aikaa */
-  date: string
-  /** Kellonajat muodossa HH:MM, Helsingin aikaa */
-  timings: Record<PrayerKey, string>
-  /** Hijri-päiväys näytettäväksi, esim. "28 Safar 1448" */
-  hijri: string
-}
+export {
+  PRAYERS,
+  nextPrayer,
+  type PrayerKey,
+  type PrayerDay,
+  type NextPrayer,
+} from './prayerLogic'
 
 export const PRAYER_CACHE_KEY = 'hub:prayer-times'
 
@@ -82,18 +71,6 @@ function hhmm(raw: string | undefined): string {
   const match = /(\d{1,2}):(\d{2})/.exec(raw ?? '')
   if (!match) return '—'
   return `${match[1].padStart(2, '0')}:${match[2]}`
-}
-
-/**
- * Päivä eteenpäin ISO-päiväyksestä.
- *
- * Laskenta tehdään UTC-keskiyöstä eikä nykyhetkeen lisätyistä 24 tunnista:
- * kesäajan vaihtopäivinä vuorokausi on 23 tai 25 tuntia, jolloin lisäys
- * osuisi joko samaan tai ylihuomiseen päivään.
- */
-function addDays(isoDate: string, days: number): string {
-  const [y, m, d] = isoDate.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
 async function fetchDay(isoDate: string): Promise<PrayerDay> {
@@ -146,27 +123,4 @@ export async function getPrayerTimes(force = false) {
   // ilman lippua osa ajoista palauttaisi tuoreen välimuistin tekemättä hakua
   // ja raportoisi silti onnistuneensa (ks. CLAUDE.md, hub-channels).
   return fetchAndCache({ key: PRAYER_CACHE_KEY, ttl: TTL_SECONDS, force }, fetchPrayerDays)
-}
-
-export type NextPrayer = { key: PrayerKey; time: string; tomorrow: boolean }
-
-/**
- * Seuraava rukous annetusta hetkestä. Palauttaa huomisen Fajrin kun päivän
- * kaikki rukoukset ovat menneet, ja null jos kumpaakaan päivää ei löydy
- * datasta.
- */
-export function nextPrayer(days: PrayerDay[], today: string, nowMinutes: number): NextPrayer | null {
-  const day = days.find(d => d.date === today)
-  if (!day) return null
-
-  for (const prayer of PRAYERS) {
-    const minutes = clockToMinutes(day.timings[prayer.key])
-    if (minutes !== null && minutes > nowMinutes) {
-      return { key: prayer.key, time: day.timings[prayer.key], tomorrow: false }
-    }
-  }
-
-  const next = days.find(d => d.date === addDays(today, 1))
-  if (!next) return null
-  return { key: 'Fajr', time: next.timings.Fajr, tomorrow: true }
 }
