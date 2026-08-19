@@ -74,6 +74,7 @@ Noudata olemassa olevan koodin tyyliä:
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Sheets / Drive (palvelutili, RJ-Mob) |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Calendar (käyttäjän oma tili, arxcian) |
 | `ANTHROPIC_API_KEY` | AI-tiivistelmät |
+| `WATCH_SOURCES_SHEET_ID` | watchin lähdelistan taulukko (valinnainen — ilman sitä varalista) |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis -välimuisti |
 
 Kaksi eri Google-tunnistautumista tarkoituksella: RJ-Mob lukee jaettuja taulukoita **palvelutilillä**, arxcianin kalenteri vaatii **käyttäjän oman OAuth-luvan** omaan kalenteriinsa. Näitä ei voi yhdistää.
@@ -148,14 +149,35 @@ Redis on Upstash-resurssi `upstash-kv-amethyst-river`, liitetty vakionimillä ka
 
 ## Uuden sisällön seuranta (watch)
 
-"Seuraa lähdelistaa ja tee jotain uusille" on sama tarve kolmessa osiossa: Tradingin YouTube-kanavat, Personalin self-growth-kanavat ja osittain Uutiset. Se rakennetaan **kerran** hakemistoon `src/lib/arxcian/watch/` samaan tapaan kuin `fetchAndCache` — osiot käyttävät sitä, eivät toteuta omaansa. Suunniteltu 13.8.2026, ei vielä toteutettu.
+"Seuraa lähdelistaa ja tee jotain uusille" on sama tarve kolmessa osiossa: Tradingin YouTube-kanavat, Personalin self-growth-kanavat ja osittain Uutiset. Se on rakennettu **kerran** hakemistoon `src/lib/arxcian/watch/` samaan tapaan kuin `fetchAndCache` — osiot käyttävät sitä, eivät toteuta omaansa. Suunniteltu 13.8.2026, toteutettu 19.8.2026.
 
 | Tiedosto | Vastuu |
 |---|---|
-| `sources.ts` | lähdelistan luku Drive-taulukosta |
+| `types.ts` | jaetut tyypit |
+| `sources.ts` | lähdelistan luku Drive-taulukosta + koodiin käännetty varalista |
 | `feed.ts` | yksi normalisoitu syötteenhakija (YouTube-Atom, RSS2) |
 | `seen.ts` | nähtyjen tunnisteiden rekisteri |
+| `inbox.ts` | ilmoitusten ainoa kirjoituskohde |
 | `watch.ts` | hae → erota uudet → aja listan toiminto |
+
+**Taulukon id on `WATCH_SOURCES_SHEET_ID`, ja sen puuttuminen ei ole virhe.**
+Ilman muuttujaa käytetään koodiin käännettyä varalistaa (hubin viisi kanavaa
++ Mark Moss, jaettuna trading/personal), jolloin watch toimii ennen kuin
+taulukkoa on olemassa. Konfiguroimaton ja rikki ovat eri tiloja, ja vain
+jälkimmäinen ansaitsee hälytyksen — rikki lähdelista heittää, ja `sourcesFrom`
+kertoo kummasta on kyse.
+
+**Ensimmäinen ajo ei tuota ilmoituksia.** Kun `watch:seen:<lista>` ei vielä
+ole, koko syöte olisi määritelmällisesti uutta ja neljä kanavaa purskauttaisi
+kuusikymmentä ilmoitusta kerralla. Silloin kaikki merkitään nähdyiksi ja
+palautetaan tyhjä; uutuus alkaa seuraavasta ajosta. Sama koskee kadonnutta
+avainta — se on erottamaton ensimmäisestä ajosta, ja hiljaisuus on oikea
+vastaus kumpaankin.
+
+**Kaikkien lähteiden kaatuessa ei merkitä mitään nähdyksi.** Muuten katkos
+söisi uutuudet hiljaa: tunnisteita ei tullut, ja seuraava ajo pitäisi niitä
+vanhoina. Osittainen kaatuminen merkitään normaalisti, koska saadut
+tunnisteet ovat aitoja.
 
 **Lähdelista on Drive-taulukossa, ei koodissa.** Palvelutilillä on jo `spreadsheets.readonly` RJ-Mobia varten, joten uutta tunnistautumista ei tarvita. Sarakkeet: `lista` (`trading` | `personal` | `uutiset`), `nimi`, `tyyppi` (`youtube` | `rss`), `tunniste` (kanava-ID tai syöte-URL), `toiminto` (`tiivista` | `ilmoita` | `ei mitään`), `omistaja` (`albin` | `arbnor` | `shared`), `aktiivinen`. Yksi taulukko kaikille osioille — `lista`-sarake on juuri se mikä tekee tästä yhden mekanismin eikä kolmea.
 

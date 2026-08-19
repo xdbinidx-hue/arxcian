@@ -14,6 +14,7 @@ import { readFetchStatus } from './fetchStatus'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
 import { importWinposReports } from '@/lib/winpos/kassamyynti'
+import { runWatch, statusKeyFor } from './watch/watch'
 
 /**
  * Ajastettujen hakujen rekisteri.
@@ -223,6 +224,26 @@ const hubJobs: CronJob[] = [
   },
 ]
 
+/**
+ * Yksi työ per lista, jottei yhden listan kaatuminen vie muita — sama jako
+ * kuin uutisten kategoriatöissä. Lähdelistan ja uutuuden logiikka on
+ * watch/-hakemistossa, tässä on vain kytkentä.
+ */
+const watchJobs: CronJob[] = (['trading', 'personal'] as const).map(lista => ({
+  id: `watch-${lista}`,
+  description: `Watch: uusi sisältö (${lista})`,
+  run: async () => {
+    const r = await runWatch(lista)
+    return {
+      key: statusKeyFor(lista),
+      items: r.uusia,
+      // Kaikkien lähteiden kaatuminen ei saa näyttää tyhjältä onnistumiselta.
+      source: r.ok === 0 ? ('stale' as const) : ('network' as const),
+      failedSources: r.failed.length > 0 ? r.failed : undefined,
+    }
+  },
+}))
+
 const rjmobJobs: CronJob[] = [
   {
     id: 'rjmob-insights',
@@ -249,7 +270,8 @@ const rjmobJobs: CronJob[] = [
 ]
 
 /** Rekisteri: uusi ajastettu työ lisätään tähän, cron-reittiä ei tarvitse muuttaa. */
-export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs, ...hubJobs, ...rjmobJobs]
+export const JOBS: readonly CronJob[] = [...newsJobs, ...tradingJobs, ...globeJobs, ...hubJobs,
+  ...watchJobs, ...rjmobJobs]
 
 /**
  * Joukkoajon työt. `soloOnly`-työt jäävät aina ulkopuolelle — ne ajetaan

@@ -11,6 +11,7 @@ import { TodayFocus } from '@/components/arxcian/hub/TodayFocus'
 import { TodoPanel } from '@/components/arxcian/hub/TodoPanel'
 import { CalendarMonth } from '@/components/arxcian/hub/CalendarMonth'
 import { Channels } from '@/components/arxcian/hub/Channels'
+import { WatchInbox } from '@/components/arxcian/hub/WatchInbox'
 import { RjMobSummary } from '@/components/arxcian/hub/RjMobSummary'
 import { MarketSessions } from '@/components/arxcian/hub/MarketSessions'
 import { SunWeather } from '@/components/arxcian/hub/SunWeather'
@@ -104,6 +105,7 @@ export default async function ArxcianHub() {
           <SunWeather delay={0.16} />
           <RjMobSummary delay={0.2} />
           <Channels delay={0.24} />
+          <WatchInbox delay={0.28} />
         </div>
 
         <div className="grid content-start gap-3 xl:col-start-3 xl:row-start-1">
