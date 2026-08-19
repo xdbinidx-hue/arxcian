@@ -72,10 +72,20 @@ export function PushDevices() {
       setDevices(data.devices ?? [])
     } catch {
       setError('Laitelistan haku epäonnistui.')
-    } finally {
-      setThisEndpoint((await currentSubscription())?.endpoint ?? null)
-      setLoading(false)
     }
+
+    // Omassa suojassaan, ei `finally`-lohkossa: `getRegistration` ja
+    // `getSubscription` voivat hylätä, ja hylkäys `finally`ssä jättäisi
+    // `setLoading(false)`:n ajamatta ja vuotaisi kutsujalle — jolloin
+    // onnistunut tilaus näyttäisi epäonnistuneelta. Väärä virheviesti maksaa
+    // saman kuin itse vika.
+    try {
+      setThisEndpoint((await currentSubscription())?.endpoint ?? null)
+    } catch {
+      setThisEndpoint(null)
+    }
+
+    setLoading(false)
   }, [])
 
   useEffect(() => {

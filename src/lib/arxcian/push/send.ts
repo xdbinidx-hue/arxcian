@@ -255,13 +255,14 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
     }),
   )
 
-  const stale = ratkaiseAvainvirheet(avainvirheet, delivered.length, failures)
-  await reconcileSubscriptions(user, { delivered, dead: [...dead, ...stale] })
+  const ratkaisu = ratkaiseAvainvirheet(avainvirheet, delivered.length)
+  failures.push(...ratkaisu.failures)
+  await reconcileSubscriptions(user, { delivered, dead: [...dead, ...ratkaisu.stale] })
 
   return {
     delivered: delivered.length,
     pruned: dead.length,
-    prunedStale: stale.length,
+    prunedStale: ratkaisu.stale.length,
     failed: failures.length,
     failures,
   }
@@ -274,37 +275,45 @@ type Avainvirhe = { sub: PushSubscriptionRecord; status: number; body?: string }
  * Kuka poistetaan ja kuka ei — vasta kun koko erän tulos on tiedossa.
  *
  * **Erotin ei ole statuskoodi vaan saman ajon muiden laitteiden tulos**, sama
- * päättely kuin YouTube-hauissa: jos yksikään lähetys ei mennyt perille, vika
+ * päättely kuin YouTube-hauissa. Jos yksikään lähetys ei mennyt perille, vika
  * on lähettävässä päässä eikä yhdessäkään tilauksessa, eikä silloin kosketa
- * mitään. Avainparin eheys ei riitä erottimeksi yksinään, koska eheälläkin
- * parilla 403 syntyy väärästä `sub`-kentästä ja palvelimen kellosta — ja
- * silloin koodisidonnainen poisto veisi koko laitelistan yhdellä ajolla.
+ * mitään — myöskään sitä tilausta jonka avain näyttää vanhalta.
  *
- * Kaksi tapausta poistetaan:
+ * **Miksi myös `vanha` vaatii onnistuneen lähetyksen.** "Vanha" tarkoittaa
+ * eroa nykyiseen `VAPID_PUBLIC_KEY`hyn, joten se todistaa jotain vain jos
+ * nykyinen julkinen avain on itse luotettava. Tavallisin tapa saada epäsuhta
+ * pari on päivittää vain toinen puolikas — jolloin *jokainen* tilaus näyttää
+ * vanhalta ja *jokainen* lähetys saa 403:n. Ehdoton poisto veisi silloin koko
+ * laitelistan yhdellä ajolla palvelimen asetusvirheestä.
  *
- * - `vanha`: tilaukseen tallennettu avain on eri kuin nykyinen. Tämä on
- *   suoraa todistetta eikä päättelyä — tilaus ei kelpaa enää koskaan.
- * - `tuntematon` **ja** jokin toinen laite sai ilmoituksen: avainta ei ole
- *   kirjattu (rivi on kenttää vanhempi), mutta onnistunut lähetys samassa
- *   erässä todistaa että palvelinpää on kunnossa.
+ * Poistetaan siis vain kun jokin toinen laite sai ilmoituksen samassa erässä
+ * — se on ainoa todiste siitä että avainpari, `sub`-kenttä ja kello ovat
+ * kunnossa — ja tämän tilauksen oma avain ei ole nykyinen.
  *
- * `nykyinen` ei koskaan poistu: sen avain täsmää, joten vika on muualla.
+ * **Seuraus joka on tietoinen valinta:** yhden laitteen käyttäjältä ei
+ * koskaan poisteta mitään täällä, koska hänen ainoan lähetyksensä
+ * epäonnistuessa onnistuneita on määritelmällisesti nolla. Se on oikein,
+ * koska juuri sen tapauksen hoitaa selaimen automaattinen uudelleentilaus
+ * ([PushDevices](@/components/arxcian/trading/PushDevices)) — se ei tarvitse
+ * lähetystä lainkaan, vaan vertaa avainta suoraan.
  */
 function ratkaiseAvainvirheet(
   virheet: Avainvirhe[],
   onnistuneita: number,
-  failures: SendFailure[],
-): string[] {
+): { stale: string[]; failures: SendFailure[] } {
   const stale: string[] = []
+  const failures: SendFailure[] = []
 
   for (const { sub, status, body } of virheet) {
     const tila = subscriptionKeyState(sub)
 
-    if (tila === 'vanha' || (tila === 'tuntematon' && onnistuneita > 0)) {
+    if (onnistuneita > 0 && tila !== 'nykyinen') {
       stale.push(sub.endpoint)
-      console.warn('[push] tilaus sidottu vanhaan avaimeen, poistetaan', {
+      console.warn('[push] tilauksen avain ei kelpaa, poistetaan', {
         endpointHost: hostOf(sub.endpoint),
         label: sub.label,
+        // 'vanha' = kirjattu avain eroaa nykyisestä, 'tuntematon' = avainta ei
+        // ole kirjattu lainkaan. Eri varmuus, sama korjaus.
         avainTila: tila,
       })
       continue
@@ -314,13 +323,19 @@ function ratkaiseAvainvirheet(
       statusCode: status,
       body,
       endpointHost: hostOf(sub.endpoint),
-      syy: tila === 'nykyinen' ? 'palvelimen-avain' : 'avain-epäselvä',
+      // Onnistuneita nolla tarkoittaa ettei kummastakaan päästä voi sanoa
+      // mitään varmaa, olipa tämän tilauksen kirjattu avain mikä tahansa.
+      syy: onnistuneita === 0 && tila !== 'nykyinen' ? 'avain-epäselvä' : 'palvelimen-avain',
     }
     failures.push(failure)
-    console.error('[push] lähetys epäonnistui', { ...failure, avainpari: vapidKeyCheck() })
+    console.error('[push] lähetys epäonnistui', {
+      ...failure,
+      avainpari: vapidKeyCheck(),
+      avainTila: tila,
+    })
   }
 
-  return stale
+  return { stale, failures }
 }
 
 /**

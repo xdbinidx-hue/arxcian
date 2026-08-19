@@ -459,15 +459,21 @@ Koodisidonnainen poisto tyhjentäisi koko laitelistan yhdellä ajolla.
 Erotin on sama kuin YouTube-hauissa: **saman ajon muiden laitteiden tulos.**
 Poistopäätös tehdään vasta kun koko erä on lähetetty
 ([send.ts](src/lib/arxcian/push/send.ts):n `ratkaiseAvainvirheet`), ja
-poistetaan kaksi tapausta:
+poistetaan vain kun **molemmat** pätevät: jokin toinen laite sai ilmoituksen
+samassa erässä, ja tämän tilauksen oma avain ei ole nykyinen.
 
-- tilauksen tallennettu avain on eri kuin nykyinen (`vanha`) — suoraa
-  todistetta, ei päättelyä;
-- avainta ei ole kirjattu (`tuntematon`) **ja** jokin toinen laite sai
-  ilmoituksen samassa erässä, mikä todistaa palvelinpään kunnossa olevaksi.
+**Myös `vanha` vaatii sen onnistuneen lähetyksen**, vaikka se näyttää suoralta
+todisteelta. "Vanha" tarkoittaa eroa nykyiseen `VAPID_PUBLIC_KEY`hyn, joten se
+todistaa jotain vain jos nykyinen julkinen avain on itse luotettava — ja
+tavallisin tapa saada epäsuhta pari on päivittää vain toinen puolikas, jolloin
+jokainen tilaus näyttää vanhalta ja jokainen lähetys saa 403:n. Ehdoton poisto
+veisi silloin koko laitelistan yhdellä ajolla.
 
-Tilaus jonka avain täsmää ei poistu koskaan, eikä mitään poisteta ajossa jossa
-yksikään lähetys ei mennyt perille. Runkotekstin "vapid"-osumaan ei myöskään
+Seuraus on tietoinen: **yhden laitteen käyttäjältä ei koskaan poisteta mitään
+lähetyksen yhteydessä**, koska hänen ainoan lähetyksensä epäonnistuessa
+onnistuneita on määritelmällisesti nolla. Sen tapauksen hoitaa selaimen
+automaattinen uudelleentilaus, joka vertaa avainta suoraan eikä tarvitse
+lähetystä lainkaan. Runkotekstin "vapid"-osumaan ei myöskään
 luoteta yksinään: se kelpaa vain 400:n kanssa, muuten 429 tai 502 luokittuisi
 avainvirheeksi ja veisi tilauksia mukanaan.
 

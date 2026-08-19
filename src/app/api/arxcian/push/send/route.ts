@@ -72,5 +72,11 @@ export async function POST(req: NextRequest) {
   // uudelleen kolmesti, eikä tilaukseton käyttäjä ole ohimenevä vika vaan
   // pysyvä tila. `ok` kertoo silti totuuden — nielty toimitus ei saa jäädä
   // `ok: true`:n taakse, vaikka pyyntö itsessään käsiteltiin.
-  return NextResponse.json({ ok: result.delivered > 0, result })
+  //
+  // Tilaukseton käyttäjä on `ok: true`: mitään ei epäonnistunut, ei vain ollut
+  // mitään lähetettävää. Nolla toimitusta ja nolla virhettä on eri asia kuin
+  // nolla toimitusta ja kolme hylättyä.
+  const mitaanEiHajonnut =
+    result.failed + result.pruned + result.prunedStale === 0
+  return NextResponse.json({ ok: result.delivered > 0 || mitaanEiHajonnut, result })
 }
