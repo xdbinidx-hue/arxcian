@@ -1,5 +1,8 @@
 .next/
-node_modules/
+# Ilman kauttaviivaa myös symlink jää pois. Worktreessä node_modules
+# symlinkataan päähakemistosta, ja "node_modules/" ei vastaa symlinkkiä —
+# se lipsahti kerran committiin absoluuttisena polkuna.
+node_modules
 .env.local
 *.json.local
 .vercel

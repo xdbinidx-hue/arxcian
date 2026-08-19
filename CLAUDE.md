@@ -344,6 +344,37 @@ tarkistaa **täsmällisen osuman ennen osittaista** juuri tämän takia: pelkkä
 osajonovertailu osuisi siellä sarakkeeseen A ja keskeyttäisi jokaisen
 tuonnin turvarajaan. Lukupää käyttää tarkoituksella vanhaa `findCol`ia.
 
+### Teho lasketaan komponenteista, ei lueta taulukon Teho €/h -sarakkeesta
+
+Päätös 19.8.2026. Teho on `liittymä + kassakate + F-Secure-provisio / tunnit`,
+ja bonukset (F-Secure-bonus, DNA-uusmyynti) jätetään pois: ne ovat
+portaittaisia kertasuorituksia joita ei ansaita tunnissa. Näin ohje sanoo.
+
+Taulukossa on oma `Teho €/h` -sarake (= `Provikka / tunnit`), **eikä se täsmää
+tähän**: Holma elokuussa 2026 taulukko 16,42, liittymä+kassaprovisio 15,40,
+liittymä+kate 13,83. Provikka sisältää enemmän kuin nuo kolme komponenttia.
+Sarakkeen lukeminen näyttäisi saman luvun kuin taulukko, mutta se olisi eri
+suure kuin se jonka ohje määrittelee. Ohje voittaa — se on se jonka Albin
+päivittää.
+
+**Krenarilla on kaksi asteikkoa, ja ne ovat molemmat oikein.** Tuottoseuranta
+käyttää hänen nelinkertaista sopimusprovisiotaan (`KRENAR_SELLER_MULT`), koska
+se mittaa mitä myyjälle todella maksetaan. Myyntiseuranta käyttää
+liittymäprovisiota sellaisenaan (×1) **kuten kaikilla muillakin**, koska se
+vertaa myyntisuoritusta myyjien kesken eikä kerroin saa tehdä hänestä
+nelinkertaista ilman että hän on myynyt euroakaan enempää. Elokuussa 2026:
+36,80 €/h tuottoseurannan asteikolla, 9,20 €/h myyntiseurannan asteikolla.
+Muilla sarjat ovat numeerisesti identtiset. Kentät ovat `tehoLiitt`/`teho`/
+`tehoTotal` ja `myyntiTehoLiitt`/`myyntiTeho`/`myyntiTehoTotal`
+([rjmob.ts](src/lib/rjmob.ts)).
+
+F-Secure-leikkuri **vaikuttaa tehoon**: luvut lasketaan leikatuista
+provisioista (`jaljelle`-kerroin), samoin kuin palkka ja kate.
+
+Haara `claude/rj-mob-osio-8b7572` ehdotti päinvastaista mallia — teho luettuna
+taulukon sarakkeesta, leikkuri ohitettuna. **Sitä ei mergetä.** Haara on
+tallella mittauslukujensa takia, ei toteutettavana suunnitelmana.
+
 **Maapallon mantereet ovat yhtä sinistä sävyä** ([GlobeScene.tsx](src/components/arxcian/globe/GlobeScene.tsx)): päivätekstuurista otetaan vain kirkkaus, ei väriä. Kaupunkivalot luetaan omasta tekstuuristaan eikä niihin kosketa, joten ne pysyvät keltaisina — se kontrasti tekee yöpuolen luettavaksi. Merillä on oma tumma sävynsä; aiemmin niissä näkyi suoraan taustan sumutekstuuri, jolloin pallo oli reikä taustaan eikä kappale.
 
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
