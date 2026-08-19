@@ -15,9 +15,13 @@
 
 import { addDays, isoWeekday, localDay, wallClockToInstant } from '../zoneTime'
 import { SESSIONS, sessionWindows } from './sessions'
-import type { NotifySettings, TradingTime } from './types'
+import type { CalendarEvent, NotifySettings, TradingTime } from './types'
 
-export type MarketEventKind = 'session-open' | 'session-close' | 'trading-time'
+export type MarketEventKind =
+  | 'session-open'
+  | 'session-close'
+  | 'trading-time'
+  | 'calendar-release'
 
 export type MarketEvent = {
   /**
@@ -28,7 +32,7 @@ export type MarketEvent = {
    */
   key: string
   kind: MarketEventKind
-  /** SessionId tai treidausajan id. */
+  /** SessionId, treidausajan id tai kalenteritapahtuman valuutta. */
   sourceId: string
   title: string
   body: string
@@ -55,6 +59,17 @@ const helsinkiClock = new Intl.DateTimeFormat('fi-FI', {
  */
 const PAST_MS = 6 * 60 * 60 * 1000
 const FUTURE_MS = 5 * 24 * 60 * 60 * 1000
+
+/**
+ * Ennakko talouskalenterin julkaisuille, kiinteänä eikä asetuksena.
+ *
+ * Julkaisu on hetki eikä ikkuna: CPI tulee kello 15.30 ja markkina liikkuu
+ * sekunneissa, joten ainoa mielekäs kysymys on "ehdinkö koneelle". Vartti
+ * riittää siihen. Istuntojen `leadMinutes` on eri asia — siinä säädetään
+ * kuinka aikaisin haluaa valmistautua vaihtoon, ja saman säätimen käyttäminen
+ * molempiin sitoisi kaksi eri tarvetta yhteen lukuun.
+ */
+const CALENDAR_LEAD_MINUTES = 15
 
 function lead(minutes: number, text: string): string {
   return minutes > 0 ? `${text} ${minutes} min kuluttua` : text
@@ -145,6 +160,70 @@ function tradingTimeEvents(now: number, times: TradingTime[]): MarketEvent[] {
 }
 
 /**
+ * Talouskalenterin punaiset julkaisut ilmoitettavina tapahtumina.
+ *
+ * **Vain valitut valuutat.** Rajaus on ennen kaikkea ajallinen: AUD:n ja JPY:n
+ * julkaisut osuvat Suomen yöhön, joten rajaamaton lista herättäisi useita
+ * kertoja viikossa. Tyhjä lista tarkoittaa "ei yhtään" eikä "kaikki" — muuten
+ * valuuttojen poistaminen yksi kerrallaan kääntyisi viimeisellä poistolla
+ * päinvastaiseksi.
+ *
+ * **Vain tulevat.** Istuntotapahtumissa mennyt hetki on hyödyllinen (aikajana
+ * näyttää missä ollaan), mutta jo julkaistu luku ei ole ilmoitus vaan uutinen
+ * — ja ForexFactoryn syötteessä ei ole `actual`-kenttää, joten emme edes
+ * tiedä mikä luvuksi tuli. Ilmoitus menneestä julkaisusta kertoisi vain että
+ * jokin tapahtui, ei mitä.
+ *
+ * Avain sisältää tapahtuman hetken kuten muillakin, joten sama julkaisu saa
+ * saman avaimen joka laskennalla. Otsikko normalisoidaan, koska se päätyy
+ * sekä planned-kartan avaimeksi että ilmoituksen tagiksi.
+ */
+function calendarEvents(
+  now: number,
+  settings: NotifySettings,
+  calendar: CalendarEvent[],
+): MarketEvent[] {
+  if (!settings.calendarHigh || settings.calendarCurrencies.length === 0) return []
+
+  const leadMs = CALENDAR_LEAD_MINUTES * 60_000
+  const valuutat = new Set(settings.calendarCurrencies)
+
+  return calendar
+    .filter(e => e.impact === 'High' && e.time > now && valuutat.has(e.currency))
+    .map(e => ({
+      key: `calendar-release:${e.currency}-${slug(e.title)}:${e.time}`,
+      kind: 'calendar-release' as const,
+      sourceId: e.currency,
+      title: lead(CALENDAR_LEAD_MINUTES, `${e.currency} ${e.title}`),
+      body: julkaisunKuvaus(e),
+      at: e.time,
+      notifyAt: e.time - leadMs,
+    }))
+}
+
+/** Otsikko avaimeen kelpaavaksi: pieni kirjain, vain kirjaimet ja numerot. */
+function slug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+/**
+ * Ennuste ja edellinen jos lähde antaa ne.
+ *
+ * Kumpikin voi olla tyhjä — syöte ei lupaa niitä — ja tyhjä kenttä
+ * näytettäisiin muuten muodossa "ennuste  · edellinen ", mikä näyttää
+ * rikkinäiseltä eikä puuttuvalta.
+ */
+function julkaisunKuvaus(event: CalendarEvent): string {
+  const osat = ['Talouskalenteri · korkea vaikutus']
+  if (event.forecast) osat.push(`ennuste ${event.forecast}`)
+  if (event.previous) osat.push(`edellinen ${event.previous}`)
+  return osat.join(' · ')
+}
+
+/**
  * Kaikki ilmoitettavat tapahtumat ikkunassa, ilmoitushetken mukaan
  * järjestettynä.
  *
@@ -156,11 +235,19 @@ export function marketEvents(
   now: number,
   settings: NotifySettings,
   times: TradingTime[],
+  calendar: CalendarEvent[] = [],
 ): MarketEvent[] {
   const from = now - PAST_MS
   const to = now + FUTURE_MS
 
-  return [...sessionEvents(now, settings), ...tradingTimeEvents(now, times)]
+  // Kalenteri annetaan parametrina eikä haeta täältä: tämä moduuli on puhdas
+  // ja ajetaan myös selaimessa minuuttitikityksessä. Haku tekisi siitä
+  // verkkoriippuvaisen ja rikkoisi palvelimen ja selaimen saman tuloksen.
+  return [
+    ...sessionEvents(now, settings),
+    ...tradingTimeEvents(now, times),
+    ...calendarEvents(now, settings, calendar),
+  ]
     .filter(e => e.notifyAt >= from && e.notifyAt <= to)
     .sort((a, b) => a.notifyAt - b.notifyAt)
 }

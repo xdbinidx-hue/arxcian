@@ -1,5 +1,6 @@
 import { Client } from '@upstash/qstash'
 import { USER_IDS, type UserId } from '@/lib/session'
+import { getCalendar } from '../trading/calendar'
 import { marketEvents, type MarketEvent } from '../trading/marketEvents'
 import { getNotifySettings, getTradingTimes } from '../trading/notifyStore'
 import { getSubscriptions } from './subscriptions'
@@ -166,8 +167,12 @@ export async function planForUser(user: UserId, now = Date.now()): Promise<PlanR
     }
   }
 
-  const times = await getTradingTimes(user)
-  const wanted = dueForScheduling(marketEvents(now, settings, times), now)
+  const [times, calendar] = await Promise.all([getTradingTimes(user), getCalendar()])
+  // Vain välimuistista: kalenterin haku on rate-limitattu ja kuuluu cronille.
+  // Puuttuva välimuisti tarkoittaa ettei julkaisuja jonoteta tällä
+  // kierroksella — istuntoajat eivät kärsi siitä, ja seuraava ajo kalenterin
+  // päivityksen jälkeen jonottaa ne.
+  const wanted = dueForScheduling(marketEvents(now, settings, times, calendar?.data ?? []), now)
   const wantedKeys = new Set(wanted.map(e => e.key))
 
   const next: PlannedMap = {}

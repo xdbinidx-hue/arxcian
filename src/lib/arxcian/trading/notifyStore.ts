@@ -1,6 +1,11 @@
 import { readCached, writeCached } from '../cache'
 import { canView, visibleTo, type Owner, type SessionUser } from '@/lib/session'
-import { DEFAULT_NOTIFY_SETTINGS, type NotifySettings, type TradingTime } from './types'
+import {
+  CALENDAR_CURRENCIES,
+  DEFAULT_NOTIFY_SETTINGS,
+  type NotifySettings,
+  type TradingTime,
+} from './types'
 
 /**
  * Ilmoitusasetusten ja omien treidausaikojen tallennus.
@@ -44,6 +49,13 @@ export async function saveNotifySettings(
     // suoralle kutsulle, ja negatiivinen ennakko siirtäisi ilmoituksen
     // tapahtuman jälkeen ilman että sitä huomaisi mistään.
     leadMinutes: Math.min(120, Math.max(0, Math.round(patch.leadMinutes ?? current.leadMinutes))),
+    // Sama syy kuin ennakolla: rajapinta on avoin myös suoralle kutsulle.
+    // Tuntematon valuutta ei osuisi yhteenkään tapahtumaan, joten se
+    // näyttäisi valitulta muttei tekisi mitään.
+    calendarCurrencies: (patch.calendarCurrencies ?? current.calendarCurrencies)
+      .map(c => c.toUpperCase())
+      .filter((c, i, list) => list.indexOf(c) === i)
+      .filter(c => (CALENDAR_CURRENCIES as readonly string[]).includes(c)),
   }
   await writeCached(settingsKey(user), updated, SETTINGS_TTL, 0)
   return updated
