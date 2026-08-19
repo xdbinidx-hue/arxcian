@@ -7,7 +7,8 @@ import { refreshQuotes } from './trading/quotes'
 import { checkAlerts } from './trading/alerts'
 import { refreshCalendar } from './trading/calendar'
 import { planAllUsers } from './push/schedule'
-import { getCityWeather, CITIES_CACHE_KEY } from './weather'
+import { getCityWeather, getWeather, CITIES_CACHE_KEY, WEATHER_CACHE_KEY } from './weather'
+import { getPrayerTimes, PRAYER_CACHE_KEY } from './prayer'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { readFetchStatus } from './fetchStatus'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
@@ -192,6 +193,22 @@ const hubJobs: CronJob[] = [
         source: result.source,
         failedSources: status?.failed?.length ? status.failed : undefined,
       }
+    },
+  },
+  {
+    id: 'hub-weather',
+    description: 'Hub: Helsingin sää ja auringonnousu/-lasku',
+    run: async () => {
+      const result = await getWeather(true)
+      return { key: WEATHER_CACHE_KEY, source: result.source }
+    },
+  },
+  {
+    id: 'hub-prayer',
+    description: 'Hub: rukousajat (tänään + huomenna)',
+    run: async () => {
+      const result = await getPrayerTimes(true)
+      return { key: PRAYER_CACHE_KEY, items: result.data.length, source: result.source }
     },
   },
   {
