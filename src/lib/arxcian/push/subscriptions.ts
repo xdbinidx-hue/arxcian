@@ -38,6 +38,12 @@ export type PushSubscriptionRecord = {
    *
    * Valinnainen, koska ennen 19.8.2026 tallennetuissa riveissä sitä ei ole.
    * Puuttuva arvo tarkoittaa "tuntematon", ei "ei täsmää".
+   *
+   * Kenttä täydentyy kahdesta suunnasta: tilausta tehtäessä
+   * (`addSubscription`) ja **onnistuneen toimituksen yhteydessä**
+   * (`reconcileSubscriptions`). Jälkimmäinen on se joka korjaa kenttää
+   * vanhemmat rivit ilman että käyttäjän tarvitsee tehdä mitään — ja se on
+   * myös vahvempi todiste, koska push-palvelu itse hyväksyi allekirjoituksen.
    */
   appServerKey?: string
 }
@@ -122,7 +128,7 @@ export async function removeSubscription(
  */
 export async function reconcileSubscriptions(
   user: UserId,
-  result: { delivered: string[]; dead: string[] },
+  result: { delivered: string[]; dead: string[]; appServerKey?: string | null },
 ): Promise<void> {
   if (result.delivered.length === 0 && result.dead.length === 0) return
 
@@ -130,7 +136,19 @@ export async function reconcileSubscriptions(
   const current = await getSubscriptions(user)
   const updated = current
     .filter(s => !result.dead.includes(s.endpoint))
-    .map(s => (result.delivered.includes(s.endpoint) ? { ...s, lastSentAt: now } : s))
+    .map(s =>
+      result.delivered.includes(s.endpoint)
+        ? {
+            ...s,
+            lastSentAt: now,
+            // Onnistunut toimitus on todiste siitä että tilaus kelpaa
+            // nykyiselle avaimelle — vahvempi kuin mikään mitä
+            // tilaushetkellä voitiin tallentaa. Siksi avain leimataan
+            // tässä eikä vain `addSubscription`issa.
+            appServerKey: result.appServerKey ?? s.appServerKey,
+          }
+        : s,
+    )
 
   await save(user, updated)
 }

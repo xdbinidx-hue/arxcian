@@ -260,7 +260,15 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
 
   const ratkaisu = ratkaiseAvainvirheet(avainvirheet, delivered)
   failures.push(...ratkaisu.failures)
-  await reconcileSubscriptions(user, { delivered, dead: [...dead, ...ratkaisu.stale] })
+  await reconcileSubscriptions(user, {
+    delivered,
+    dead: [...dead, ...ratkaisu.stale],
+    // Perille mennyt ilmoitus todistaa että tilaus kelpaa tälle avaimelle,
+    // joten kenttää vanhemmat rivit korjaantuvat itsestään ensimmäisellä
+    // onnistuneella lähetyksellä. Ilman tätä `tuntematon` jäisi pysyväksi
+    // niille laitteille jotka eivät koskaan avaa Trading-sivua uudelleen.
+    appServerKey: vapidPublicKey(),
+  })
 
   return {
     delivered: delivered.length,
