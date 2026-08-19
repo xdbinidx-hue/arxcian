@@ -1,8 +1,9 @@
 // Syyskuun 2026 tilannekuva ja sääntötestit.
 //
 // ⚠️ Luvut EIVÄT ole enää Coworkin alkuperäinen referenssilista. Albin muutti
-// sääntöjä 19.8.2026 (lauantain miehitys 7 -> 4 vuoroa, Antti vain Kivistöön,
-// Malmi tasan kokoaikaisten kesken), joten vanha referenssi (1 184 h) on
+// sääntöjä 19.8.2026 (lauantain miehitys 7 -> 4 vuoroa, Antti Kivistöön
+// etuoikeudella, Albin vain hätävaraksi, Malmi tasan kokoaikaisten kesken),
+// joten vanha referenssi (1 184 h) on
 // tarkoituksella vanhentunut. Alla olevat luvut ovat **uusien sääntöjen
 // tuottama tilannekuva**, joka on kertaalleen katsottu läpi ja hyväksytty.
 //
@@ -62,25 +63,33 @@ test('syyskuun tuntisummat pysyvät ennallaan', () => {
     'Alec Fambro': 156,
     'Joona Huttunen': 155,
     'Arbnor Rashica': 131,
-    'Lauri Ukkonen': 122,
-    'Kasperi Kemppainen': 122,
-    'Krenar Bajqinovci': 117,
-    'Vladimir Kogan': 107,
-    'Hamza Hanif': 103,
-    'Ramin Kadiri': 85,
-    'Albin Rashica': 13,
+    'Lauri Ukkonen': 117,
+    'Krenar Bajqinovci': 115,
+    'Kasperi Kemppainen': 104,
+    'Hamza Hanif': 95,
+    'Vladimir Kogan': 94,
+    'Ramin Kadiri': 78,
+    'Antti Kiljala': 70,
+    'Albin Rashica': 4,
   }
   assert.deepEqual(tulos.tunnit, odotettu)
-  assert.equal(Object.values(tulos.tunnit).reduce((a, b) => a + b, 0), 1111)
+  assert.equal(Object.values(tulos.tunnit).reduce((a, b) => a + b, 0), 1119)
 })
 
-test('syyskuussa on täsmälleen yksi vajepäivä: pe 18.9.', () => {
-  // Arbnor on Nizzassa ma–to, ja perjantai on viikon raskain päivä
-  // (Malmi 4 + Easton 3) — siksi juuri tähän jää paikkoja tyhjäksi.
-  assert.deepEqual(
-    tulos.vajeet.map(v => `${v.date} ${v.store} ${v.saatu}/${v.tarve}`),
-    ['2026-09-18 Malmi 3/4', '2026-09-18 Easton 2/3'],
-  )
+test('Albin on hätävara: enintään muutama tunti kuukaudessa', () => {
+  // Albin on viimeinen keino, ei osa miehitystä. Jos hänen tuntinsa
+  // nousevat, joku muu on jäänyt ilman vuoroja — se on oire eikä normaali
+  // tila. Antti sen sijaan on osa-aikainen jolle vuoroja kuuluu.
+  assert.ok(tulos.tunnit['Albin Rashica'] <= 12,
+    `Albin ${tulos.tunnit['Albin Rashica']} h — hätävaralle liikaa`)
+  assert.ok(tulos.tunnit['Antti Kiljala'] > tulos.tunnit['Albin Rashica'],
+    'Antin pitää tehdä enemmän kuin Albinin')
+})
+
+test('syyskuu menee täyteen ilman vajeita', () => {
+  // Lauantain keventäminen ja Antin Kivistö-etuoikeus riittivät kattamaan
+  // myös Arbnorin Nizza-viikon, jossa aiemmin jäi paikkoja tyhjäksi.
+  assert.deepEqual(tulos.vajeet, [])
 })
 
 test('Antti ei saa Malmin eikä Eastonin vuoroja', () => {

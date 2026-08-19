@@ -51,7 +51,7 @@ test('vuoro kirjoittaa kolme saraketta ja värittää vain myymäläsarakkeen', 
   const r = 0 // 1.9. = rivi 4 = ensimmäinen kirjoitettava
   assert.equal(s.arvot[r][alec.vuoro - EKA_SARAKE], '10-17')
   assert.equal(s.arvot[r][alec.tunnit - EKA_SARAKE], '7')
-  assert.equal(s.arvot[r][alec.myymala - EKA_SARAKE], 'E')
+  assert.equal(s.arvot[r][alec.myymala - EKA_SARAKE], 'e', 'myymäläkirjain pienellä')
 
   assert.equal(s.varit[r][alec.vuoro - EKA_SARAKE], null, 'vuorosarake jää valkoiseksi')
   assert.equal(s.varit[r][alec.tunnit - EKA_SARAKE], null, 'tuntisarake jää valkoiseksi')
