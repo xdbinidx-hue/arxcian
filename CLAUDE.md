@@ -374,6 +374,48 @@ RJ-Mobin kuukausiluvut: [rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts), cron
 
 Muutosprosentti on **run rate -ennuste, ei toteuma**: hub näyttää aina kuluvaa kuukautta, joten kertymän vertaaminen edellisen kuun kokonaislukuun näyttäisi romahdusta vaikka myynti kävisi normaalisti. Kertymä projisoidaan kuukauden loppuun ja vertailu tehdään sillä. Ennustetta ei näytetä ennen kuin kuukaudesta on kulunut seitsemän päivää — sitä ennen kerroin on niin suuri (1. päivänä ×31) että yksi päivä heiluttaa prosenttia satoja yksiköitä.
 
+### Rukousajat ja aurinko: kaksi ansaa jotka näkyvät vain osan vuodesta
+
+**Isha on kesällä pienin luku, ei suurin.** Helsingissä on pakko käyttää
+korkean leveysasteen sääntöä (`latitudeAdjustmentMethod=3`), koska
+touko–heinäkuussa aurinko ei laske 18 asteen taakse eikä Fajrilla ja Ishalla
+ole laskennallista hetkeä. Sivuvaikutus: Angle Based vie Ishan keskiyön yli —
+21.6.2026 Maghrib 22:50 mutta **Isha 00:16**. Suora `minutes > nowMinutes`
+-vertailu ei löydä sitä lainkaan, jolloin paneeli väittää klo 23 että päivän
+rukoukset ovat ohi. Vika oli tuotannossa noin 25.5.–28.7. eli kahtena
+kuukautena vuodesta. **Lajittelu ei korjaa tätä** — Ishan arvo 16 on aidosti
+pienempi kuin Fajrin 143, joten `nextPrayer` tunnistaa tilanteen ehdosta
+`Isha < Maghrib` ([prayerLogic.ts](src/lib/arxcian/prayerLogic.ts)).
+`prayerLogic.test.mts` kaatuu jos ehto poistetaan.
+
+Aamuyön ikkunassa (00:00–00:16) näytetään tämän päivän rivin Isha, vaikka kyse
+on tarkkaan ottaen eilisen rivin Ishasta. Ajat siirtyvät tuona vuodenaikana
+alle minuutin vuorokaudessa, ja vaihtoehtona olisi kolmas hakukutsu
+kuudentoista minuutin takia.
+
+**Menetelmä on osa vastausta, ei tekninen yksityiskohta.** `method=3` (Muslim
+World League) ja Angle Based -korkeussääntö määräävät Fajrin ja Ishan
+kokonaan, ja kesällä ne **johdetaan säännöstä** eikä todellisesta 18 asteen
+kulmasta. Menetelmän vaihto muuttaa näytettyjä aikoja — älä vaihda ilman
+pyyntöä.
+
+**Open-Meteon leimat ovat vyöhykemerkinnätöntä paikallista aikaa**
+(`"2026-08-20T09:00"`), joten `new Date()` tulkitsee ne palvelimen
+vyöhykkeellä ja Vercelin UTC-ympäristössä kolme tuntia väärin.
+`sunClock` kiertää tämän lukemalla kellonajan merkkijonosta; tuntiennusteen
+suodatin ei kiertänyt, jolloin "seuraavat 24 h" alkoi kesällä kolme tuntia
+menneisyydestä. **Virhe ei näy paikallisessa kehityksessä** (Macin vyöhyke on
+Europe/Helsinki) **eikä esityksessä** (`toLocaleTimeString` tekee saman
+virheen toiseen suuntaan) — vain tuntien valinta oli väärä. Vertailu tehdään
+nyt merkkijonona `nowLocalISOHelsinki`ä ([time.ts](src/lib/arxcian/time.ts))
+vasten: ISO-muotoiset paikallisajat ovat merkkijonoina samassa järjestyksessä
+kuin ajallisesti.
+
+**`pickSunDay` hyväksyy vain täsmäosuman.** Aiempi varahaara palautti
+ensimmäisen tulevan päivän, jolloin vanhentunut välimuisti olisi näyttänyt
+huomisen nousun ja laskun tämän päivän lukuina ilman mitään merkkiä siitä.
+Tyhjä lohko on rehellisempi kuin väärän päivän kellonaika.
+
 ### Paneelit kertovat hakuaikansa, ja napista ajaa haun heti
 
 Päätös 20.8.2026. Hubin luvut tulevat välimuistista jonka cron pitää
