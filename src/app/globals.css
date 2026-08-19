@@ -117,14 +117,21 @@ body:has(.arxcian-root) {
   to { opacity: 1; transform: none; }
 }
 
+/* Paneelin virkistysnapin kehä ajon ajaksi. */
+@keyframes ax-spin {
+  to { transform: rotate(360deg); }
+}
+
 .ax-ticker-track { animation: ax-ticker 46s linear infinite; }
 .ax-pulse { animation: ax-pulse 2.4s ease-in-out infinite; }
 .ax-rise { animation: ax-rise 0.45s ease-out both; }
+.ax-spin { animation: ax-spin 0.9s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .ax-ticker-track,
   .ax-pulse,
-  .ax-rise {
+  .ax-rise,
+  .ax-spin {
     animation: none !important;
   }
 }

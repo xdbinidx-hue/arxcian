@@ -71,3 +71,19 @@ export function timeAgo(ms: number | null): string {
   if (diffH < 24) return `${diffH} h sitten`
   return `${Math.round(diffH / 24)} vrk sitten`
 }
+
+/**
+ * Hakuhetki lyhyesti: kellonaika, ja päivämäärä eteen jos haku ei ole tältä
+ * päivältä.
+ *
+ * Jaettu Panelin virkistysrivin ja kanavapaneelin kesken. Muotoilu on
+ * tarkoituksella tiivis: se mahtuu kapean paneelin otsikkoriville metatiedon
+ * viereen. Sama hetki ei saa näyttää kahdelta eri asialta kahdessa
+ * paneelissa — sama peruste kuin countdownilla.
+ */
+export function fetchLabel(ms: number): string {
+  const d = new Date(ms)
+  const klo = d.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
+  const tanaan = new Date().toDateString() === d.toDateString()
+  return tanaan ? klo : `${d.toLocaleDateString('fi-FI', { day: 'numeric', month: 'numeric' })} ${klo}`
+}

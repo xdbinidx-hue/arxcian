@@ -10,7 +10,7 @@ import { planAllUsers } from './push/schedule'
 import { getCityWeather, getWeather, CITIES_CACHE_KEY, WEATHER_CACHE_KEY } from './weather'
 import { getPrayerTimes, PRAYER_CACHE_KEY } from './prayer'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
-import { readFetchStatus } from './fetchStatus'
+import { readFetchStatus, writeAttempt } from './fetchStatus'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
 import { importWinposReports } from '@/lib/winpos/kassamyynti'
@@ -81,6 +81,52 @@ export type CronJob = {
    */
   soloOnly?: boolean
   run: () => Promise<JobResult>
+}
+
+/**
+ * Ajaa haun ja kirjaa yrityksen tilan — myös kun se kaatuu.
+ *
+ * Ilman tätä paneeli ei voi näyttää vanhentuneisuutta mittaamalla.
+ * `fetchAndCache`n kirjekuori kirjoitetaan vain onnistuneesta hausta, joten
+ * kaatunut yritys jättäisi `fetchedAt`in osoittamaan viime viikon
+ * onnistumiseen ja hub näyttäisi vanhaa dataa kertomatta siitä — täsmälleen
+ * se vika jonka takia tämä koko rivi on olemassa.
+ *
+ * `hub-channels`, `watch-*`, `news-*` ja `trading-ict` kirjoittavat oman,
+ * lähdekohtaisen tilansa jo kirjastoissaan eivätkä kulje tästä: niiden
+ * `ok`-luku on saatujen lähteiden määrä, tässä se on 1 tai 0.
+ *
+ * **Onnistunut paluu ei riitä todisteeksi.** `arvioi` on olemassa siksi, että
+ * useimmat hauista nielevät osavirheen tarkoituksella: `refreshQuotes`
+ * korvaa kaatuneen symbolin edellisellä kurssilla, `refreshRjMobSummaries`
+ * jatkaa muihin kuukausiin, ja `fetchAndCache` palauttaa vanhentunutta dataa.
+ * Kaikki kolme palaavat normaalisti. Ilman `arvioi`ta työ kirjaisi
+ * onnistumisen ja paneeli näyttäisi tuoretta kellonaikaa vanhoille luvuille —
+ * juuri se vika jota hakuaika on korjaamassa. Oletus (`ok: 1`) kelpaa vain
+ * haulle joka heittää kaatuessaan.
+ *
+ * `ok: 0` tarkoittaa ettei mitään saatu: `lastSuccess` ei silloin siirry
+ * eteenpäin ja paneeli merkitsee datan vanhentuneeksi.
+ */
+async function kirjaaYritys<T>(
+  key: string,
+  nimi: string,
+  aja: () => Promise<T>,
+  arvioi: (tulos: T) => { ok: number; failed: string[] } = () => ({ ok: 1, failed: [] }),
+): Promise<T> {
+  try {
+    const tulos = await aja()
+    await writeAttempt(key, arvioi(tulos))
+    return tulos
+  } catch (error) {
+    await writeAttempt(key, { ok: 0, failed: [nimi] })
+    throw error
+  }
+}
+
+/** Yhden lähteen haku: joko saatiin tai ei. */
+function yksiLahde(nimi: string, stale: boolean) {
+  return stale ? { ok: 0, failed: [nimi] } : { ok: 1, failed: [] }
 }
 
 const newsJobs: CronJob[] = CATEGORIES.map(category => ({
@@ -161,7 +207,13 @@ const tradingJobs: CronJob[] = [
     id: 'trading-quotes',
     description: 'Trading: watchlist-kurssit',
     run: async () => {
-      const data = await refreshQuotes()
+      // Kaatunut symboli säilyttää edellisen kurssinsa, joten `refreshQuotes`
+      // palaa normaalisti myös Yahoon ollessa kokonaan nurin. `failed` on
+      // ainoa kohta josta sen näkee.
+      const data = await kirjaaYritys('trading:quotes', 'Yahoo Finance', refreshQuotes, r => ({
+        ok: Object.keys(r.quotes).length - r.failed.length,
+        failed: r.failed,
+      }))
       await checkAlerts(data.quotes)
       return { key: 'trading:quotes', items: Object.keys(data.quotes).length }
     },
@@ -200,7 +252,12 @@ const hubJobs: CronJob[] = [
     id: 'hub-weather',
     description: 'Hub: Helsingin sää ja auringonnousu/-lasku',
     run: async () => {
-      const result = await getWeather(true)
+      const result = await kirjaaYritys(
+        WEATHER_CACHE_KEY,
+        'Open-Meteo',
+        () => getWeather(true),
+        r => yksiLahde('Open-Meteo', r.source === 'stale'),
+      )
       return { key: WEATHER_CACHE_KEY, source: result.source }
     },
   },
@@ -208,7 +265,12 @@ const hubJobs: CronJob[] = [
     id: 'hub-prayer',
     description: 'Hub: rukousajat (tänään + huomenna)',
     run: async () => {
-      const result = await getPrayerTimes(true)
+      const result = await kirjaaYritys(
+        PRAYER_CACHE_KEY,
+        'Aladhan',
+        () => getPrayerTimes(true),
+        r => yksiLahde('Aladhan', r.source === 'stale'),
+      )
       return { key: PRAYER_CACHE_KEY, items: result.data.length, source: result.source }
     },
   },
@@ -218,7 +280,16 @@ const hubJobs: CronJob[] = [
     run: async () => {
       // items = montako kuukautta on välimuistissa, ei montako laskettiin:
       // valmis kuukausi lasketaan kerran ja ohitetaan sen jälkeen.
-      const result = await refreshRjMobSummaries()
+      // Vain uusimman kuukauden kaatuminen tekee hubin luvusta vanhentuneen:
+      // `rjmob:summary` kirjoitetaan pelkästään siitä. Vanhan kuukauden vika
+      // kirjataan mutta ei merkitse paneelia vanhentuneeksi — se olisi
+      // hälytys luvusta jota paneeli ei näytä.
+      const result = await kirjaaYritys(
+        RJMOB_SUMMARY_KEY,
+        'Google Sheets',
+        refreshRjMobSummaries,
+        r => ({ ok: r.newestFailed ? 0 : 1, failed: r.failed }),
+      )
       return { key: RJMOB_SUMMARY_KEY, items: result.months.length }
     },
   },

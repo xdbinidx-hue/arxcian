@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { getQuotes } from '@/lib/arxcian/trading/quotes'
 import { HUB_SYMBOLS } from '@/lib/arxcian/trading/symbols'
+import { panelFetchState } from '@/lib/arxcian/panelStatus'
+import { UI_REFRESH_JOBS } from '@/lib/arxcian/cronAccess'
 import { Panel } from '@/components/arxcian/Panel'
 
 function fmtPrice(n: number): string {
@@ -15,16 +17,17 @@ function fmtPrice(n: number): string {
 export async function MarketSnapshot({ delay }: { delay?: number }) {
   const cached = await getQuotes()
   const quotes = cached?.data.quotes ?? {}
-  const fetchedAt = cached?.data.fetchedAt
+  // Kurssien oma fetchedAt on kurssidatan sisällä eikä välimuistin
+  // kirjekuoressa, joten se annetaan varaksi nimenomaisesti.
+  const status = await panelFetchState('trading:quotes', cached?.data.fetchedAt)
 
+  // Ei lähdenimeä metassa: hakuaika ja nappi täyttävät otsikkorivin 320 px:n
+  // sarakkeessa, ja "Yahoo Finance" työnsi rivin kahdelle riville. Aika on se
+  // tieto jota tästä paneelista haetaan; lähde lukee Trading-osiossa.
   return (
     <Panel
       title="Markkinat"
-      meta={
-        fetchedAt
-          ? new Date(fetchedAt).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })
-          : 'Yahoo Finance'
-      }
+      refresh={{ job: UI_REFRESH_JOBS.markkinat, state: status }}
       delay={delay}
       empty={cached ? undefined : 'Ei vielä kursseja — haetaan seuraavassa ajastetussa ajossa.'}
     >

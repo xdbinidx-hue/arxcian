@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCron, jobsFor, JOBS } from '@/lib/arxcian/cron'
+import { soloOnlyEstetyt } from '@/lib/arxcian/cronAccess'
 
 // Ulkoiset lähteet ja AI-valinta ovat hitaita: kategoria hakee viisi
 // syötettä ja tekee niiden päälle yhden mallikutsun, ja kategorioita on
@@ -30,6 +31,28 @@ export async function GET(req: NextRequest) {
 
   if (jobId && selected.length === 0) {
     return NextResponse.json({ error: `Tuntematon työ: ${jobId}` }, { status: 404 })
+  }
+
+  // soloOnly-työ ei lähde istunnolla liikkeelle, vaikka istunto muuten
+  // riittää cron-reitille.
+  //
+  // Hubin paneeleissa on virkistysnappi, joka kutsuu tätä reittiä kirjautuneen
+  // käyttäjän oikeuksilla. `winpos-import` kirjoittaa elävään Google
+  // Sheets -taulukkoon ja tyhjentää Kassamyynti-alueen ennen kirjoitusta, eikä
+  // sitä saa voida käynnistää tämän reitin kautta — ei napista eikä käsin
+  // kirjoitetusta osoitteesta. Esto on tässä eikä käyttöliittymässä, koska
+  // osoiterivi ei kysy komponentilta lupaa.
+  //
+  // CRON_SECRET pääsee edelleen läpi: GitHub-workflow ajaa tuonnin omana
+  // vaiheenaan ennen joukkoajoa, ks. .github/workflows/arxcian-cron.yml.
+  const soloEstetty = soloOnlyEstetyt(selected, auth.via)
+  if (soloEstetty.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Työ ${soloEstetty.map(j => j.id).join(', ')} ajetaan vain ajastettuna — se kirjoittaa elävään taulukkoon.`,
+      },
+      { status: 403 },
+    )
   }
 
   const started = Date.now()

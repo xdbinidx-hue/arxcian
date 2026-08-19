@@ -370,6 +370,66 @@ RJ-Mobin kuukausiluvut: [rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts), cron
 
 Muutosprosentti on **run rate -ennuste, ei toteuma**: hub näyttää aina kuluvaa kuukautta, joten kertymän vertaaminen edellisen kuun kokonaislukuun näyttäisi romahdusta vaikka myynti kävisi normaalisti. Kertymä projisoidaan kuukauden loppuun ja vertailu tehdään sillä. Ennustetta ei näytetä ennen kuin kuukaudesta on kulunut seitsemän päivää — sitä ennen kerroin on niin suuri (1. päivänä ×31) että yksi päivä heiluttaa prosenttia satoja yksiköitä.
 
+### Paneelit kertovat hakuaikansa, ja napista ajaa haun heti
+
+Päätös 20.8.2026. Hubin luvut tulevat välimuistista jonka cron pitää
+lämpimänä — neljä ajoa vuorokaudessa (8, 12, 16, 20), eli **enimmillään neljän
+tunnin viive**, yön yli 12 h. Se on oikea suunnittelu, mutta paneeli ei
+kertonut siitä mitään: 19.8.2026 klo 21:23 päivitetty myyntiseurantataulukko
+näkyi hubissa vanhoina lukuina, ja vian etsimiseen meni tunti. Sama periaate
+kuin kanavahaussa: **jos näytetty data ei ole tuoretta, sen on näyttävä
+käyttöliittymässä asti, ei vain lokissa.**
+
+Hakuaika ja virkistysnappi ovat jaetussa
+[Panel.tsx](src/components/arxcian/Panel.tsx):ssä yhtenä `refresh`-proppina,
+eivät kuudessa erillisessä toteutuksessa. Tila kootaan
+[panelStatus.ts](src/lib/arxcian/panelStatus.ts):llä ja nappi ajaa
+`/api/arxcian/cron?job=<id>`.
+
+| Paneeli | Cron-työ | Aikaleiman lähde |
+|---|---|---|
+| RJ-MOB | `rjmob-summary` | `rjmob:summary` |
+| KANAVAT | `hub-channels` | `hub:channels` |
+| SÄÄ & AURINKO | `hub-weather` | `weather:current` |
+| RUKOUSAJAT | `hub-prayer` | `hub:prayer-times` |
+| MARKKINAT | `trading-quotes` | `trading:quotes` |
+| UUTTA (watch) | `watch-trading` + `watch-personal` | molempien tilat yhdistettynä |
+
+**Ilman nappia jäävät TÄNÄÄN, TO-DO, KALENTERI, ISTUNNOT ja PIKATOIMINNOT** —
+niiden data ei tule ajastetusta hausta. Kalenteri on näistä se joka näyttää
+puutteelta muttei ole: tapahtumat haetaan käyttäjän omalla OAuth-tokenilla
+pyynnön yhteydessä, eikä cronilla ole istuntoa. **Älä keksi paneelille
+cron-työtä jota ei ole.**
+
+**Vanhentuneisuus on mitattua, ei datan iästä pääteltyä.** Aikaleima ja
+punainen ⚠ tulevat [fetchStatus.ts](src/lib/arxcian/fetchStatus.ts):n
+avaimesta, joka kirjoitetaan jokaisella ajolla myös kaatuneella. `hub-weather`,
+`hub-prayer`, `trading-quotes` ja `rjmob-summary` eivät kirjoittaneet sitä
+aiemmin lainkaan; `cron.ts`:n `kirjaaYritys` hoitaa sen nyt niiden osalta.
+`hub-channels`, `watch-*`, `news-*` ja `trading-ict` kirjoittavat oman,
+lähdekohtaisen tilansa kirjastoissaan eivätkä kulje sen läpi.
+
+**`soloOnly`-työt on rajattu ulos käyttöliittymästä.** Nappi kutsuu cron-reittiä
+kirjautuneen käyttäjän oikeuksilla, ja `winpos-import` kirjoittaa elävään
+Google Sheets -taulukkoon tyhjentäen Kassamyynti-alueen ennen kirjoitusta.
+Cron-reitti vastaa siksi **403:lla jokaiseen `soloOnly`-työhön kun
+`authorizeCron` tunnisti kutsujan istunnosta**
+([cronAccess.ts](src/lib/arxcian/cronAccess.ts):n `soloOnlyEstetyt`). Esto on
+palvelimella eikä komponentissa, koska osoiterivi ei kysy komponentilta lupaa.
+`CRON_SECRET` pääsee edelleen läpi — GitHub-workflow ajaa tuonnin omana
+vaiheenaan. `cronAccess.test.mts` vartioi ettei yksikään napin työ-id ole
+`soloOnly` eikä osoita olemattomaan työhön.
+
+Rajaus koskee **cron-reittiä**, ei kaikkea tuontia: `/api/winpos/import` on oma
+reittinsä, se ei tunne `soloOnly`ta ja on yhä ajettavissa istunnolla. Se on
+Winpos-sivun oma toiminto eikä muuttunut tässä — mutta älä lue yllä olevasta
+että tuonti olisi kokonaan pois selaimen ulottuvilta.
+
+Nappi on jäähyllä 20 s ajon jälkeen ja estetty ajon aikana: työt hakevat
+ulkoisista rajapinnoista eikä niitä ole tarkoitettu ajettavaksi kymmentä kertaa
+minuutissa. Epäonnistunut ajo näytetään paneelissa omana viestinään, ja
+`source: 'stale'` erotellaan kovasta virheestä — eri vika, eri korjaus.
+
 ### Kassamyynti-välilehden kaksi nimisaraketta
 
 Winpos-tuonti kirjoittaa ja tuottoseuranta lukee **eri sarakkeesta**, ja se

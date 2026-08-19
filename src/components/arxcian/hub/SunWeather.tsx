@@ -4,8 +4,11 @@ import {
   pickSunDay,
   sunClock,
   daylightLabel,
+  WEATHER_CACHE_KEY,
 } from '@/lib/arxcian/weather'
 import { todayISOHelsinki, nowMinutesHelsinki, clockToMinutes } from '@/lib/arxcian/time'
+import { panelFetchState } from '@/lib/arxcian/panelStatus'
+import { UI_REFRESH_JOBS } from '@/lib/arxcian/cronAccess'
 import { Panel } from '@/components/arxcian/Panel'
 
 /**
@@ -29,6 +32,7 @@ export async function SunWeather({ delay }: { delay?: number }) {
     )
   }
 
+  const status = await panelFetchState(WEATHER_CACHE_KEY, cached.fetchedAt)
   const { current, location, daily } = cached.data
   const { label, icon } = describeWeatherCode(current.weatherCode)
   const sun = pickSunDay(daily, todayISOHelsinki())
@@ -42,7 +46,12 @@ export async function SunWeather({ delay }: { delay?: number }) {
       : null
 
   return (
-    <Panel title="Sää & aurinko" meta={location.name} delay={delay}>
+    <Panel
+      title="Sää & aurinko"
+      meta={location.name}
+      refresh={{ job: UI_REFRESH_JOBS.saa, state: status }}
+      delay={delay}
+    >
       <div className="flex items-center justify-between">
         <p className="flex items-baseline gap-2">
           <span className="text-3xl font-light tabular-nums text-ax-text">

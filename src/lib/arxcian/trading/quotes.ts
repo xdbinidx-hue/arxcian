@@ -55,25 +55,41 @@ async function fetchAllQuotes(): Promise<WatchlistData> {
   return { quotes, fetchedAt: Date.now() }
 }
 
+/** Haun tulos ja se mitä siitä jäi saamatta. */
+export type QuotesRefresh = WatchlistData & {
+  /**
+   * Symbolit joiden haku kaatui tällä kierroksella.
+   *
+   * **Paikkaus ei saa piilottaa vikaa.** Kaatunut symboli säilyttää edellisen
+   * kurssinsa, joten pelkkä `WatchlistData` näyttää kutsujalle täsmälleen
+   * samalta oli Yahoo pystyssä tai ei — ja `fetchedAt` päivittyy silti.
+   * Ajastettu työ tarvitsee tämän voidakseen kirjata hakuyrityksen todellisen
+   * tuloksen; ilman sitä hubin MARKKINAT-paneeli näyttäisi tuoretta
+   * kellonaikaa eilisille kursseille.
+   */
+  failed: string[]
+}
+
 /**
  * Ajetaan cronista — hakee koko watchlistin ja kirjoittaa välimuistiin.
  * Symboli jonka haku epäonnistuu tällä kierroksella säilyttää edellisen
  * onnistuneen kurssin sen sijaan että näyttäisi tyhjää — sama periaate
  * kuin fetchAndCache-apurissa muualla.
  */
-export async function refreshQuotes(): Promise<WatchlistData> {
+export async function refreshQuotes(): Promise<QuotesRefresh> {
   const [data, previous] = await Promise.all([fetchAllQuotes(), getQuotes()])
 
-  if (previous) {
-    for (const [symbol, quote] of Object.entries(data.quotes)) {
-      if (quote === null && previous.data.quotes[symbol]) {
-        data.quotes[symbol] = previous.data.quotes[symbol]
-      }
-    }
+  const failed: string[] = []
+  for (const [symbol, quote] of Object.entries(data.quotes)) {
+    if (quote !== null) continue
+    failed.push(symbol)
+    if (previous?.data.quotes[symbol]) data.quotes[symbol] = previous.data.quotes[symbol]
   }
 
+  // Välimuistiin kirjoitetaan vain WatchlistData: `failed` on tämän ajon
+  // tieto eikä kuulu siihen mitä sivut lukevat.
   await writeCached(CACHE_KEY, data, TTL_SECONDS)
-  return data
+  return { ...data, failed }
 }
 
 /** Sivut lukevat tätä — ei koskaan hae suoraan lähteestä. */

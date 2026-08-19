@@ -1,4 +1,13 @@
 import type { ReactNode } from 'react'
+import { PanelRefresh } from './PanelRefresh'
+import type { PanelFetchState } from '@/lib/arxcian/panelStatus'
+
+/** Paneelin datan hakuaika ja se cron-työ jolla sen saa ajettua uudelleen. */
+export type PanelRefreshProps = {
+  /** Cron-työn id, tai useampi jos paneelin sisältö syntyy monesta työstä */
+  job: string | readonly string[]
+  state: PanelFetchState
+}
 
 type PanelProps = {
   title: string
@@ -6,6 +15,15 @@ type PanelProps = {
   meta?: string
   /** Toiminto otsikkorivin oikeaan reunaan, esim. "+ Lisää uusi". Korvaa metan. */
   action?: ReactNode
+  /**
+   * Hakuaika ja virkistysnappi otsikkorivin oikeaan reunaan.
+   *
+   * Ei korvaa metaa eikä actionia vaan asettuu niiden viereen — paneelin oma
+   * lisätieto ja datan hakuaika ovat eri asioita, eikä toisen näyttäminen saa
+   * piilottaa toista. Jätä pois paneeleista joiden data ei tule ajastetusta
+   * hausta; älä keksi työtä jota ei ole.
+   */
+  refresh?: PanelRefreshProps
   /** Näytetään kun sisältöä ei vielä ole */
   empty?: string
   children?: ReactNode
@@ -19,23 +37,36 @@ type PanelProps = {
  * oikealla sisällöllä, jotta osioiden lisäys ei muuta ulkoasua.
  *
  * Kaikki hubin paneelit kulkevat tämän läpi, joten ilme muuttuu yhdestä
- * paikasta — HUD-tyylitys tehtiin tänne eikä seitsemään komponenttiin.
+ * paikasta — HUD-tyylitys tehtiin tänne eikä seitsemään komponenttiin. Sama
+ * peruste koskee hakuaikaa ja virkistysnappia: ne ovat `refresh`-propissa
+ * yhtenä toteutuksena, ei kahdeksana.
  *
  * Yläreunan valojuova on oma elementtinsä eikä .ax-glassin reunaviiva:
  * se kirkastuu keskeltä ja häipyy päistä, mikä lukeutuu lasin särmän
  * heijastukseksi tasaisen viivan sijaan. Otsikkorivin oikeassa reunassa
  * on joko meta-teksti tai himmeä ••• -merkki, jotta rivi ei jää
  * epätasapainoon silloin kun metatietoa ei ole.
+ *
+ * **Otsikkorivi rivittyy.** `flex-wrap` on tässä siksi, että virkistyksen
+ * virheviesti asettuu omalle rivilleen (`basis-full`) sen sijaan että
+ * puristaisi aikaleiman ja metan lukukelvottomaksi kapeassa paneelissa.
+ * Meta katkaistaan kolmella pisteellä ja virkistysryhmä on `shrink-0`, joten
+ * nappi ja kellonaika pysyvät kokonaisina myös 300 px:n sarakkeessa.
  */
 export function Panel({
   title,
   meta,
   action,
+  refresh,
   empty,
   children,
   className = '',
   delay = 0,
 }: PanelProps) {
+  // ••• on täytemerkki tyhjälle oikealle reunalle, ei koriste: se näytetään
+  // vain kun rivillä ei ole mitään muuta.
+  const tyhjaOikea = !action && !meta && !refresh
+
   return (
     <section
       className={`ax-rise ax-glass relative overflow-hidden rounded-2xl ${className}`}
@@ -46,17 +77,30 @@ export function Panel({
         className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-ax-accent/45 to-transparent"
       />
 
-      <header className="ax-glass-divide flex items-center justify-between gap-3 border-b px-4 py-2.5">
+      <header className="ax-glass-divide flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b px-4 py-2.5">
         <h2 className="text-[13px] font-light uppercase tracking-[0.1em] text-ax-text">{title}</h2>
-        {action ? (
-          action
-        ) : meta ? (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-ax-faint">{meta}</span>
-        ) : (
-          <span aria-hidden="true" className="text-[10px] tracking-[0.3em] text-ax-accent/60">
-            •••
-          </span>
-        )}
+
+        {/* Oikea reuna yhtenä ryhmänä: metatieto ja hakuaika pysyvät vierekkäin
+            eivätkä hajaudu rivin päihin justify-betweenin takia. Virkistyksen
+            virheviesti rivittyy tämän alle, koska se on ryhmän sisällä
+            basis-full. */}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-2">
+          {action ? (
+            action
+          ) : meta ? (
+            <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wider text-ax-faint">
+              {meta}
+            </span>
+          ) : null}
+
+          {refresh ? <PanelRefresh job={refresh.job} state={refresh.state} /> : null}
+
+          {tyhjaOikea ? (
+            <span aria-hidden="true" className="text-[10px] tracking-[0.3em] text-ax-accent/60">
+              •••
+            </span>
+          ) : null}
+        </div>
       </header>
 
       <div className="p-4">

@@ -1,5 +1,13 @@
-import { getPrayerTimes, nextPrayer, PRAYERS, type PrayerDay } from '@/lib/arxcian/prayer'
+import {
+  getPrayerTimes,
+  nextPrayer,
+  PRAYERS,
+  PRAYER_CACHE_KEY,
+  type PrayerDay,
+} from '@/lib/arxcian/prayer'
 import { todayISOHelsinki, nowMinutesHelsinki } from '@/lib/arxcian/time'
+import { panelFetchState, TUNTEMATON, type PanelFetchState } from '@/lib/arxcian/panelStatus'
+import { UI_REFRESH_JOBS } from '@/lib/arxcian/cronAccess'
 import { Panel } from '@/components/arxcian/Panel'
 
 /**
@@ -15,9 +23,11 @@ import { Panel } from '@/components/arxcian/Panel'
  */
 export async function PrayerTimes({ delay }: { delay?: number }) {
   let days: PrayerDay[]
+  let status: PanelFetchState = TUNTEMATON
   try {
     const cached = await getPrayerTimes()
     days = cached.data
+    status = await panelFetchState(PRAYER_CACHE_KEY, cached.fetchedAt)
   } catch (e) {
     // getPrayerTimes heittää vain jos haku kaatuu EIKÄ välimuistissa ole
     // mitään. Hub-sivu ei saa kaatua siihen.
@@ -26,6 +36,7 @@ export async function PrayerTimes({ delay }: { delay?: number }) {
       <Panel
         title="Rukousajat"
         delay={delay}
+        refresh={{ job: UI_REFRESH_JOBS.rukousajat, state: await panelFetchState(PRAYER_CACHE_KEY) }}
         empty="Rukousaikoja ei saatu haettua. Seuraava ajastettu haku yrittää uudelleen."
       />
     )
@@ -39,6 +50,7 @@ export async function PrayerTimes({ delay }: { delay?: number }) {
     <Panel
       title="Rukousajat"
       meta={day?.hijri || 'Helsinki'}
+      refresh={{ job: UI_REFRESH_JOBS.rukousajat, state: status }}
       delay={delay}
       empty="Ei aikoja tälle päivälle — seuraava ajastettu haku yrittää uudelleen."
     >

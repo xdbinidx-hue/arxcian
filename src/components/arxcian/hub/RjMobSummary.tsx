@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { Panel } from '@/components/arxcian/Panel'
 import { readCached } from '@/lib/arxcian/cache'
 import { RJMOB_SUMMARY_KEY, type RjMobSummaryData } from '@/lib/arxcian/rjmobSummary'
+import { panelFetchState } from '@/lib/arxcian/panelStatus'
+import { UI_REFRESH_JOBS } from '@/lib/arxcian/cronAccess'
 
 /**
  * RJ-MOB: kuluvan kuukauden myyntiseuranta kolmena rivinä.
@@ -51,10 +53,15 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
   const cached = await readCached<RjMobSummaryData>(RJMOB_SUMMARY_KEY)
   const data = cached?.data
 
+  // Hakuaika näkyviin: juuri tämä paneeli näytti 19.8.2026 vanhoja lukuja
+  // päivitetystä taulukosta kertomatta siitä mitään.
+  const status = await panelFetchState(RJMOB_SUMMARY_KEY, cached?.fetchedAt)
+
   return (
     <Panel
       title="RJ-Mob"
       meta={data?.monthLabel}
+      refresh={{ job: UI_REFRESH_JOBS.rjmob, state: status }}
       delay={delay}
       empty="Kuukauden luvut haetaan seuraavassa ajastetussa ajossa."
     >
