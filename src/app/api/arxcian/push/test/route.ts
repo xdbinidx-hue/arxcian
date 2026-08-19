@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentOwner } from '@/lib/session'
-import { sendToUser, type SendFailure } from '@/lib/arxcian/push/send'
+import { sendToUser, type SendResult } from '@/lib/arxcian/push/send'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +25,7 @@ export async function POST() {
     })
 
     if (result.delivered === 0) {
-      return NextResponse.json({ error: syy(result.failures, result.pruned), result }, { status: 409 })
+      return NextResponse.json({ error: syy(result), result }, { status: 409 })
     }
 
     return NextResponse.json({ result })
@@ -48,46 +48,51 @@ export async function POST() {
  * kehotettiin sallimaan ilmoitukset, vaikka laite oli listalla ja lupa
  * annettu. Palvelun antama virhe on aina tarkempi tieto kuin laitelistan
  * tila, joten se katsotaan ensin.
+ *
+ * Poistosyyt pidetään erillään, koska ne vaativat eri korjauksen: palvelimen
+ * asetusvirhe korjataan Vercelin ympäristömuuttujiin ja kuollut tilaus vaatii
+ * ilmoitusluvan uudelleen.
+ *
+ * `prunedStale` ei saa omaa haaraansa, koska sitä ei voi tässä nähdä:
+ * kelpaamattoman avaimen poisto edellyttää onnistunutta lähetystä samaan
+ * push-palveluun, ja tänne päädytään vain kun mikään ei mennyt perille.
+ * Haara olisi viesti jota kukaan ei voi saada.
  */
-function syy(failures: SendFailure[], pruned: number): string {
+function syy(result: SendResult): string {
   // Lähetykset ajetaan rinnakkain, joten failures[0] on se joka sattui
-  // ehtimään ensin. Avainvirhe haetaan siksi nimenomaisesti: se koskee
-  // kaikkia laitteita ja on korjattavissa, kun 429 yhdeltä laitteelta on
-  // ohimenevä — järjestys ei saa ratkaista kumpi näytetään.
-  const failure = failures.find(onAvainvirhe) ?? failures[0]
+  // ehtimään ensin. Palvelimen avainvirhe haetaan siksi nimenomaisesti: se
+  // koskee kaikkia laitteita ja on korjattavissa, kun 429 yhdeltä laitteelta
+  // on ohimenevä — järjestys ei saa ratkaista kumpi näytetään.
+  const failure =
+    result.failures.find(f => f.syy === 'palvelimen-avain') ?? result.failures[0]
 
   if (failure) {
     const koodi = failure.statusCode
     // statusCode 0 = ei HTTP-vastausta lainkaan, jolloin koodia ei ole mitä näyttää.
     const koodiTeksti = koodi ? `HTTP ${koodi}` : 'ei vastausta push-palvelulta'
 
-    if (onAvainvirhe(failure)) {
-      // Palvelun oma syy mukaan vain jos se on lyhyt tunniste ("BadJwtToken").
-      // Pitkä tai monirivinen runko on HTML-sivu eikä kuulu viestiin.
-      const syyteksti = failure.body && failure.body.length <= 40 && !failure.body.includes('\n')
+    // Palvelun oma syy mukaan vain jos se on lyhyt tunniste ("BadJwtToken").
+    // Pitkä tai monirivinen runko on HTML-sivu eikä kuulu viestiin.
+    const syyteksti =
+      failure.body && failure.body.length <= 40 && !failure.body.includes('\n')
         ? `, ${failure.body}`
         : ''
-      return `Palvelimen VAPID-avaimet eivät kelpaa push-palvelulle (${koodiTeksti}${syyteksti}). Tämä on palvelinpuolen asetusvirhe, ei sinun laitteessasi.`
+
+    if (failure.syy === 'palvelimen-avain') {
+      // Tämän laitteen tilaus on tehty nykyisellä avaimella, joten vika on
+      // palvelimessa: avainpari, VAPID_SUBJECT tai kello. Diagnostiikka
+      // kertoo kumpi — arvaaminen maksoi 19.8.2026 puoli päivää.
+      return `Push-palvelu hylkäsi palvelimen allekirjoituksen (${koodiTeksti}${syyteksti}). Vika on palvelimen asetuksissa, ei sinun laitteessasi — katso Diagnostiikka-painike.`
     }
+
+    if (failure.syy === 'avain-epäselvä') {
+      return `Push-palvelu hylkäsi allekirjoituksen (${koodiTeksti}${syyteksti}), eikä yksikään laite saanut ilmoitusta. Tilausta ei poistettu, koska vika voi olla palvelimessa — katso Diagnostiikka-painike.`
+    }
+
     return `Lähetys epäonnistui (${koodiTeksti}).`
   }
 
-  if (pruned > 0) return 'Tilaus oli vanhentunut ja poistettiin. Salli ilmoitukset uudelleen.'
+  if (result.pruned > 0) return 'Tilaus oli vanhentunut ja poistettiin. Salli ilmoitukset uudelleen.'
 
   return 'Ei yhtään laitetta johon lähettää. Salli ilmoitukset ensin.'
-}
-
-/**
- * Kelpaamaton allekirjoitus.
- *
- * 401 ja 403 tarkoittavat molemmilla suurilla palveluilla samaa: pyyntöä ei
- * hyväksytty avainten takia. Apple kertoo syyn tekstinä ("BadJwtToken"),
- * Google pelkkänä koodina.
- */
-function onAvainvirhe(failure: SendFailure): boolean {
-  return (
-    failure.statusCode === 401 ||
-    failure.statusCode === 403 ||
-    /badjwttoken|vapid/i.test(failure.body ?? '')
-  )
 }

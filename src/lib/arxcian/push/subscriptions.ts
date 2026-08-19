@@ -27,6 +27,19 @@ export type PushSubscriptionRecord = {
   createdAt: number
   /** Viimeisin onnistunut lähetys. Null jos ei ole vielä lähetetty mitään. */
   lastSentAt: number | null
+  /**
+   * Se julkinen VAPID-avain jolla selain teki tämän tilauksen.
+   *
+   * Tilaus on sidottu avaimeen jonka `pushManager.subscribe` sai
+   * `applicationServerKey`ksi: kun palvelimen pari vaihtuu, vanha tilaus ei
+   * kelpaa enää koskaan, ja push-palvelu kertoo sen samalla 403:lla kuin
+   * palvelimen oman avainparin epäsuhdan. Ilman tätä kenttää niitä ei voi
+   * erottaa — ja väärä arvaus maksoi jo kerran.
+   *
+   * Valinnainen, koska ennen 19.8.2026 tallennetuissa riveissä sitä ei ole.
+   * Puuttuva arvo tarkoittaa "tuntematon", ei "ei täsmää".
+   */
+  appServerKey?: string
 }
 
 // Tilaus ei vanhene itsestään: selain pitää sen voimassa kunnes käyttäjä
@@ -58,7 +71,12 @@ async function save(user: UserId, subs: PushSubscriptionRecord[]): Promise<void>
  */
 export async function addSubscription(
   user: UserId,
-  input: { endpoint: string; keys: { p256dh: string; auth: string }; label: string },
+  input: {
+    endpoint: string
+    keys: { p256dh: string; auth: string }
+    label: string
+    appServerKey?: string
+  },
 ): Promise<PushSubscriptionRecord[]> {
   const current = await getSubscriptions(user)
   const existing = current.find(s => s.endpoint === input.endpoint)
@@ -71,6 +89,10 @@ export async function addSubscription(
     // käyttöön, ei milloin sovellus viimeksi avattiin.
     createdAt: existing?.createdAt ?? Date.now(),
     lastSentAt: existing?.lastSentAt ?? null,
+    // Aina uudesta tilauksesta, ei vanhasta rivistä: sama endpoint voi tulla
+    // uudelleen juuri siksi että avain vaihtui, ja silloin vanha arvo olisi
+    // väärä.
+    appServerKey: input.appServerKey,
   }
 
   const updated = [record, ...current.filter(s => s.endpoint !== input.endpoint)].slice(

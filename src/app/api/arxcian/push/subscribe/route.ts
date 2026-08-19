@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { currentOwner } from '@/lib/session'
-import { vapidPublicKey } from '@/lib/arxcian/push/send'
+import { subscriptionKeyState, vapidPublicKey } from '@/lib/arxcian/push/send'
 import {
   addSubscription,
   getSubscriptions,
@@ -28,6 +28,11 @@ export async function GET() {
       label: s.label,
       createdAt: s.createdAt,
       lastSentAt: s.lastSentAt,
+      // Selain ei voi päätellä tätä itse: `PushSubscription` ei kerro
+      // luotettavasti millä avaimella se tehtiin, ja vain palvelin tietää
+      // mikä avain on nyt voimassa. Ilman tätä laite jäisi hiljaa listalle
+      // toimimattomana.
+      avainTila: subscriptionKeyState(s),
     })),
   })
 }
@@ -50,6 +55,10 @@ export async function POST(req: NextRequest) {
     endpoint: body.endpoint,
     keys: { p256dh: body.keys.p256dh, auth: body.keys.auth },
     label: body.label || 'Tuntematon laite',
+    // Palvelimen omasta ympäristöstä eikä asiakkaan rungosta: selain haki
+    // avaimen juuri tästä samasta reitistä, joten palvelimen arvo on sama
+    // mutta ei ole väärennettävissä.
+    appServerKey: vapidPublicKey() ?? undefined,
   })
 
   // Ensimmäinen laite: ilman tätä jono olisi tyhjä siihen asti kunnes cron
