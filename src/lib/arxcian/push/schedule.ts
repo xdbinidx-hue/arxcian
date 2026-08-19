@@ -85,6 +85,14 @@ export type PlanResult = {
   /** Menneet rivit jotka siivottiin kartasta. */
   pruned: number
   skipped?: 'ei-laitteita' | 'push-pois'
+  /**
+   * Virheviesti jos tämän käyttäjän suunnittelu kaatui.
+   *
+   * Yhden käyttäjän kaatuminen ei saa estää toisen suunnittelua, mutta se ei
+   * saa myöskään näyttää nollarivin verran onnistumiselta: ilman tätä kenttää
+   * kaatunut ajo ja "ei mitään jonotettavaa" ovat kutsujalle sama tulos.
+   */
+  error?: string
 }
 
 /** Tapahtumat jotka kuuluu jonottaa juuri nyt. */
@@ -212,8 +220,9 @@ export async function planAllUsers(now = Date.now()): Promise<PlanResult[]> {
     try {
       results.push(await planForUser(user, now))
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       console.error(`[push] suunnittelu epäonnistui: ${user}`, error)
-      results.push({ user, scheduled: 0, cancelled: 0, kept: 0, pruned: 0 })
+      results.push({ user, scheduled: 0, cancelled: 0, kept: 0, pruned: 0, error: message })
     }
   }
   return results

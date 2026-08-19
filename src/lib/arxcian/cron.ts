@@ -25,6 +25,23 @@ export type JobResult = {
   key: string
   /** Montako tietuetta haettiin, jos työ tuottaa listan */
   items?: number
+  /**
+   * Montako push-ilmoitusta on jonossa suunnittelun jälkeen.
+   *
+   * **Eri asia kuin `items`.** `items` on kalenteririvejä, tämä ilmoituksia:
+   * 98 riviä ja nolla ilmoitusta on täysin mahdollinen ja rikkinäinen tila,
+   * eikä sitä näe jos luvut sekoitetaan.
+   */
+  planned?: number
+  /**
+   * Suunnittelun virhe, jos työn muu osa onnistui.
+   *
+   * Osavirhe ei saa kadota lokiin: cron-vastaus sanoi `"ok":true` samalla kun
+   * jonoon meni nolla ilmoitusta, ja vika löytyi vasta lokia erikseen
+   * katsomalla. Kentän asettaminen pudottaa työn `ok`-tilan cron-reitillä ja
+   * kasvattaa ajon `failed`-laskuria.
+   */
+  planError?: string
 }
 
 export type CronJob = {
@@ -85,14 +102,38 @@ const tradingJobs: CronJob[] = [
       //
       // Suunnittelu ei saa kaataa kalenterityötä: kalenteri on haettu ja
       // välimuistissa siinä vaiheessa, ja seuraava ajo yrittää suunnittelun
-      // uudelleen.
+      // uudelleen. Tulos on silti raportoitava — muuten työ näyttää
+      // onnistuneen vaikka yhtään ilmoitusta ei jonotettu.
+      let planned: number | undefined
+      let planError: string | undefined
+
       try {
-        await planAllUsers()
+        const plans = await planAllUsers()
+        // Jonon koko, ei pelkät uudet: jo jonossa olevat (kept) ovat yhtä
+        // lailla tulevia ilmoituksia, ja vain summa vastaa sitä mitä
+        // Redisin arxcian:push:planned:<käyttäjä> -avaimissa on. Vastaavuus
+        // pätee vain virheettömälle ajolle: kaatuneella käyttäjällä karttaa ei
+        // kirjoitettu, joten silloin planErroria on katsottava lukua ennen.
+        planned = plans.reduce((sum, plan) => sum + plan.scheduled + plan.kept, 0)
+
+        // planAllUsers nielee yhden käyttäjän kaatumisen jotta toinen ehtii
+        // suunnitella; virhe kulkee tulosrivillä ja nostetaan tässä esiin.
+        const epaonnistuneet = plans.filter(plan => plan.error)
+        if (epaonnistuneet.length > 0) {
+          planError = epaonnistuneet
+            .map(plan => `${plan.user}: ${plan.error || 'tuntematon virhe'}`)
+            .join('; ')
+        }
       } catch (error) {
+        // planAllUsers nielee käyttäjäkohtaiset virheet, joten tänne päädytään
+        // vain jos suunnittelu kaatuu niiden ulkopuolella. Varateksti on
+        // pakollinen: tyhjä planError näyttäisi vastauksessa virheeltä ilman
+        // syytä.
+        planError = (error instanceof Error ? error.message : String(error)) || 'tuntematon virhe'
         console.error('[cron] push-suunnittelu epäonnistui', error)
       }
 
-      return { key: 'trading:calendar', items: events.length }
+      return { key: 'trading:calendar', items: events.length, planned, planError }
     },
   },
   {
