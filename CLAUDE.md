@@ -719,6 +719,28 @@ lähettämään ilmoituksen kenen tahansa puhelimeen. QStash allekirjoittaa kuts
 ja allekirjoitus kattaa rungon ja osoitteen. Suunnittelureitti sen sijaan
 käyttää tavallista `authorizeCron`ia, koska QStash ei kutsu sitä.
 
+**Punaiset julkaisut ovat neljäs tapahtumalaji, eivät oma polkunsa.**
+`marketEvents` tuottaa `session-open`, `session-close`, `trading-time` ja
+`calendar-release` -tapahtumia, ja kaikki neljä kulkevat samaa kuljetusta —
+banneri, ääni ja push. Kalenteri annetaan **parametrina** eikä haeta
+`marketEvents`in sisältä: moduuli on puhdas ja ajetaan myös selaimessa
+minuuttitikityksessä, joten haku rikkoisi palvelimen ja selaimen saman
+tuloksen ja näkyisi hydraatiovirheenä. Layout ja suunnittelija lukevat
+molemmat pelkkää välimuistia, koska haku on rate-limitattu ja kuuluu cronille.
+
+**Valuuttarajaus on ajallinen, ei aihepiirin.** AUD Employment julkaistaan
+Suomen aikaa klo 4.15 ja JPY vielä aiemmin, joten rajaamaton lista herättäisi
+useita kertoja viikossa. Oletus on `['USD', 'EUR']`. Tyhjä lista tarkoittaa
+"ei yhtään" eikä "kaikki" — muuten valuuttojen poistaminen yksi kerrallaan
+kääntyisi viimeisellä poistolla päinvastaiseksi. Sama sääntö kuin kalenterin
+tyhjällä indeksillä.
+
+Ennakko on kiinteä 15 min eikä istuntojen `leadMinutes`: julkaisu on hetki eikä
+ikkuna, ja ainoa mielekäs kysymys on "ehdinkö koneelle". Yhteinen säädin
+sitoisi kaksi eri tarvetta yhteen lukuun. Vain tulevat julkaisut ilmoitetaan —
+syötteessä ei ole `actual`-kenttää, joten ilmoitus menneestä kertoisi että
+jokin tapahtui, ei mitä.
+
 **Talouskalenteri ei ulotu viikonlopun yli.** ForexFactoryn syöte kattaa vain
 kuluvan viikon (su–la) eikä `ff_calendar_nextweek` vastaa mitään, joten
 perjantaina ajettu suunnittelija ei näe maanantain punaisia julkaisuja — niitä
