@@ -1,87 +1,110 @@
 import Link from 'next/link'
 import { currentUser } from '@/lib/session'
-import { getGoals } from '@/lib/arxcian/personal/goals'
+import { getTodos } from '@/lib/arxcian/personal/todos'
+import { groupOf, GROUP_LABELS } from '@/lib/arxcian/personal/todoGroups'
+import { todayISOHelsinki } from '@/lib/arxcian/time'
 import { Panel } from '@/components/arxcian/Panel'
+import type { Todo } from '@/lib/arxcian/personal/types'
 
 /**
- * TO-DO. Lista on **kesken olevat tavoitteet**, ei erillinen tehtävälista.
+ * TO-DO. Lista on Personal-osion **päivätehtävät**, ei tavoitteet.
  *
- * Toinen rinnakkainen lista olisi tarkoittanut omaa tallennustaan, omaa
- * rajapintaansa ja kahta paikkaa jossa sama asia voi olla kesken. Tavoitteilla
- * on jo tarvittava muoto — otsikko, määräpäivä ja valmis-tila — joten hub
- * näyttää ne ja Personal-osio on yhä ainoa paikka jossa niitä muokataan.
+ * Paneeli näytti aiemmin kesken olevia tavoitteita, ja sen perustelu oli että
+ * toinen rinnakkainen lista tarkoittaisi omaa tallennustaan ja kahta paikkaa
+ * jossa sama asia voi olla kesken. Perustelu oli oikea silloin kun tavoitteet
+ * olivat ainoa lista — mutta 12.8.2026 rakennettiin oikea tehtävälista
+ * ([todos.ts](src/lib/arxcian/personal/todos.ts)) päivineen ja
+ * muistutuksineen, eikä paneelia päivitetty. Lopputulos oli pahempi kuin se
+ * mitä perustelu esti: kaksi listaa, ja etusivu näytti niistä sen jonka
+ * otsikko ei ollut "Tehtävät".
  *
- * Rivit eivät siksi ole valintaruutuja vaan linkkejä: valmiiksi merkitseminen
- * kuuluu sinne missä tavoite elää, eikä hubin pitäisi olla toinen
+ * Tavoitteet eivät katoa etusivulta — TÄNÄÄN-paneeli laskee avoimet
+ * tavoitteet omana lukunaan. Ne vain eivät esiinny enää tehtävinä.
+ *
+ * Rivit eivät ole valintaruutuja vaan linkkejä: valmiiksi merkitseminen
+ * kuuluu sinne missä tehtävä elää, eikä hubin pitäisi olla toinen
  * kirjoituspiste samaan dataan.
+ *
+ * **Päivä luetaan Helsingin aikavyöhykkeeltä, ei selaimesta.** Paneeli
+ * renderöidään palvelimella, joten selaimen paikallinen päivä ei ole
+ * saatavilla — ja pelkkä UTC näyttäisi Suomen aikaa klo 00–03 eilistä.
+ * `todayISOHelsinki()` on sama valinta kuin TÄNÄÄN-paneelissa.
  */
 
 const MAX_ROWS = 5
 
-/** Määräpäivä lyhyeen muotoon: tänään ja huomenna sanoina, muut päivämääränä. */
-function dueLabel(targetDate: string | null): string {
-  if (!targetDate) return ''
-
-  const due = new Date(`${targetDate}T00:00:00`)
-  if (Number.isNaN(due.getTime())) return ''
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000)
-
-  if (days === 0) return 'Tänään'
-  if (days === 1) return 'Huomenna'
-  if (days < 0) return 'Myöhässä'
-
-  return due.toLocaleDateString('fi-FI', { day: 'numeric', month: 'short' })
+/**
+ * Ajankohta lyhyeen muotoon: myöhässä, tänään ja huomenna sanoina, muut
+ * päivämääränä. "Myöhemmin" olisi hubilla liian epämääräinen — viiden päivän
+ * ja viiden viikon päässä oleva tehtävä näyttäisi samalta.
+ */
+function whenLabel(todo: Todo, today: string): string {
+  const group = groupOf(todo, today)
+  if (group === 'joskus') return ''
+  if (group === 'myohemmin') {
+    return new Date(`${todo.date}T12:00:00`).toLocaleDateString('fi-FI', {
+      day: 'numeric',
+      month: 'short',
+    })
+  }
+  return GROUP_LABELS[group]
 }
 
 export async function TodoPanel({ delay }: { delay?: number }) {
   const user = await currentUser()
-  const goals = await getGoals(user)
+  const todos = await getTodos(user)
+  const today = todayISOHelsinki()
 
-  const open = goals
-    .filter(g => !g.done)
-    .sort((a, b) => {
-      // Määräpäivälliset ensin, lähin ensimmäisenä.
-      if (a.targetDate && b.targetDate) return a.targetDate.localeCompare(b.targetDate)
-      if (a.targetDate) return -1
-      if (b.targetDate) return 1
-      return a.createdAt - b.createdAt
-    })
-    .slice(0, MAX_ROWS)
+  // Lista on jo järjestyksessä (sortTodos tallennuksessa): ajoitetut ensin
+  // päivän ja kellonajan mukaan, päivättömät perään, tehdyt viimeisenä.
+  const open = todos.filter(t => !t.done)
+  const rows = open.slice(0, MAX_ROWS)
+  const myohassa = open.filter(t => groupOf(t, today) === 'myohassa').length
 
   return (
     <Panel
       title="To-do"
+      /* Myöhässä-luku kuuluu actioniin eikä metaan: Panel näyttää actionin
+         metan sijaan, ei niiden rinnalla, joten meta jäisi renderöimättä. */
       action={
-        <Link
-          href="/arxcian/personal"
-          className="text-[10px] text-ax-accent transition-colors hover:text-ax-text"
-        >
-          + Lisää uusi
-        </Link>
+        <>
+          {myohassa > 0 && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-ax-down">
+              {myohassa} myöhässä
+            </span>
+          )}
+          <Link
+            href="/arxcian/personal"
+            className="text-[10px] text-ax-accent transition-colors hover:text-ax-text"
+          >
+            + Lisää uusi
+          </Link>
+        </>
       }
       delay={delay}
-      empty="Ei avoimia tavoitteita — lisää Personal-osiossa."
+      empty="Ei avoimia tehtäviä — lisää Personal-osiossa."
     >
-      {open.length > 0 ? (
+      {rows.length > 0 ? (
         <>
           <ul className="space-y-2.5">
-            {open.map(goal => {
-              const due = dueLabel(goal.targetDate)
+            {rows.map(todo => {
+              const group = groupOf(todo, today)
               return (
-                <li key={goal.id}>
+                <li key={todo.id}>
                   <Link
                     href="/arxcian/personal"
                     className="grid grid-cols-[16px_1fr_auto] items-center gap-2.5 transition-colors hover:text-ax-text"
                   >
+                    <span aria-hidden="true" className="h-4 w-4 rounded border border-ax-line/50" />
+                    <span className="truncate text-[12px] text-ax-dim">{todo.title}</span>
                     <span
-                      aria-hidden="true"
-                      className="h-4 w-4 rounded border border-ax-line/50"
-                    />
-                    <span className="truncate text-[12px] text-ax-dim">{goal.title}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-ax-faint">{due}</span>
+                      className={`shrink-0 font-mono text-[10px] ${
+                        group === 'myohassa' ? 'text-ax-down' : 'text-ax-faint'
+                      }`}
+                    >
+                      {whenLabel(todo, today)}
+                      {todo.remindAt ? ` ${todo.remindAt}` : ''}
+                    </span>
                   </Link>
                 </li>
               )
@@ -92,7 +115,7 @@ export async function TodoPanel({ delay }: { delay?: number }) {
             href="/arxcian/personal"
             className="mt-3 inline-block text-[11px] text-ax-faint transition-colors hover:text-ax-accent"
           >
-            Kaikki tavoitteet →
+            {open.length > MAX_ROWS ? `Kaikki ${open.length} tehtävää →` : 'Kaikki tehtävät →'}
           </Link>
         </>
       ) : null}
