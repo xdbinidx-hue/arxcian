@@ -51,6 +51,36 @@ function saveReminded(ids: Set<string>): void {
 /** Vain tuoreesta muistutuksesta kilautetaan; vanhat näkyvät pelkkänä palkkina. */
 const NOTIFY_WINDOW_MS = 15 * 60 * 1000
 
+/**
+ * Selainilmoitus ensisijaisesti service workerin kautta.
+ *
+ * `new Notification()` heittää iOS:n kotiruutu-PWA:ssa
+ * (`TypeError: Illegal constructor`), vaikka `Notification.permission` on
+ * siellä `granted` — iOS vaatii `registration.showNotification`in. Sama reitti
+ * antaa napautukselle myös toiminnon: sw.js:n `notificationclick` avaa
+ * arxcianin `data.url`iin, mitä sivun oma Notification-olio ei tee.
+ *
+ * Heitto niellään tarkoituksella: banneri on jo näytetty tässä vaiheessa, eikä
+ * ilmoituskanavan kaatuminen saa pysäyttää muistutusajastinta.
+ */
+async function notifyReminder(title: string, id: string): Promise<void> {
+  const options = {
+    body: title,
+    tag: `tehtava-${id}`,
+    data: { url: '/arxcian/personal' },
+  }
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration()
+    if (reg) {
+      await reg.showNotification('Muistutus', options)
+      return
+    }
+    new Notification('Muistutus', options)
+  } catch {
+    // Banneri jää ainoaksi kanavaksi — sivu on auki, joten se riittää.
+  }
+}
+
 export function TodoList({ initialTodos, currentUser }: Props) {
   const [todos, setTodos] = useState<Todo[]>(initialTodos)
   const [title, setTitle] = useState('')
@@ -93,9 +123,7 @@ export function TodoList({ initialTodos, currentUser }: Props) {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         for (const t of fresh) {
           const ms = reminderMs(t)
-          if (ms !== null && now - ms < NOTIFY_WINDOW_MS) {
-            new Notification('Muistutus', { body: t.title, tag: t.id })
-          }
+          if (ms !== null && now - ms < NOTIFY_WINDOW_MS) void notifyReminder(t.title, t.id)
         }
       }
     }
@@ -186,6 +214,7 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   const pending = todos.filter(t => !t.done)
   const done = todos.filter(t => t.done)
   const openToday = today ? dueToday(pending, today).length : 0
+  const ajastettuja = pending.filter(t => t.remindAt).length
 
   const groups = today
     ? GROUP_ORDER.map(g => ({ id: g, items: pending.filter(t => groupOf(t, today) === g) })).filter(
@@ -240,6 +269,9 @@ export function TodoList({ initialTodos, currentUser }: Props) {
             >
               Salli muistutukset
             </button>
+          )}
+          {notifyState === 'denied' && (
+            <span className="text-[10px] text-ax-faint">Ilmoitukset estetty selaimessa</span>
           )}
         </div>
       </header>
@@ -299,6 +331,16 @@ export function TodoList({ initialTodos, currentUser }: Props) {
             Lisää
           </button>
         </form>
+
+        {/* Muistutuksen rajat kuuluvat käyttöliittymään: ajastin on tämän sivun
+            oma, ei palvelimen push. Ilman tätä riviä klo 9:00 asetettu
+            muistutus näyttäisi lupaukselta joka ei pidä suljetulla sovelluksella. */}
+        {ajastettuja > 0 && (
+          <p className="mb-4 text-[11px] text-ax-faint">
+            Muistutus soi vain kun arxcian on auki tässä selaimessa — se ei ole push-ilmoitus.
+            Suljetun sovelluksen muistutukset odottavat push-kanavan valmistumista.
+          </p>
+        )}
 
         {pending.length === 0 ? (
           <p className="py-3 text-center text-[13px] text-ax-faint">Ei avoimia tehtäviä.</p>
