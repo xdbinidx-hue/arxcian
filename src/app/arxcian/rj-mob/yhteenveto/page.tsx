@@ -31,14 +31,21 @@ const TEHO_VARI: Record<TehoTila, { teksti: string; tausta: string } | null> = {
 }
 
 /**
- * Tehon tila **paljaana tekstinä valkoisella**, ilman täyttöä.
+ * Teholuvun tekstiväri. Käytetään **sekä** korostetussa että
+ * korostamattomassa solussa; korostus tulee taustasta, ei tekstin sävystä.
  *
- * `VARIT` on täyttöpaletti: sen `teksti` on valittu toimimaan oman `tausta`nsa
- * päällä eikä kortin valkoisella. Erityisesti `matala` (#eab308) jää noin
- * 1,9:1 kontrastiin valkoista vasten eli käytännössä näkymättömäksi — ja
- * "rajalla" on juuri se tila johon suurin osa myyjistä osuu, joten yleisin
- * tapaus olisi se joka katoaa. Nämä ovat samat tummat sävyt joita
- * myyntiseuranta käyttää teholuvuissaan.
+ * `VARIT`in omat `teksti`-sävyt eivät kelpaa teholukuun kummassakaan
+ * tapauksessa. Ne on tarkoitettu merkkeihin ja lyhyisiin tunnisteisiin, ja
+ * mitattuna `matala` (#eab308) jää 1,9:1 kontrastiin valkoista vasten ja
+ * **1,8:1 oman `#fef9c3`-taustansa päällä** — eli täyttö ei paranna sitä vaan
+ * heikentää. Juuri "rajalla" on se tila johon suurin osa myyjistä osuu, ja
+ * korostettu sarake on se ratkaiseva keskimmäinen jota Tila-sarake ja
+ * järjestyskin osoittavat, joten VARIT-sävyillä lukukelvottomin luku olisi
+ * ollut se jota käyttäjää kehotetaan katsomaan.
+ *
+ * Nämä ovat samat tummat sävyt joita myyntiseuranta käyttää teholuvuissaan,
+ * ja ne yltävät mitattuna 6,2–7,1:1:een valkoisella ja 5,7–6,3:1:een
+ * vaalealla täytöllä (ennen 1,8–3,1:1).
  */
 const TEHO_TEKSTIVARI: Record<TehoTila, string | null> = {
   alle: '#A32D2D',
@@ -138,7 +145,7 @@ function TehoSolu({ teho, tila, korostus = false }: { teho: number; tila: TehoTi
   }
   return (
     <td style={korostus
-      ? { ...td, background: vari.tausta, color: vari.teksti, fontWeight: 600 }
+      ? { ...td, background: vari.tausta, color: tekstiVari, fontWeight: 600 }
       : { ...td, color: tekstiVari, fontWeight: 500 }}>
       {fmt(teho, 2)} €/h
     </td>
