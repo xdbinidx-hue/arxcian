@@ -2,7 +2,7 @@ import { listSeurantaFiles, monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDriv
 import { loadDashData, type DashData } from '@/lib/rjmobSheets'
 import { loadTargets, type TargetRow } from '@/lib/rjmobTargets'
 import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
-import { FSEC_LEIKKURI_RAJA, type SellerResult } from '@/lib/rjmob'
+import { FSEC_LEIKKURI_RAJA, TEHO_HEIKKO, TEHO_HYVA, myymalanTehot, tehoTaso, type SellerResult } from '@/lib/rjmob'
 import { fetchAndCache, type Fetched } from './cache'
 
 /**
@@ -30,9 +30,12 @@ import { fetchAndCache, type Fetched } from './cache'
 
 // ---- Rajat yhtenä blokkina, jotta niitä voi säätää yhdestä paikasta ----
 
-/** Teho €/h. Samat rajat kuin `laskeMyyja`n tehoStatus-portaikossa. */
-const TEHO_HYVA = 9
-const TEHO_HEIKKO = 7
+/*
+ * Teho €/h -rajat tulevat `rjmob.ts`:stä (TEHO_HYVA, TEHO_LIITT_HYVA,
+ * TEHO_HEIKKO). Ne olivat ennen tässä omana kopionaan kommentilla "samat
+ * rajat kuin laskeMyyja:ssa" — eli kahtena totuutena joita mikään ei pitänyt
+ * synkassa.
+ */
 
 /**
  * Alle tämän tuntimäärän tehoa ei arvioida lainkaan. Muutaman tunnin
@@ -111,8 +114,38 @@ export type Mittari = {
 export type MyyjaTila = {
   nimi: string
   tyyppi: SellerResult['tyyppi']
+  /**
+   * Kolme teholukua, kapeimmasta laajimpaan. Kaikki ovat euroa provisiota
+   * per työtunti eli myyjän tuntipalkan päälle tuleva osuus:
+   *
+   *   `tehoLiitt`  liittymäprovisio / tunnit — pelkkä liittymämyynti
+   *   `teho`       + kassakate — mukana vuorosta riippuva kassatyö
+   *   `tehoTotal`  + F-Secure — kaikki mitä tunnista kertyy, ilman bonuksia
+   *
+   * Kolme lukua eikä yksi, koska yksi piilottaa mistä se tulee: vahva
+   * F-Secure ja heikko liittymämyynti näyttävät totalissa samalta kuin
+   * päinvastainen, ja johtamiskeskustelu menisi väärään paikkaan.
+   *
+   * Bonukset (F-Secure-bonus, DNA-uusmyynti) eivät ole missään näistä: ne
+   * ovat portaittaisia kertasuorituksia joita ei ansaita tunnissa.
+   *
+   * **Jokaisella luvulla on oma tilansa.** Ilman sitä laajempi luku
+   * väritettäisiin kapeamman arvolla: `tehoTotal` on aina vähintään `teho`,
+   * joten keskimmäisen tilan lainaaminen näyttäisi 11,20 €/h keltaisena
+   * siksi että liittymä+kassa on 8,40. Se on sama vika jonka takia
+   * liittymäteholle tehtiin oma raja, vain toiseen suuntaan.
+   *
+   * `tehoTila` on silti se *ratkaiseva*: se on sama luku jolla `laskeMyyja`
+   * päättää `tehoStatus`in, ja siitä tulevat Tila-sarake ja järjestys.
+   */
+  tehoLiitt: number
   teho: number
+  tehoTotal: number
   tehoTila: TehoTila
+  /** Liittymätehon oma tila. Matalampi vihreän raja (`TEHO_LIITT_HYVA`). */
+  tehoLiittTila: TehoTila
+  /** Total tehon oma tila. Sama 9/7-asteikko kuin keskimmäisellä. */
+  tehoTotalTila: TehoTila
   tunnit: number
   /** Työkulu ylittää RJ-Mobin tuoton. */
   tappiollinen: boolean
@@ -145,8 +178,13 @@ export type Vertailu = {
 
 export type MyymalaTila = {
   nimi: string
+  /** Kolme teholukua kuten myyjillä. Ks. `MyyjaTila`n perustelu. */
+  tehoLiitt: number
   teho: number
+  tehoTotal: number
   tehoTila: TehoTila
+  tehoLiittTila: TehoTila
+  tehoTotalTila: TehoTila
   tunnit: number
   vertailut: Vertailu[]
 }
@@ -200,11 +238,10 @@ function monthLabelOf(fileName: string): string {
  * Teho suhteessa portaikkoon. Yhteinen myyjille ja myymälöille, jotta
  * "alle tehojen" tarkoittaa molemmissa samaa lukua.
  */
-function tehoTilasta(teho: number, tunnit: number): TehoTila {
+function tehoTilasta(teho: number, tunnit: number, liittyma = false): TehoTila {
   if (tunnit < MIN_TUNNIT) return 'ei-arviota'
-  if (teho >= TEHO_HYVA) return 'yli'
-  if (teho >= TEHO_HEIKKO) return 'rajalla'
-  return 'alle'
+  const taso = tehoTaso(teho, liittyma)
+  return taso === 'hyva' ? 'yli' : taso === 'rajalla' ? 'rajalla' : 'alle'
 }
 
 function vauhtiTilasta(vauhtiEro: number): VauhtiTila {
@@ -250,11 +287,6 @@ function kuukaudenTyopaivat(fileName: string, now: Date) {
     paiva: kuukausiKesken ? now.getDate() : new Date(v, kk, 0).getDate(),
     paiviaKuukaudessa: new Date(v, kk, 0).getDate(),
   }
-}
-
-/** Myymälän teho. Yksi rivi, mutta perustelu on pitkä — ks. kommentti kutsupaikalla. */
-function myymalanTeho(store: DashData['stores'][string]): number {
-  return store.tunnit > 0 ? (store.liittEur + store.kassaRjmob) / store.tunnit : 0
 }
 
 function vertailu(
@@ -379,12 +411,25 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
       // uudelleen. Krenar arvioidaan kuten muutkin; vain omistajat jäävät pois,
       // koska heillä ei ole provisiopohjaista palkkaa lainkaan.
       const tehoTila: TehoTila = s.tyyppi !== 'owner' ? tehoTilasta(s.teho, s.tunnit) : 'ei-arviota'
+      const tehoLiittTila: TehoTila = s.tyyppi !== 'owner'
+        ? tehoTilasta(s.tehoLiitt, s.tunnit, true)
+        : 'ei-arviota'
+      const tehoTotalTila: TehoTila = s.tyyppi !== 'owner'
+        ? tehoTilasta(s.tehoTotal, s.tunnit)
+        : 'ei-arviota'
 
       return {
         nimi: s.nimi,
         tyyppi: s.tyyppi,
+        // Tuottoseurannan asteikko (`tehoLiitt`/`teho`/`tehoTotal`), ei
+        // myyntiseurannan (`myyntiTeho*`): yhteenveto katsoo mitä myyjälle
+        // todella maksetaan, joten Krenarin ×4-sopimusprovisio kuuluu mukaan.
+        tehoLiitt: s.tehoLiitt,
         teho: s.teho,
+        tehoTotal: s.tehoTotal,
         tehoTila,
+        tehoLiittTila,
+        tehoTotalTila,
         tunnit: s.tunnit,
         tappiollinen: s.tappiollinen,
         fsecLeikkuri: s.fsecLeikkuri,
@@ -480,7 +525,8 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
 
   const myymalat: MyymalaTila[] = Object.entries(current.stores).map(([nimi, store]) => {
     const edellinen = previous?.stores[nimi] ?? null
-    const teho = myymalanTeho(store)
+    const t = myymalanTehot(store)
+    const teho = t.kassa
 
     return {
       nimi,
@@ -488,8 +534,12 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
       // on kassaprovisio, myymälän `kassa` on siitä johdettu kassakate. Ilman
       // tätä myymälän teho olisi kymmenkertainen myyjiin nähden eikä "alle
       // tehojen" tarkoittaisi samaa lukua molemmissa.
+      tehoLiitt: t.liitt,
       teho,
+      tehoTotal: t.total,
       tehoTila: tehoTilasta(teho, store.tunnit),
+      tehoLiittTila: tehoTilasta(t.liitt, store.tunnit, true),
+      tehoTotalTila: tehoTilasta(t.total, store.tunnit),
       tunnit: store.tunnit,
       vertailut: [
         vertailu('liittymat', 'Liittymät', 'kpl', store.liittKpl, edellinen?.liittKpl ?? null, kerroin, vauhtiLuotettava),

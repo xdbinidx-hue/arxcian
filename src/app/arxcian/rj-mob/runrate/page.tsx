@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
-import { tehoaEiArvioida as eiTehoa } from '@/lib/rjmob'
+import { tehoaEiArvioida as eiTehoa, tehoTaso } from '@/lib/rjmob'
 import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
 
 interface SellerRunRate {
@@ -173,9 +173,12 @@ export default function RunRatePage() {
   const tot = {...td, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totL = {...tot, textAlign:'left' as const}
 
+  // Portaikko jaettuna rjmob.ts:stä. Run rate näyttää liittymä+kassa-tehon,
+  // joten asteikko on yhteinen 9/7 eikä liittymän oma 8,5 — luvut ennallaan.
   const tehoColor = (teho: number, tyyppi: string) => {
     if (tyyppi === 'owner') return '#185FA5'
-    return teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
+    const taso = tehoTaso(teho)
+    return taso === 'hyva' ? '#3B6D11' : taso === 'rajalla' ? '#854F0B' : '#A32D2D'
   }
 
   return (

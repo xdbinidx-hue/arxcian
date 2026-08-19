@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
-import { tehoaEiArvioida as eiTehoa } from '@/lib/rjmob'
+import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso } from '@/lib/rjmob'
 
 interface SellerResult {
   nimi: string
@@ -124,21 +124,6 @@ export default function EtelanHaratPage() {
     tunnit: Object.values(stores).reduce((s,r) => s+r.tunnit, 0),
   }
 
-  /**
-   * Myymälän kolme teholukua (myyntiseuranta_ohje).
-   *
-   * Kassakatteena on `kassaRjmob` (×1) eikä `kassa` (×10): myyjän `kassa` on
-   * kassaprovisio ja myymälän `kassa` siitä johdettu kassakate, joten ilman
-   * tätä myymälän teho olisi kymmenkertainen myyjiin nähden eikä 7/9 €/h
-   * -kynnys tarkoittaisi samaa molemmissa taulukoissa. Sama valinta kuin
-   * rjmobInsights.ts:n myymalanTeho-funktiossa.
-   */
-  const myymalanTehot = (s: StoreData) => ({
-    liitt: s.tunnit > 0 ? s.liittEur / s.tunnit : 0,
-    kassa: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob) / s.tunnit : 0,
-    total: s.tunnit > 0 ? (s.liittEur + s.kassaRjmob + (s.fsecEur ?? 0)) / s.tunnit : 0,
-  })
-
   // Albin jää keskiarvon ulkopuolelle samasta syystä kuin hänen rivinsä
   // teholuvuista: hän ei tee myyntivuoroja, joten hänen tuntinsa ja
   // provisionsa vääristäisivät tiimin lukua kumpaankin suuntaan.
@@ -162,12 +147,21 @@ export default function EtelanHaratPage() {
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign:'left' as const}
 
-  // Sama kynnys kuin tuottoseurannassa ja run ratessa: 9 €/h hyvä, 7 €/h raja.
-  const tehoColor = (teho: number) => teho >= 9 ? '#3B6D11' : teho >= 7 ? '#854F0B' : '#A32D2D'
-  const tehoSolu = (teho: number) => ({...tdStyle, color: tehoColor(teho), fontWeight:500})
-  const tehoTot = (teho: number) => ({...totStyle, color: tehoColor(teho)})
-  const tehoTd = (n: number | undefined, key: number) => Number.isFinite(n)
-    ? <td key={key} style={tehoSolu(n as number)}>{fmt(n as number)} €/h</td>
+  // Kynnys tulee jaettuna rjmob.ts:stä, jotta se on sama kuin tuottoseurannassa,
+  // run ratessa ja yhteenvedossa. `liittyma`-lippu valitsee liittymätehon oman
+  // matalamman vihreän rajan (8,5 €/h): liittymäteho on kolmesta aina pienin,
+  // joten yhteisellä 9:llä se olisi punainen myös kunnossa olevalla myynnillä.
+  const tehoColor = (teho: number, liittyma = false) => {
+    const taso = tehoTaso(teho, liittyma)
+    return taso === 'hyva' ? '#3B6D11' : taso === 'rajalla' ? '#854F0B' : '#A32D2D'
+  }
+  const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, color: tehoColor(teho, liittyma), fontWeight:500})
+  const tehoTot = (teho: number, liittyma = false) => ({...totStyle, color: tehoColor(teho, liittyma)})
+  // Kolmen tehosarakkeen solu. Asteikko annetaan eksplisiittisesti eikä
+  // päätellä indeksistä: sarakejärjestyksen vaihtaminen siirtäisi muuten
+  // liittymän 8,5-rajan hiljaa väärään sarakkeeseen ilman että mikään kaatuu.
+  const tehoTd = (n: number | undefined, key: number, liittyma = false) => Number.isFinite(n)
+    ? <td key={key} style={tehoSolu(n as number, liittyma)}>{fmt(n as number)} €/h</td>
     : <td key={key} style={{...tdStyle, color:'#bbb'}}>—</td>
 
   const [viesti, setViesti] = useState('')
@@ -270,7 +264,9 @@ Generoi viesti:`
                             <td style={tdStyle} colSpan={3} />
                           ) : (
                             <>
-                              {[s.myyntiTehoLiitt, s.myyntiTeho, s.myyntiTehoTotal].map(tehoTd)}
+                              {tehoTd(s.myyntiTehoLiitt, 0, true)}
+                              {tehoTd(s.myyntiTeho, 1)}
+                              {tehoTd(s.myyntiTehoTotal, 2)}
                             </>
                           )}
                         </tr>
@@ -285,7 +281,7 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
-                      <td style={tehoTot(sellerTeho.liitt)}>{fmt(sellerTeho.liitt)} €/h</td>
+                      <td style={tehoTot(sellerTeho.liitt, true)}>{fmt(sellerTeho.liitt)} €/h</td>
                       <td style={tehoTot(sellerTeho.kassa)}>{fmt(sellerTeho.kassa)} €/h</td>
                       <td style={tehoTot(sellerTeho.total)}>{fmt(sellerTeho.total)} €/h</td>
                     </tr>
@@ -329,7 +325,7 @@ Generoi viesti:`
                           <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
-                          <td style={tehoSolu(t.liitt)}>{fmt(t.liitt)} €/h</td>
+                          <td style={tehoSolu(t.liitt, true)}>{fmt(t.liitt)} €/h</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
                           <td style={tehoSolu(t.total)}>{fmt(t.total)} €/h</td>
                         </tr>
@@ -343,7 +339,7 @@ Generoi viesti:`
                       <td style={totStyle}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
-                      <td style={tehoTot(storeTeho.liitt)}>{fmt(storeTeho.liitt)} €/h</td>
+                      <td style={tehoTot(storeTeho.liitt, true)}>{fmt(storeTeho.liitt)} €/h</td>
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
                       <td style={tehoTot(storeTeho.total)}>{fmt(storeTeho.total)} €/h</td>
                     </tr>
