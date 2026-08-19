@@ -428,6 +428,27 @@ Haara `claude/rj-mob-osio-8b7572` ehdotti päinvastaista mallia — teho luettun
 taulukon sarakkeesta, leikkuri ohitettuna. **Sitä ei mergetä.** Haara on
 tallella mittauslukujensa takia, ei toteutettavana suunnitelmana.
 
+**Liittymäteholla on oma statusraja 8,5 €/h, muilla 9 €/h.** Päätös 19.8.2026.
+Liittymäteho on kolmesta luvusta aina pienin — pelkkä liittymäprovisio ilman
+kassakatetta ja F-Securea — joten yhteinen 9 €/h väritti sen punaiseksi myös
+silloin kun liittymämyynti oli kunnossa. Heikon raja on 7 €/h kaikilla.
+**Älä yhdenmukaista rajoja**: eri asteikko on koko pointti, samoin kuin
+kassakatteen ×10/÷10 eri suuntiin. Rajat ja `tehoTaso()` ovat yhdessä paikassa
+([rjmob.ts](src/lib/rjmob.ts)); `rjmobTeho.test.mts` kaatuu jos ne muuttuvat.
+
+**Jokainen kolmesta luvusta väritetään omalla arvollaan.** Laajempi luku on
+väistämättä vähintään kapeamman suuruinen, joten yhden yhteisen tilan käyttö
+näyttäisi total-tehon 11,20 €/h keltaisena siksi että liittymä+kassa on 8,40 —
+sama vika kuin liittymän rajassa, vain toiseen suuntaan. Ratkaiseva on silti
+keskimmäinen: siitä tulevat `tehoStatus`, Tila-sarake ja järjestys, ja vain se
+saa korostetun taustan.
+
+Teholuvun tekstiväri on **aina** tumma (`#A32D2D` / `#854F0B` / `#3B6D11`),
+myös korostetussa solussa. Yhteenvedon `VARIT`-täyttöpaletti ei kelpaa
+teholukuun: `#eab308` jää 1,8:1 kontrastiin oman `#fef9c3`-taustansa päällä eli
+täyttö heikentää sitä, ja "rajalla" on juuri se tila johon suurin osa myyjistä
+osuu. Korostus tulee taustasta, ei tekstin sävystä.
+
 **Maapallon mantereet ovat yhtä sinistä sävyä** ([GlobeScene.tsx](src/components/arxcian/globe/GlobeScene.tsx)): päivätekstuurista otetaan vain kirkkaus, ei väriä. Kaupunkivalot luetaan omasta tekstuuristaan eikä niihin kosketa, joten ne pysyvät keltaisina — se kontrasti tekee yöpuolen luettavaksi. Merillä on oma tumma sävynsä; aiemmin niissä näkyi suoraan taustan sumutekstuuri, jolloin pallo oli reikä taustaan eikä kappale.
 
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
