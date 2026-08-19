@@ -30,8 +30,9 @@ export const MYYMALA_SOLO_VARIT: Record<StoreName, string> = {
   Malmi: 'E06666', Easton: 'F6B26B', Kivistö: 'FFFF00',
 }
 
+/** Myymäläsarakkeen kirjain — **aina pienellä**, kuten taulukossa ennestään. */
 export const MYYMALA_KIRJAIN: Record<StoreName, string> = {
-  Malmi: 'M', Easton: 'E', Kivistö: 'K',
+  Malmi: 'm', Easton: 'e', Kivistö: 'k',
 }
 
 export interface Kirjoitussuunnitelma {

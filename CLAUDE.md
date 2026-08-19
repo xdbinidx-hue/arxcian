@@ -431,9 +431,9 @@ Syyskuun 2026 lista tehtiin Coworkissa käsin, ja generaattori portattiin
 siitä. **Alkuperäinen referenssi (1 184 h) on vanhentunut**: Albin muutti
 sääntöjä 19.8.2026 (lauantain miehitys 7 → 4 vuoroa, Antti vain Kivistöön,
 Malmi tasan kokoaikaisten kesken). Testi pitää nyt kirjaa **nykyisten sääntöjen
-tuottamasta tilannekuvasta**: Alec 156 · Joona 155 · Arbnor 131 · Lauri 122 ·
-Kasperi 122 · Krenar 117 · Vladimir 107 · Hamza 103 · Ramin 85 · Albin 13
-= 1 111 h, yksi vajepäivä (pe 18.9., Arbnor Nizzassa).
+tuottamasta tilannekuvasta**: Alec 156 · Joona 155 · Arbnor 131 · Lauri 117 ·
+Krenar 115 · Kasperi 104 · Hamza 95 · Vladimir 94 · Ramin 78 · Antti 70 ·
+Albin 4 = 1 119 h, ei yhtään vajetta.
 
 Suhtautuminen testiin ei muutu: jos muutat logiikkaa ja luvut muuttuvat,
 **oletus on että muutos on väärä**. Päivitä odotukset vasta kun olet lukenut
@@ -459,12 +459,20 @@ samalla perusteella. Aiempi kiinteä +2-kierto jakoi Malmin tasan vasta viidess�
 viikossa eikä lainkaan tasan kuukauden sisällä. Arbnor on Malmin päällikkö eli
 siellä joka tapauksessa; Ramin ja Antti ovat osa-aikaisia eivätkä kuulu jakoon.
 
-**Antti tekee vain Kivistöä.** Rajaus on varajärjestyksessä eikä toiveena —
-muuten hän päätyisi Malmille aina kun vaje sattuu sinne. ⚠️ Huomaa seuraus:
-lauantain keventämisen jälkeen kokoaikaiset ehtivät täyttää Kivistön vuorot
-ennen häntä, joten syyskuussa hän jää **nollaan tuntiin**. Jos hänelle halutaan
-taattu määrä vuoroja, se pitää lisätä samaan tapaan kuin Raminin kahden vuoron
-etuoikeus `fallbackFor`issa.
+**Antti tekee vain Kivistöä, ja saa sen ennen kokoaikaisia.** Myymälärajaus on
+varajärjestyksessä eikä toiveena — muuten hän päätyisi Malmille aina kun vaje
+sattuu sinne. Etuoikeus on yhtä tärkeä: ilman sitä kokoaikaiset ehtivät täyttää
+Kivistön kaikki 48 kuukausivuoroa ja Antti jää **nollaan tuntiin**, jolloin
+Albin tekee tunteja samaan aikaan kun Antti ei tee yhtään.
+
+**Albin on hätävara, ei osa miehitystä.** Hänen tuntinsa ovat oire: jos ne
+nousevat, joku muu on jäänyt ilman vuoroja. Syyskuussa hän saa 4 h eli yhden
+vuoron, ja testi vartioi ettei luku karkaa. Vajeen paikkausjärjestys on siis
+**Antti (vain Kivistö) → Albin**, ei toisin päin.
+
+Antin etuoikeus ja viikkokatto ovat sama luku (3) tarkoituksella: pienempi
+etuoikeus kokeiltiin ja se jätti syyskuuhun kaksi vajetta (18.9. ja 25.9.
+Malmi 3/4) sekä kolminkertaisti Albinin tunnit.
 
 Keskiviikon sääntö (**kaikki kolme päällikköä Malmilla**) on ehdoton, ei toive.
 Onnenpäivänä kyseiseen myymälään merkitään vain päällikkö, mutta **muut myymälät
@@ -474,10 +482,11 @@ Ramin päätyy syyskuussa 82 h eli kaksi tuntia yli 60–80 h tavoitehaarukan. S
 tiedossa ja hyväksytty: haarukka on tavoite eikä kova raja, ja kiristäminen
 rikkoisi golden-testin.
 
-**Miehitys on tiukka mutta ei enää yhtä tiukka:** lauantain keventäminen
-seitsemästä vuorosta neljään vapautti kolme vuoroa viikossa arjen käyttöön.
-Perjantai (Malmi 4 + Easton 3) on nyt se päivä joka ensimmäisenä jää vajaaksi
-kun joku on lomalla. Siksi vajeet
+**Miehitys ei ole enää yhtä tiukka:** lauantain keventäminen seitsemästä
+vuorosta neljään vapautti kolme vuoroa viikossa arjen käyttöön, ja syyskuu
+menee nyt täyteen ilman vajeita myös Arbnorin lomaviikolla. Perjantai
+(Malmi 4 + Easton 3) on silti se päivä joka ensimmäisenä jää vajaaksi jos
+poissaoloja tulee lisää. Siksi vajeet
 näytetään käyttöliittymässä päivineen — tyhjä solu jonka voi ohittaa vahingossa
 on vaarallisempi kuin näkyvä varoitus.
 

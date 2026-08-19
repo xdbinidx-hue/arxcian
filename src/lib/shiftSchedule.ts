@@ -59,6 +59,19 @@ export const ROSTER_COLUMNS = [
 //
 // Kukaan ei tee täyttä kuuden vuoron viikkoa — vähintään yksi vapaapäivä.
 export const MAX_SHIFTS_PER_WEEK = 5
+/**
+ * Antin viikkokatto — ja samalla se määrä jonka hän saa Kivistössä **ennen
+ * kokoaikaisia**.
+ *
+ * Antti ei ole hätävara vaan osa-aikainen jolle kuuluu vuoroja; **Albin on
+ * hätävara**. Ilman etuoikeutta kokoaikaiset ehtivät täyttää Kivistön kaikki
+ * 48 kuukausivuoroa ennen häntä, jolloin hän jää nollaan ja Albin tekee
+ * tunteja samaan aikaan kun Antti ei tee yhtään — juuri väärin päin.
+ *
+ * Etuoikeus ja katto ovat tarkoituksella sama luku: erillinen pienempi
+ * etuoikeus jätti syyskuuhun vajeita (18.9. ja 25.9. Malmi 3/4) ja nosti
+ * Albinin tunnit kolminkertaisiksi.
+ */
 export const ANTTI_MAX_SHIFTS_PER_WEEK = 3
 /**
  * Raminin viikkokatto. Neljä (ei kolme) on tahallinen: se pitää hänet
@@ -628,6 +641,16 @@ function fallbackFor(
 
   if (!today.has(RAMIN) && plan.used(RAMIN) < 2 && plan.canWork(RAMIN, date)) {
     return { seller: RAMIN, cross: false }
+  }
+
+  // Antti Kivistöön ennen kokoaikaisia, samalla periaatteella kuin Ramin.
+  // Ilman tätä hän jää nollaan: Kivistössä on 48 vuoroa kuukaudessa, mutta
+  // kokoaikaiset ehtivät täyttää ne kaikki ennen kuin varajärjestys pääsee
+  // hänen kohdalleen — varsinkin sen jälkeen kun lauantai kevennettiin
+  // neljään vuoroon eikä kapasiteetti enää lopu kesken.
+  if (store === ANTTI_STORE && !today.has(ANTTI)
+      && plan.canWork(ANTTI, date)) {
+    return { seller: ANTTI, cross: false }
   }
 
   // Malmin paikkaan valitaan vähiten Malmia tehnyt, muualle vähiten tunteja

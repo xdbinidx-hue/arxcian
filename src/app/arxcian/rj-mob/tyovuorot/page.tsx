@@ -111,7 +111,7 @@ function ShiftCells({
         {fmtTime(shift.start)}–{fmtTime(shift.end)}
       </td>
       <td style={solu}>{shift.hours}</td>
-      <td style={{ ...solu, ...lastTd }}>{shift.store.charAt(0).toUpperCase()}</td>
+      <td style={{ ...solu, ...lastTd }}>{shift.store.charAt(0).toLowerCase()}</td>
     </>
   )
 }
