@@ -103,7 +103,17 @@ jobs:
             exit 1
           fi
 
-          if printf '%s' "$body" | grep -q '"ok":false'; then
+          # Vanhentunut data ei kaada ajoa. Kun ulkoinen lähde ei vastaa,
+          # cron-reitti raportoi työn stale-listalla ja hardFailed pysyy
+          # nollassa: sivu näyttää vanhaa dataa, mikä on tarkoitettu käytös.
+          # YouTube estää Vercelin konesali-IP:n suunnilleen päivittäin, joten
+          # tämän kaataminen tekisi punaisesta ajosta taustakohinaa. Oikeat
+          # virheet kaatavat edelleen.
+          if printf '%s' "$body" | grep -q '"hardFailed":0'; then
+            if printf '%s' "$body" | grep -q '"ok":false'; then
+              echo "::warning::Osa lähteistä palautti vanhentunutta dataa — ks. stale-lista"
+            fi
+          else
             echo "::error::Osa töistä epäonnistui"
             exit 1
           fi

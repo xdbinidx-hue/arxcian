@@ -9,6 +9,7 @@ import { refreshCalendar } from './trading/calendar'
 import { planAllUsers } from './push/schedule'
 import { getCityWeather, CITIES_CACHE_KEY } from './weather'
 import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
+import { readFetchStatus } from './fetchStatus'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
 import { importWinposReports } from '@/lib/winpos/kassamyynti'
@@ -42,6 +43,24 @@ export type JobResult = {
    * kasvattaa ajon `failed`-laskuria.
    */
   planError?: string
+  /**
+   * Mistä työn data oikeasti tuli.
+   *
+   * **`stale` tarkoittaa että haku kaatui** ja `fetchAndCache` palautti
+   * vanhentuneen datan. Ilman tätä kenttää se näytti vastauksessa täsmälleen
+   * samalta kuin onnistunut haku: `hub-channels` raportoi `"ok": true,
+   * "items": 5` samalla kun jokainen viidestä YouTube-hausta oli kaatunut.
+   * Cron-reitti pudottaa työn `ok`-tilan kun tämä on `stale`.
+   */
+  source?: 'network' | 'cache' | 'stale'
+  /**
+   * Lähteet jotka kaatuivat, vaikka työ muuten onnistui.
+   *
+   * Osittainen onnistuminen ei saa näyttää täydeltä: neljä viidestä kanavasta
+   * kaatuneena `"items": 1` lukisi samalta kuin terve ajo pienellä listalla.
+   * Eri asiat eri lukuina — `items` on saatuja, tämä menetettyjä.
+   */
+  failedSources?: string[]
 }
 
 export type CronJob = {
@@ -84,8 +103,8 @@ const tradingJobs: CronJob[] = [
     id: 'trading-ict',
     description: 'Trading: ICT-videot',
     run: async () => {
-      const result = await getIctVideos()
-      return { key: 'trading:ict-videos', items: result.data.length }
+      const result = await getIctVideos(true)
+      return { key: 'trading:ict-videos', items: result.data.length, source: result.source }
     },
   },
   {
@@ -163,8 +182,16 @@ const hubJobs: CronJob[] = [
     id: 'hub-channels',
     description: 'Hub: seurattujen YouTube-kanavien tuoreimmat',
     run: async () => {
-      const result = await getChannelVideos()
-      return { key: CHANNELS_CACHE_KEY, items: result.data.length }
+      // force: ilman sitä tuore välimuisti ohittaa haun kokonaan ja
+      // ajastettu työ on tyhjäkäyntiä — mitattu 51 ms viidelle "haulle".
+      const result = await getChannelVideos(true)
+      const status = await readFetchStatus(CHANNELS_CACHE_KEY)
+      return {
+        key: CHANNELS_CACHE_KEY,
+        items: result.data.length,
+        source: result.source,
+        failedSources: status?.failed?.length ? status.failed : undefined,
+      }
     },
   },
   {
