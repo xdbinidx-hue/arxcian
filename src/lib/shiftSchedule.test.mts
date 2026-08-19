@@ -1,10 +1,14 @@
-// Golden-testi: syyskuu 2026.
+// Syyskuun 2026 tilannekuva ja sääntötestit.
 //
-// Coworkissa tehtiin syyskuun lista käsin näillä säännöillä ja se toimii.
-// Python-referenssi (gen_syyskuu.py) tuottaa alla olevat luvut täsmälleen,
-// joten tämä testi on vahvin käytettävissä oleva tarkistus sille että
-// TypeScript-portti vastaa sääntöjä — ei "näyttää järkevältä" vaan
-// päivälleen sama tulos.
+// ⚠️ Luvut EIVÄT ole enää Coworkin alkuperäinen referenssilista. Albin muutti
+// sääntöjä 19.8.2026 (lauantain miehitys 7 -> 4 vuoroa, Antti vain Kivistöön,
+// Malmi tasan kokoaikaisten kesken), joten vanha referenssi (1 184 h) on
+// tarkoituksella vanhentunut. Alla olevat luvut ovat **uusien sääntöjen
+// tuottama tilannekuva**, joka on kertaalleen katsottu läpi ja hyväksytty.
+//
+// Sääntö säilyy silti: jos muutat logiikkaa ja nämä luvut muuttuvat, oletus on
+// että muutos on väärä. Päivitä odotukset vasta kun olet lukenut uuden listan
+// läpi ja todennut sen paremmaksi — älä koskaan siksi että testi on punainen.
 //
 // Ajetaan: npm test  (node --test, ei erillistä testiajuria)
 
@@ -53,32 +57,66 @@ function syyskuunSyote(): KuukaudenSyote {
 
 const tulos = generateMonth(2026, 9, syyskuunSyote())
 
-test('syyskuun tuntisummat täsmäävät referenssiin', () => {
+test('syyskuun tuntisummat pysyvät ennallaan', () => {
   const odotettu: Record<string, number> = {
     'Alec Fambro': 156,
     'Joona Huttunen': 155,
     'Arbnor Rashica': 131,
-    'Kasperi Kemppainen': 126,
-    'Hamza Hanif': 125,
-    'Vladimir Kogan': 124,
-    'Krenar Bajqinovci': 122,
-    'Lauri Ukkonen': 119,
-    'Ramin Kadiri': 82,
-    'Antti Kiljala': 33,
-    'Albin Rashica': 11,
+    'Lauri Ukkonen': 122,
+    'Kasperi Kemppainen': 122,
+    'Krenar Bajqinovci': 117,
+    'Vladimir Kogan': 107,
+    'Hamza Hanif': 103,
+    'Ramin Kadiri': 85,
+    'Albin Rashica': 13,
   }
   assert.deepEqual(tulos.tunnit, odotettu)
-  const yhteensa = Object.values(tulos.tunnit).reduce((a, b) => a + b, 0)
-  assert.equal(yhteensa, 1184)
+  assert.equal(Object.values(tulos.tunnit).reduce((a, b) => a + b, 0), 1111)
 })
 
 test('syyskuussa on täsmälleen yksi vajepäivä: pe 18.9.', () => {
   // Arbnor on Nizzassa ma–to, ja perjantai on viikon raskain päivä
-  // (Malmi 4 + Easton 3) — siksi juuri tähän jää kaksi paikkaa tyhjäksi.
+  // (Malmi 4 + Easton 3) — siksi juuri tähän jää paikkoja tyhjäksi.
   assert.deepEqual(
     tulos.vajeet.map(v => `${v.date} ${v.store} ${v.saatu}/${v.tarve}`),
-    ['2026-09-18 Malmi 2/4', '2026-09-18 Easton 2/3'],
+    ['2026-09-18 Malmi 3/4', '2026-09-18 Easton 2/3'],
   )
+})
+
+test('Antti ei saa Malmin eikä Eastonin vuoroja', () => {
+  const antinMyymalat = new Set(
+    tulos.days.flatMap(d => d.shifts.filter(s => s.seller === 'Antti Kiljala').map(s => s.store)),
+  )
+  for (const store of antinMyymalat) {
+    assert.equal(store, 'Kivistö', `Antti sai vuoron myymälästä ${store}`)
+  }
+})
+
+test('lauantaina Malmilla kaksi limittäistä vuoroa, muissa yksi', () => {
+  const lauantait = tulos.days.filter(d => d.weekday === 6 && d.soloStores.length === 0)
+  assert.ok(lauantait.length >= 3)
+  for (const d of lauantait) {
+    const malmi = d.shifts.filter(s => s.store === 'Malmi')
+    assert.equal(malmi.length, 2, `${d.date}: Malmilla ${malmi.length} myyjää`)
+    assert.deepEqual(
+      malmi.map(s => `${s.start}-${s.end}`).sort(),
+      ['10:00-14:00', '12:00-16:00'],
+    )
+    for (const store of ['Easton', 'Kivistö'] as const) {
+      const vuorot = d.shifts.filter(s => s.store === store)
+      assert.equal(vuorot.length, 1, `${d.date}: ${store} ${vuorot.length} myyjää`)
+      assert.equal(`${vuorot[0].start}-${vuorot[0].end}`, '10:00-16:00')
+    }
+  }
+})
+
+test('Malmi jakautuu tasan kokoaikaisten kesken', () => {
+  // Malmi on paras myyntipaikka, joten sen jakautuminen on oma tavoitteensa
+  // eikä saa olla tuntitasauksen sivutuote.
+  const malmi = FULL_TIME_SELLERS.map(s =>
+    tulos.days.reduce((n, d) => n + d.shifts.filter(x => x.seller === s && x.store === 'Malmi').length, 0))
+  const ero = Math.max(...malmi) - Math.min(...malmi)
+  assert.ok(ero <= 2, `Malmi-vuorojen ero kokoaikaisten välillä on ${ero} (${malmi.join(', ')})`)
 })
 
 test('keskiviikkoisin kaikki kolme päällikköä ovat Malmilla', () => {

@@ -171,21 +171,44 @@ const MAPE_SHIFTS: Partial<Record<StoreName, ShiftTemplate[]>> = {
   ],
 }
 
-const SATURDAY_SHIFT: ShiftTemplate = { label: 'la', start: '10:00', end: '16:00' }
+/**
+ * Lauantai: Malmilla kaksi limittäistä vuoroa, Eastonilla ja Kivistöllä yksi
+ * koko päivän vuoro.
+ *
+ * Malmin 10–14 ja 12–16 menevät päällekkäin klo 12–14, eli kaksi myyjää on
+ * yhtä aikaa paikalla juuri lauantain vilkkaimpaan aikaan. Easton ja Kivistö
+ * pärjäävät yhdellä, joten lauantain kokonaistarve on neljä vuoroa aiemman
+ * seitsemän sijaan — se vapauttaa kapasiteettia arkeen, jossa miehitys on
+ * tiukempi.
+ */
+const SATURDAY_SHIFTS: Record<StoreName, ShiftTemplate[]> = {
+  Malmi: [
+    { label: 'la', start: '10:00', end: '14:00' },
+    { label: 'la', start: '12:00', end: '16:00' },
+  ],
+  Easton: [{ label: 'la', start: '10:00', end: '16:00' }],
+  Kivistö: [{ label: 'la', start: '10:00', end: '16:00' }],
+}
+
 const OP_WEEKDAY_SHIFT: ShiftTemplate = { label: 'OP', start: '10:00', end: '19:00' }
 const OP_SATURDAY_SHIFT: ShiftTemplate = { label: 'OP', start: '10:00', end: '17:00' }
 
-/** Lauantain henkilömäärä (arkena määrän kertoo vuoropohjien lukumäärä). */
-const SATURDAY_HEADCOUNT: Record<StoreName, number> = { Malmi: 3, Easton: 2, Kivistö: 2 }
+/**
+ * Antti tekee vain Kivistöä.
+ *
+ * Hän on osa-aikainen paikkaaja, mutta paikkaus ei saa tarkoittaa mitä tahansa
+ * myymälää: Malmi ja Easton eivät ole hänelle vaihtoehtoja. Rajaus on siksi
+ * varajärjestyksessä (`fallbackFor`) eikä pelkkänä toiveena — muuten hän
+ * päätyisi Malmille aina kun vaje sattuu sinne.
+ */
+const ANTTI_STORE: StoreName = 'Kivistö'
 
 // ===================== Viikkoankkurit =====================
 //
 // Jokainen kokoaikainen saa kiertävän osoittimen mukaan yhden myymälän ja
 // yhden vuorotyypin koko viikoksi, jottei sama henkilö vaihda paikkaa ja
 // aikaa päivittäin. Viides jää viikon "swingiksi" eli joustavaksi paikkaajaksi.
-// Osoitin siirtyy +2 viikossa (5 hengen lista, syt(2,5)=1 → koko lista kiertää
-// läpi viidessä viikossa).
-const ANCHOR_STEP = 2
+// Kuka saa minkäkin ankkurin, ratkeaa Malmi-kertymästä (ks. WeekPlan).
 type AnchorSlot = { store: StoreName; templateIndex: number }
 const ANCHOR_SLOTS: AnchorSlot[] = [
   { store: 'Malmi', templateIndex: 0 },
@@ -213,7 +236,7 @@ function templatesFor(store: StoreName, weekday: number): ShiftTemplate[] {
 /** Montako henkeä myymälään tarvitaan tänä päivänä. */
 export function headcountFor(store: StoreName, weekday: number, soloStores: StoreName[]): number {
   if (soloStores.includes(store)) return 1
-  if (weekday === 6) return SATURDAY_HEADCOUNT[store]
+  if (weekday === 6) return SATURDAY_SHIFTS[store].length
   return templatesFor(store, weekday).length
 }
 
@@ -273,14 +296,30 @@ class WeekPlan {
   // hylkäisi tiedoston eikä golden-testiä voisi ajaa ilman käännösvaihetta.
   private ledger: Record<string, number>
   private absences: Map<string, Set<string>>
+  private malmi: Record<string, number>
 
-  constructor(weekIndex: number, ledger: Record<string, number>, absences: Map<string, Set<string>>) {
+  constructor(
+    ledger: Record<string, number>,
+    absences: Map<string, Set<string>>, malmi: Record<string, number>,
+  ) {
     this.ledger = ledger
     this.absences = absences
-    const n = FULL_TIME_SELLERS.length
-    const offset = ((weekIndex * ANCHOR_STEP) % n + n) % n
-    const ordered = [...FULL_TIME_SELLERS.slice(offset), ...FULL_TIME_SELLERS.slice(0, offset)]
-    ordered.forEach((seller, i) => {
+    this.malmi = malmi
+
+    // Ankkuripaikat jaetaan **Malmi-kertymän mukaan**, ei kiinteällä
+    // kiertopointterilla. Malmi on paras myyntipaikka, joten sen kaksi
+    // ankkuripaikkaa menevät niille kokoaikaisille joilla on vähiten Malmia
+    // takanaan. Kiinteä +2-kierto jakoi Malmin tasan vasta viidessä viikossa
+    // eikä lainkaan tasan yhden kuukauden sisällä.
+    //
+    // Viikkoankkuri itsessään säilyy: sama henkilö pysyy samassa myymälässä ja
+    // vuorossa koko viikon, eikä pompi paikasta toiseen päivittäin.
+    const jarjestys = [...FULL_TIME_SELLERS].sort((a, b) =>
+      (this.malmi[a] ?? 0) - (this.malmi[b] ?? 0)
+      || (this.ledger[a] ?? 0) - (this.ledger[b] ?? 0)
+      || FULL_TIME_SELLERS.indexOf(a) - FULL_TIME_SELLERS.indexOf(b))
+
+    jarjestys.forEach((seller, i) => {
       if (i < ANCHOR_SLOTS.length) this.anchors[seller] = ANCHOR_SLOTS[i]
       else this.swing = seller
     })
@@ -323,6 +362,20 @@ class WeekPlan {
   byHours(sellers: string[]): string[] {
     return [...sellers].sort((a, b) => (this.ledger[a] ?? 0) - (this.ledger[b] ?? 0))
   }
+
+  /**
+   * Vähiten Malmia tehnyt ensin, tasapelissä vähiten tunteja tehnyt.
+   *
+   * Malmi on paras myyntipaikka, joten sen jako on oma tavoitteensa: pelkkä
+   * tuntitasaus jakaisi tunnit tasan mutta voisi jättää saman henkilön
+   * kuukaudeksi Kivistöön. Tunnit ovat tässä toissijainen peruste, jotta
+   * kahden yhtä monta Malmia tehneen välillä valinta ei ole mielivaltainen.
+   */
+  byMalmi(sellers: string[]): string[] {
+    return [...sellers].sort((a, b) =>
+      (this.malmi[a] ?? 0) - (this.malmi[b] ?? 0)
+      || (this.ledger[a] ?? 0) - (this.ledger[b] ?? 0))
+  }
 }
 
 // ===================== Generaattori =====================
@@ -343,6 +396,9 @@ export function generateMonth(
 
   const ledger: Record<string, number> = {}
   const vuorot: Record<string, number> = {}
+  // Myyjä → montako Malmin vuoroa kertynyt. Malmi on paras myyntipaikka,
+  // joten sen jakautuminen on oma tavoitteensa eikä johdu tunneista.
+  const malmiCount: Record<string, number> = {}
   const byDate = new Map<string, DayInfo>()
 
   // Päivät viikoittain (maanantai-avain), jotta viikkokiintiöt ja ankkurit
@@ -367,15 +423,15 @@ export function generateMonth(
   // viikkovuoroa kuluvat arkeen eikä lauantaille jää ketään.
   const WEEK_ORDER = [6, 1, 2, 3, 4, 5, 0]
 
-  weekKeys.forEach((wk, weekIndex) => {
-    const plan = new WeekPlan(weekIndex, ledger, absences)
+  weekKeys.forEach(wk => {
+    const plan = new WeekPlan(ledger, absences, malmiCount)
     const paivat = weeks.get(wk)!
     for (const wd of WEEK_ORDER) {
       for (const paiva of paivat) {
         const d = new Date(vuosi, kuukausi - 1, paiva)
         if (d.getDay() !== wd) continue
         const date = dateStr(vuosi, kuukausi, paiva)
-        byDate.set(date, buildDay(date, wd, plan, syotePerDate.get(date), ledger, vuorot))
+        byDate.set(date, buildDay(date, wd, plan, syotePerDate.get(date), ledger, vuorot, malmiCount))
       }
     }
   })
@@ -395,6 +451,7 @@ export function generateMonth(
 function buildDay(
   date: string, weekday: number, plan: WeekPlan, syote: PaivanSyote | undefined,
   ledger: Record<string, number>, vuorot: Record<string, number>,
+  malmiCount: Record<string, number>,
 ): DayInfo {
   const soloStores = syote?.soloMyymalat ?? []
   const absences: Record<string, string> = {}
@@ -415,6 +472,7 @@ function buildDay(
     plan.record(seller, cross)
     ledger[seller] = (ledger[seller] ?? 0) + hours
     vuorot[seller] = (vuorot[seller] ?? 0) + 1
+    if (store === 'Malmi') malmiCount[seller] = (malmiCount[seller] ?? 0) + 1
   }
 
   // 1. Onnenpäivä / oman myymälän tapahtuma: siihen myymälään VAIN päällikkö,
@@ -432,21 +490,24 @@ function buildDay(
   //    (esim. 8.8. Kivistön onnenpäivä → Malmi ja Easton tyhjinä).
   const openStores = STORES.filter(s => !soloStores.includes(s))
 
-  // 2. Lauantai: päälliköt vapaalla, myymälät täytetään kiertäen.
+  // 2. Lauantai: päälliköt vapaalla, myymälät täytetään kerroksittain kuten
+  //    arkenakin — kaikkien myymälöiden ensimmäiset vuorot ennen Malmin toista.
   if (weekday === 6) {
-    const slots: StoreName[] = []
-    if (openStores.length > 0) {
-      const maxCount = Math.max(...openStores.map(s => SATURDAY_HEADCOUNT[s]))
-      for (let i = 0; i < maxCount; i++) {
-        for (const s of openStores) if (i < SATURDAY_HEADCOUNT[s]) slots.push(s)
+    const maxLen = openStores.length
+      ? Math.max(...openStores.map(s => SATURDAY_SHIFTS[s].length))
+      : 0
+    for (let idx = 0; idx < maxLen; idx++) {
+      for (const store of openStores) {
+        const templates = SATURDAY_SHIFTS[store]
+        if (idx >= templates.length) continue
+        const pool = store === 'Malmi'
+          ? plan.byMalmi(FULL_TIME_SELLERS)
+          : plan.byHours(FULL_TIME_SELLERS)
+        const direct = pool.find(s => !today.has(s) && plan.canWork(s, date))
+        const pick = direct ?? fallbackFor(date, today, plan, store)?.seller
+        if (!pick) continue
+        assign(store, pick, templates[idx])
       }
-    }
-    const pool = [...plan.byHours(FULL_TIME_SELLERS), RAMIN, ANTTI]
-    for (const store of slots) {
-      const direct = pool.find(s => !today.has(s) && plan.canWork(s, date))
-      const pick = direct ?? fallbackFor(date, today, plan, store)?.seller
-      if (!pick) continue
-      assign(store, pick, SATURDAY_SHIFT)
     }
     return { date, weekday, closed: false, note, soloStores, absences, shifts }
   }
@@ -469,6 +530,7 @@ function buildDay(
     const t = templates[slot.i]
     ledger[manager] = (ledger[manager] ?? 0) + hoursBetween(t.start, t.end)
     vuorot[manager] = (vuorot[manager] ?? 0) + 1
+    if (store === 'Malmi') malmiCount[manager] = (malmiCount[manager] ?? 0) + 1
   }
 
   // 4. Loput paikat KERROKSITTAIN: kaikkien myymälöiden ensimmäiset vuorot,
@@ -568,7 +630,13 @@ function fallbackFor(
     return { seller: RAMIN, cross: false }
   }
 
-  const fullTimer = plan.byHours(FULL_TIME_SELLERS).find(s => !today.has(s) && plan.canWork(s, date))
+  // Malmin paikkaan valitaan vähiten Malmia tehnyt, muualle vähiten tunteja
+  // tehnyt. Ilman tätä Malmi kasautuisi sille jolla sattuu olemaan tunteja
+  // vähiten, eikä paras myyntipaikka jakautuisi tasan.
+  const jarjestys = store === 'Malmi'
+    ? plan.byMalmi(FULL_TIME_SELLERS)
+    : plan.byHours(FULL_TIME_SELLERS)
+  const fullTimer = jarjestys.find(s => !today.has(s) && plan.canWork(s, date))
   if (fullTimer) return { seller: fullTimer, cross: false }
 
   if (!today.has(RAMIN) && plan.canWork(RAMIN, date)) return { seller: RAMIN, cross: false }
@@ -583,6 +651,9 @@ function fallbackFor(
 
   for (const cand of [ANTTI, ALBIN]) {
     if (today.has(cand) || plan.isAbsent(cand, date)) continue
+    // Antti tekee vain Kivistöä — Malmin tai Eastonin vaje ei ole hänen
+    // paikattavissaan, vaikka hänellä olisi viikkokiintiötä jäljellä.
+    if (cand === ANTTI && store !== ANTTI_STORE) continue
     if (cand !== ALBIN && !plan.canWork(cand, date)) continue
     return { seller: cand, cross: false }
   }
