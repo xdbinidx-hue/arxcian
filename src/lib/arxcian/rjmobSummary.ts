@@ -72,7 +72,7 @@ const MIN_DAYS_FOR_PROJECTION = 7
 const KASSAKATE_KERROIN = 10
 
 export type RjMobMetric = {
-  /** Valmiiksi muotoiltu kuukauden kertymä, esim. "342" tai "18,9k €" */
+  /** Valmiiksi muotoiltu kuukauden kertymä, esim. "342 kpl" tai "6789 €" */
   display: string
   /**
    * Saman rivin tarkentava toinen luku, esim. liittymien provisio euroina.
@@ -159,12 +159,21 @@ function fmtKpl(n: number): string {
   return Math.round(n).toLocaleString('fi-FI')
 }
 
-/** Euromäärä lyhyesti: yli tuhat näytetään "18,9k €", muuten kokonaisina. */
+/**
+ * Euromäärä kokonaisina euroina, esim. "6789 €".
+ *
+ * Kolme valintaa, kaikki samasta syystä — hubin luku on tarkoitettu
+ * vertailtavaksi myyntiseurannan omaan lukuun silmämääräisesti:
+ *
+ * - **Ei lyhennettä.** "6,8k €" ei kerro täsmääkö luku taulukkoon.
+ * - **Sentit leikataan, ei pyöristetä.** Taulukossa lukee 6 789,80 €, ja
+ *   leikattuna näkyy 6789 eli samat numerot; pyöristettynä 6790 näyttäisi
+ *   eroavan vaikka kyse on samasta luvusta.
+ * - **Ei tuhaterotinta.** Näin luku on sama merkkijono jonka Albin lukee
+ *   taulukon solusta ilman välilyöntien tulkintaa.
+ */
 function fmtEur(n: number): string {
-  if (Math.abs(n) >= 1000) {
-    return `${(n / 1000).toLocaleString('fi-FI', { maximumFractionDigits: 1 })}k €`
-  }
-  return `${Math.round(n).toLocaleString('fi-FI')} €`
+  return `${Math.trunc(n)} €`
 }
 
 function changeOf(current: number, previous: number, factor: number): number | null {
