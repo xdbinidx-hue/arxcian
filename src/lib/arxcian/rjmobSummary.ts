@@ -1,5 +1,6 @@
 import { listSeurantaFiles, monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDrive'
 import { loadDashData, type DashData } from '@/lib/rjmobSheets'
+import { loadTargets, TavoitteetPuuttuu } from '@/lib/rjmobTargets'
 import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
 import { readCached, writeCached, type Fetched } from './cache'
 import { todayISOHelsinki } from './time'
@@ -32,7 +33,7 @@ import { todayISOHelsinki } from './time'
  * | Avain | Sisältö |
  * |---|---|
  * | `rjmob:summary` | uusin kuukausi, TTL 6 h — kertymä kasvaa päivän mittaan |
- * | `rjmob:summary:v2:<YYYY-MM>` | valmis kuukausi, TTL vuosi — luvut eivät enää muutu |
+ * | `rjmob:summary:v3:<YYYY-MM>` | valmis kuukausi, TTL vuosi — luvut eivät enää muutu |
  * | `rjmob:summary:months` | saatavilla olevat kuukaudet, uusin ensin |
  *
  * Kuluva kuukausi pysyy tarkoituksella avaimessa `rjmob:summary`: hub lukee
@@ -89,6 +90,14 @@ export type RjMobMetric = {
    * `display` on toteuma) tai kun työpäiviä on liian vähän takana.
    */
   runRate?: string | null
+  /** Kuukauden tavoite valmiiksi muotoiltuna, esim. "1200 kpl". */
+  target?: string | null
+  /**
+   * Montako prosenttia tavoitteesta **ennuste** yltää. Ei siis toteuman
+   * osuus tavoitteesta: kysymys on "päästäänkö tavoitteeseen tällä tahdilla",
+   * ei "paljonko on jo tehty". Null kun tavoitetta tai ennustetta ei ole.
+   */
+  targetPercent?: number | null
   /** Muutos edelliseen kuukauteen prosentteina, tai null jos vertailua ei ole */
   changePercent: number | null
 }
@@ -114,6 +123,47 @@ export type RjMobSummaryData = {
   }
 }
 
+/**
+ * Kuukauden tavoitteet yhtenä lukukolmikkona.
+ *
+ * Tavoitteet-välilehti on myyjäkohtainen, joten kuukauden tavoite on rivien
+ * summa. Kassakatteen tavoite on **myyntiseurannan asteikolla** samoin kuin
+ * `kassakateOf`: [rjmobTargets.ts](../../rjmobTargets.ts) lukee Kate-sarakkeen
+ * jakamatta kymmenellä, toisin kuin rjmobSheets.ts:n myyjäluku. Ilman tätä
+ * yhteensopivuutta prosentti olisi kymmenkertainen.
+ */
+type MonthTargets = {
+  liittKpl: number
+  fsecKpl: number
+  kassa: number
+}
+
+/**
+ * Kuukauden tavoitteet, tai null jos niitä ei ole saatavilla.
+ *
+ * Tavoitteet-välilehti on olemassa vasta heinäkuusta 2026, eikä sen
+ * puuttuminen ole virhe — vanhemmat kuukaudet näytetään ilman tavoitetta.
+ * Muutkin virheet niellään: tavoite on paneelin lisätieto, eikä sen takia saa
+ * jäädä koko kuukauden yhteenvetoa kirjoittamatta.
+ */
+async function loadMonthTargets(fileId: string): Promise<MonthTargets | null> {
+  try {
+    const { targets } = await loadTargets(fileId)
+    if (targets.length === 0) return null
+
+    return {
+      liittKpl: targets.reduce((sum, row) => sum + row.liittTavoite, 0),
+      fsecKpl: targets.reduce((sum, row) => sum + row.fsecTavoite, 0),
+      kassa: targets.reduce((sum, row) => sum + row.kassaTavoite, 0),
+    }
+  } catch (error) {
+    if (!(error instanceof TavoitteetPuuttuu)) {
+      console.error('[rjmob-summary] tavoitteiden luku epäonnistui', error)
+    }
+    return null
+  }
+}
+
 /** Yksi myyntiseurantataulukko kuukausiavaimineen. */
 type SeurantaSheet = {
   id: string
@@ -128,12 +178,13 @@ type SeurantaSheet = {
  * Versio-osa on avaimessa siksi että valmiin kuukauden merkintä elää vuoden
  * eikä sitä lasketa uudelleen. Kun laskenta korjautuu, vanhat merkinnät eivät
  * korjaudu itsestään: `v2` otettiin käyttöön kun kassakate vaihtui
- * kassaprovisioasteikosta myyntiseurannan asteikkoon (ks. `kassakateOf`), eli
- * vanhoissa merkinnöissä kassakate on kymmenesosa oikeasta. Nosta versiota
- * aina kun jonkin kentän merkitys muuttuu — vanhat avaimet vanhenevat itse.
+ * kassaprovisioasteikosta myyntiseurannan asteikkoon (ks. `kassakateOf`), ja
+ * `v3` kun liittymät vaihtuivat myyjäsummasta myymälärajaukseen. Nosta
+ * versiota aina kun jonkin kentän merkitys muuttuu — vanhat avaimet
+ * vanhenevat itse.
  */
 export function monthCacheKey(month: string): string {
-  return `${RJMOB_SUMMARY_KEY}:v2:${month}`
+  return `${RJMOB_SUMMARY_KEY}:v3:${month}`
 }
 
 /** Kuluva kuukausi YYYY-MM Helsingin aikaa. */
@@ -200,6 +251,28 @@ function fmtEur(n: number): string {
 function changeOf(current: number, previous: number, factor: number): number | null {
   if (previous <= 0) return null
   return ((current * factor - previous) / previous) * 100
+}
+
+/**
+ * Kuukauden liittymät **RJ-Mobin myymälöistä**: kappaleet ja provisio.
+ *
+ * `totals.liittKpl` ja `totals.liittEur` ovat myyjäsummia, ja myyjätaulukko
+ * kattaa koko organisaation myymälät — myyjä lasketaan mukaan siksi että hän
+ * on RJ-Mobin myyjä, ei siksi että myynti tapahtui RJ-Mobin myymälässä. Hubin
+ * paneeli kertoo myymälöiden tuloksen, joten sama rajaus kuin kassakatteessa
+ * ja F-Securessa: viisi myymälää, ständit poistettuina.
+ */
+function liittymatOf(data: DashData): { kpl: number; eur: number } {
+  const stores = Object.values(data.stores)
+
+  if (stores.length === 0) {
+    return { kpl: data.totals.liittKpl, eur: data.totals.liittEur }
+  }
+
+  return {
+    kpl: stores.reduce((sum, store) => sum + store.liittKpl, 0),
+    eur: stores.reduce((sum, store) => sum + store.liittEur, 0),
+  }
 }
 
 /**
@@ -319,11 +392,14 @@ async function summaryFor(
   sheet: SeurantaSheet,
   previousSheet: SeurantaSheet | undefined,
   load: (id: string) => Promise<DashData>,
+  targets: MonthTargets | null = null,
 ): Promise<RjMobSummaryData> {
   const [current, previous] = await Promise.all([
     load(sheet.id),
     previousSheet ? load(previousSheet.id) : Promise.resolve(null),
   ])
+
+  const liittymat = liittymatOf(current)
 
   // Projisoidaan vain jos taulukko on kuluvalta kalenterikuukaudelta.
   const isRunningMonth = sheet.month === currentMonthKey()
@@ -344,6 +420,17 @@ async function summaryFor(
   const runRate = (value: number, fmt: (n: number) => string): string | null =>
     isRunningMonth && !tooEarly ? fmt(value * factor) : null
 
+  /**
+   * Ennusteen osuus tavoitteesta. Valmiissa kuukaudessa ennustetta ei ole,
+   * jolloin vertailu tehdään toteumalla — silloin luku kertoo osuttiinko
+   * tavoitteeseen, mikä on kuukauden jälkeen sama kysymys.
+   */
+  const targetPct = (value: number, target: number): number | null => {
+    if (target <= 0) return null
+    if (isRunningMonth && tooEarly) return null
+    return ((value * (isRunningMonth ? factor : 1)) / target) * 100
+  }
+
   return {
     month: sheet.month,
     monthLabel: monthLabelOf(sheet.name),
@@ -351,26 +438,32 @@ async function summaryFor(
     workdays,
     metrics: {
       liittymat: {
-        display: `${fmtKpl(current.totals.liittKpl)} kpl`,
-        runRate: runRate(current.totals.liittKpl, n => `${fmtKpl(n)} kpl`),
+        display: `${fmtKpl(liittymat.kpl)} kpl`,
+        runRate: runRate(liittymat.kpl, n => `${fmtKpl(n)} kpl`),
+        target: targets ? `${fmtKpl(targets.liittKpl)} kpl` : null,
+        targetPercent: targets ? targetPct(liittymat.kpl, targets.liittKpl) : null,
         // Provisio kulkee kappaleiden rinnalla, ei omana rivinään: se on saman
         // myynnin toinen puoli, ja tuottoseurannan laatta näyttää ne samoin.
-        // Muutosprosentti lasketaan kappaleista, koska rivi on kappalerivi.
-        sub: fmtEur(current.totals.liittEur),
-        changePercent: prev ? changeOf(current.totals.liittKpl, prev.liittKpl, factor) : null,
-      },
-      kassakate: {
-        display: fmtEur(kassakateOf(current)),
-        runRate: runRate(kassakateOf(current), fmtEur),
-        changePercent: prevData
-          ? changeOf(kassakateOf(current), kassakateOf(prevData), factor)
-          : null,
+        // Ennuste ja tavoite lasketaan kappaleista, koska rivi on kappalerivi.
+        sub: fmtEur(liittymat.eur),
+        changePercent: prev ? changeOf(liittymat.kpl, prev.liittKpl, factor) : null,
       },
       fsecure: {
         display: `${fmtKpl(fsecKplOf(current))} kpl`,
         runRate: runRate(fsecKplOf(current), n => `${fmtKpl(n)} kpl`),
+        target: targets ? `${fmtKpl(targets.fsecKpl)} kpl` : null,
+        targetPercent: targets ? targetPct(fsecKplOf(current), targets.fsecKpl) : null,
         changePercent: prevData
           ? changeOf(fsecKplOf(current), fsecKplOf(prevData), factor)
+          : null,
+      },
+      kassakate: {
+        display: fmtEur(kassakateOf(current)),
+        runRate: runRate(kassakateOf(current), fmtEur),
+        target: targets ? fmtEur(targets.kassa) : null,
+        targetPercent: targets ? targetPct(kassakateOf(current), targets.kassa) : null,
+        changePercent: prevData
+          ? changeOf(kassakateOf(current), kassakateOf(prevData), factor)
           : null,
       },
     },
@@ -388,7 +481,9 @@ export async function buildRjMobSummary(month?: string): Promise<RjMobSummaryDat
   const index = month ? sheets.findIndex(sheet => sheet.month === month) : 0
   if (index < 0) throw new Error(`Myyntiseurantaa kuukaudelta ${month} ei löytynyt`)
 
-  return summaryFor(sheets[index], sheets[index + 1], dashLoader())
+  const targets = await loadMonthTargets(sheets[index].id)
+
+  return summaryFor(sheets[index], sheets[index + 1], dashLoader(), targets)
 }
 
 export type RjMobRefreshResult = {
@@ -418,6 +513,12 @@ export async function refreshRjMobSummaries(): Promise<RjMobRefreshResult> {
 
   const today = currentMonthKey()
   const load = dashLoader()
+
+  // Tavoitteet luetaan vain uusimmasta kuukaudesta: hub näyttää aina kuluvaa
+  // kuukautta, ja `loadTargets` on neljä Sheets-kutsua lisää per kuukausi.
+  // Kolmentoista kuukauden tavoitteiden hakeminen neljästi vuorokaudessa
+  // olisi satoja kutsuja dataan jota paneeli ei näytä.
+  const targets = await loadMonthTargets(sheets[0].id)
   const months: string[] = []
   const failed: string[] = []
   let computed = 0
@@ -443,7 +544,7 @@ export async function refreshRjMobSummaries(): Promise<RjMobRefreshResult> {
     }
 
     try {
-      const data = await summaryFor(sheet, sheets[i + 1], load)
+      const data = await summaryFor(sheet, sheets[i + 1], load, isNewest ? targets : null)
       computed++
 
       // Uusin kuukausi menee hubin avaimeen, valmis kuukausi lisäksi omaansa.

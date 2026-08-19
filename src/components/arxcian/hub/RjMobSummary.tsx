@@ -26,6 +26,21 @@ type Metric = {
   icon: string
 }
 
+/**
+ * Tavoiteprosentin väri, tavoitteet_ja_runrate_ohjeen portaat: yli 80 vihreä,
+ * 60–79 keltainen, 50–59 oranssi, alle 50 punainen.
+ *
+ * Arxcianin paletissa ei ole erillistä oranssia — se on tarkoituksella tiukka
+ * ja kaikki värit tulevat `.arxcian-root`in muuttujista. Kaksi keskimmäistä
+ * porrasta erotetaan siksi saman keltaisen kirkkaudella eikä uudella sävyllä.
+ */
+function targetColor(pct: number): string {
+  if (pct >= 80) return 'text-ax-up'
+  if (pct >= 60) return 'text-ax-warn'
+  if (pct >= 50) return 'text-ax-warn/70'
+  return 'text-ax-down'
+}
+
 const METRICS: readonly Metric[] = [
   { key: 'liittymat', label: 'Liittymät', icon: '▣' },
   { key: 'fsecure', label: 'F-Secure', icon: '◇' },
@@ -81,11 +96,10 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                     </span>
                     {/* Tarkentava luku puuttuu vanhasta välimuistimerkinnästä,
                         joten rivi on rakennettava toimimaan ilman sitä.
-                        Sama koko ja paino kuin pääluvulla — provisio on luku
-                        jota luetaan, ei alaviite. Sävy on himmeämpi, jotta
-                        rivillä näkee yhä kumpi on otsikon mukainen luku. */}
+                        Sama koko, paino ja väri kuin pääluvulla — provisio on
+                        luku jota luetaan, ei alaviite. */}
                     {value.sub && (
-                      <span className="block text-xl font-light tabular-nums text-ax-faint">
+                      <span className="block text-xl font-light tabular-nums text-ax-text">
                         {value.sub}
                       </span>
                     )}
@@ -98,8 +112,15 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                           {value.runRate}
                         </span>
                         <span className="mt-0.5 block text-[11px] text-ax-faint">
-                          kuun loppuun
+                          {value.target ? `tavoite ${value.target}` : 'kuun loppuun'}
                         </span>
+                        {value.targetPercent !== null && value.targetPercent !== undefined && (
+                          <span
+                            className={`mt-0.5 block text-[13px] font-medium tabular-nums ${targetColor(value.targetPercent)}`}
+                          >
+                            {value.targetPercent.toFixed(0)} % tavoitteesta
+                          </span>
+                        )}
                       </>
                     ) : (
                       <span className="block text-[11px] text-ax-faint">—</span>
