@@ -1,4 +1,5 @@
 import { fetchAndCache } from './cache'
+import { nowLocalISOHelsinki } from './time'
 import { GLOBE_CITIES } from './globe/cities'
 
 // Oletussijainti Helsinki, koska Albin ja Arbnor toimivat pääkaupunkiseudulla.
@@ -79,14 +80,19 @@ async function fetchFromOpenMeteo(): Promise<WeatherData> {
   if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`)
   const data = (await res.json()) as OpenMeteoResponse
 
-  const now = new Date()
+  // Vertailu merkkijonona eikä Daten kautta: leimat ovat vyöhykemerkinnätöntä
+  // Helsingin aikaa, jolloin new Date() tulkitsisi ne Vercelin UTC-vyöhykkeellä
+  // ja ennuste alkaisi kesällä kolme tuntia menneisyydestä. Sama ansa jonka
+  // sunClock kiertää — virhe ei näy paikallisessa kehityksessä, koska Macin
+  // vyöhyke on Europe/Helsinki.
+  const now = nowLocalISOHelsinki()
   const hourly = data.hourly.time
     .map((time, i) => ({
       time,
       temperature: data.hourly.temperature_2m[i],
       precipitationProbability: data.hourly.precipitation_probability[i],
     }))
-    .filter(h => new Date(h.time) >= now)
+    .filter(h => h.time >= now)
     .slice(0, 24)
 
   const daily = (data.daily?.time ?? []).flatMap<SunDay>((date, i) => {
@@ -123,14 +129,19 @@ export async function getWeather(force = false) {
    --------------------------------------------------------------- */
 
 /**
- * Päivän auringonnousu ja -lasku. Palauttaa ensisijaisesti annetun päivän
- * merkinnän; jos sitä ei ole, ensimmäisen tulevan. Open-Meteon daily-lohko
- * alkaa aina tästä päivästä, joten paluuarvo on null vain jos välimuistissa
- * on vanhan muotoinen merkintä ilman daily-kenttää.
+ * Annetun päivän auringonnousu ja -lasku, tai null jos sitä päivää ei ole.
+ *
+ * Vain täsmäosuma kelpaa. Aiempi varahaara palautti ensimmäisen tulevan
+ * päivän, jolloin vanhentunut välimuisti olisi näyttänyt huomisen nousun ja
+ * laskun tämän päivän lukuina ilman mitään merkkiä siitä — juuri se mitä
+ * aurinkopaneelilta ei haluta. Tyhjä lohko on rehellisempi kuin väärän päivän
+ * kellonaika. Open-Meteon daily alkaa aina tästä päivästä, joten normaalisti
+ * osuma löytyy; null tarkoittaa että data on eri päivältä tai vanhan muotoinen
+ * merkintä ilman daily-kenttää.
  */
 export function pickSunDay(daily: SunDay[] | undefined, isoDate: string): SunDay | null {
   if (!daily || daily.length === 0) return null
-  return daily.find(d => d.date === isoDate) ?? daily.find(d => d.date > isoDate) ?? null
+  return daily.find(d => d.date === isoDate) ?? null
 }
 
 /**
