@@ -91,7 +91,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                     <span className="block text-[11px] uppercase tracking-wide text-ax-faint">
                       {metric.label}
                     </span>
-                    <span className="block text-xl font-light tabular-nums text-ax-text">
+                    <span className="block whitespace-nowrap text-xl font-light tabular-nums text-ax-text">
                       {value.display}
                     </span>
                     {/* Tarkentava luku puuttuu vanhasta välimuistimerkinnästä,
@@ -99,7 +99,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                         Sama koko, paino ja väri kuin pääluvulla — provisio on
                         luku jota luetaan, ei alaviite. */}
                     {value.sub && (
-                      <span className="block text-xl font-light tabular-nums text-ax-text">
+                      <span className="block whitespace-nowrap text-xl font-light tabular-nums text-ax-text">
                         {value.sub}
                       </span>
                     )}
@@ -108,7 +108,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                   <span className="self-center text-right">
                     {value.runRate ? (
                       <>
-                        <span className="block text-lg font-light tabular-nums text-ax-accent">
+                        <span className="block whitespace-nowrap text-lg font-light tabular-nums text-ax-accent">
                           {value.runRate}
                         </span>
                         <span className="mt-0.5 block text-[11px] text-ax-faint">
@@ -118,17 +118,22 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                             tavoitteet-sivun oma RR% vertaa toteumaa. Kaksi eri
                             kysymystä, joten kumpikin luku on oikein omassa
                             paikassaan — siksi selite sanoo "ennuste yltää". */}
+                        {/* Rivit pidetään lyhyinä: paneeli on noin 200 px
+                            leveä, ja pitkä selite levittää tämän sarakkeen
+                            niin että vasemman puolen luku rivittyy ("648" /
+                            "kpl"). Korkeutta on varaa, leveyttä ei. */}
                         {value.targetPercent !== null && value.targetPercent !== undefined && (
                           <>
                             <span
                               className={`mt-2 block text-[15px] font-medium tabular-nums ${targetColor(value.targetPercent)}`}
                             >
-                              {value.targetPercent.toFixed(0)} %
+                              {value.targetPercent.toFixed(0)} % tavoitteesta
                             </span>
-                            <span className="block text-[10px] leading-tight text-ax-faint">
-                              ennuste yltää
-                              {value.target ? ` tavoitteesta ${value.target}` : ' tavoitteesta'}
-                            </span>
+                            {value.target && (
+                              <span className="block text-[10px] text-ax-faint">
+                                tavoite {value.target}
+                              </span>
+                            )}
                           </>
                         )}
                       </>
