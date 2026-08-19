@@ -169,8 +169,15 @@ function monthLabelOf(fileName: string): string {
   return (m ? m[1] : fileName).trim()
 }
 
+/**
+ * Kappalemäärä kokonaislukuna ilman tuhaterotinta, esim. "1152".
+ *
+ * Erotin jätetään pois samasta syystä kuin euroista (`fmtEur`), ja ennen
+ * kaikkea siksi että ne ovat samassa sarakkeessa allekkain: "1 152 kpl" ja
+ * "11033 €" vierekkäin näyttää siltä että toinen on muotoiltu väärin.
+ */
 function fmtKpl(n: number): string {
-  return Math.round(n).toLocaleString('fi-FI')
+  return String(Math.round(n))
 }
 
 /**
