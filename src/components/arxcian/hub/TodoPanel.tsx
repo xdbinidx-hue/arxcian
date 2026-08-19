@@ -64,14 +64,22 @@ export async function TodoPanel({ delay }: { delay?: number }) {
   return (
     <Panel
       title="To-do"
-      meta={myohassa > 0 ? `${myohassa} myöhässä` : undefined}
+      /* Myöhässä-luku kuuluu actioniin eikä metaan: Panel näyttää actionin
+         metan sijaan, ei niiden rinnalla, joten meta jäisi renderöimättä. */
       action={
-        <Link
-          href="/arxcian/personal"
-          className="text-[10px] text-ax-accent transition-colors hover:text-ax-text"
-        >
-          + Lisää uusi
-        </Link>
+        <>
+          {myohassa > 0 && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-ax-down">
+              {myohassa} myöhässä
+            </span>
+          )}
+          <Link
+            href="/arxcian/personal"
+            className="text-[10px] text-ax-accent transition-colors hover:text-ax-text"
+          >
+            + Lisää uusi
+          </Link>
+        </>
       }
       delay={delay}
       empty="Ei avoimia tehtäviä — lisää Personal-osiossa."
