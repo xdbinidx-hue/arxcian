@@ -110,7 +110,11 @@ Kaikki RJ-Mobin datapoiminta- ja laskentasäännöt on kirjoitettu auki Google
 Driveen kansioon **Arxcian > rjmob > Ohjeet** (kansio-id
 `1d8o0ObBBxV5b7xMA-tH014Q8xsPILWGp`): `myyntiseuranta_ohje`,
 `tuottoseuranta_ohje`, `tavoitteet_ja_runrate_ohje`, `trendit_ohje`,
-`tilannekatsaus_ohje`, `maksukuitti_ohje` ja `rj-mob_myyjät`.
+`tilannekatsaus_ohje` ja `maksukuitti_ohje`.
+
+`rj-mob_myyjät` **ei ole Ohjeet-kansiossa** vaan kansiossa **Infopaketti**
+(`1sj6Qg5NTgqv634gYBIZhta8ipdMzJrin`) — todettu 20.8.2026 palvelutilillä.
+Ohjeet-kansiossa on kuusi tiedostoa, ei seitsemää.
 
 **Tarkista ohje ennen kuin muutat laskentaa, äläkä päättele kaavaa koodista
 taaksepäin.** Koodi kertoo mitä tehdään, ohje kertoo miksi — ja ohje on se
