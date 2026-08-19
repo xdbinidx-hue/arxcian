@@ -399,6 +399,38 @@ eivät kuudessa erillisessä toteutuksessa. Tila kootaan
 | MARKKINAT | `trading-quotes` | `trading:quotes` |
 | UUTTA (watch) | `watch-trading` + `watch-personal` | molempien tilat yhdistettynä |
 
+### Hubin TO-DO on tehtävälista, ei tavoitelista
+
+Päätös 20.8.2026. Paneeli
+([TodoPanel.tsx](src/components/arxcian/hub/TodoPanel.tsx)) näytti 11.8.
+alkaen **kesken olevia tavoitteita**, ja sen oma kommentti perusteli miksi:
+toinen rinnakkainen lista tarkoittaisi omaa tallennustaan ja kahta paikkaa
+jossa sama asia voi olla kesken. Perustelu oli oikea silloin kun tavoitteet
+olivat ainoa lista.
+
+Seuraavana päivänä rakennettiin oikea päivätehtävälista
+([todos.ts](src/lib/arxcian/personal/todos.ts)) päivineen ja muistutuksineen,
+eikä paneelia päivitetty. Lopputulos oli pahempi kuin se mitä perustelu esti:
+kaksi listaa oli olemassa joka tapauksessa, ja etusivu näytti niistä sen jonka
+otsikko ei ollut "Tehtävät". **Älä siis palauta tavoitteita tähän paneeliin** —
+ne ovat etusivulla omina lukuinaan TÄNÄÄN- ja tavoitepaneeleissa.
+
+Rivit ovat linkkejä eivätkä valintaruutuja: valmiiksi merkitseminen kuuluu
+sinne missä tehtävä elää, eikä hub saa olla toinen kirjoituspiste samaan
+dataan. Päivä luetaan `todayISOHelsinki()`llä, koska paneeli renderöidään
+palvelimella eikä selaimen paikallista päivää ole saatavilla — sama valinta
+kuin TÄNÄÄN-paneelissa, ks. `Todo.date`n kommentti
+[types.ts](src/lib/arxcian/personal/types.ts):ssä.
+
+**Muistutus on sivun oma ajastin, ei push.** Se soi vain kun arxcian on auki
+selaimessa, ja käyttöliittymä sanoo sen itse — muuten klo 9:00 asetettu
+muistutus näyttäisi lupaukselta joka ei pidä suljetulla sovelluksella.
+Ilmoitus annetaan `registration.showNotification`illa eikä
+`new Notification()`illa, koska jälkimmäinen heittää iOS:n kotiruutu-PWA:ssa
+`Illegal constructor`in vaikka lupa on myönnetty. Kun push-kanava on
+korjattu, tehtävämuistutukset ovat oma lukijansa saman
+kuljetuksen päällä — älä kirjoita lähetystä TodoListiin.
+
 **Ilman nappia jäävät TÄNÄÄN, TO-DO, KALENTERI, ISTUNNOT ja PIKATOIMINNOT** —
 niiden data ei tule ajastetusta hausta. Kalenteri on näistä se joka näyttää
 puutteelta muttei ole: tapahtumat haetaan käyttäjän omalla OAuth-tokenilla
