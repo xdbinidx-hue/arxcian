@@ -23,6 +23,15 @@ RJ-Mobin sivut saavat arxcianin tumman kehyksen (Shell), mutta niiden **data pys
 - Kysy ennen uusia isoja riippuvuuksia tai maksullisia palveluita.
 - Jos datalähde ei ole luotettava (esim. Forex Factory), sano se suoraan — älä paikkaa hataralla ratkaisulla ilman lupaa.
 
+**Jos vika näkyy lokissa mutta ei vastauksessa, se on bugi — ei kosmetiikkaa.**
+Jokainen `"ok": true` jonka takana ei oikeasti tapahtunut mitään maksaa puoli
+tuntia väärän asian korjaamista, ja väärä virheviesti maksaa saman: testi-push
+kehotti sallimaan ilmoitukset silloin kun avaimet olivat väärin palvelimella.
+Kun tulos niellään jotta muu työ ei kaadu — ja se on usein oikein — nieltyä
+tulosta ei silti saa jättää kertomatta: laita se vastaukseen, laske se
+epäonnistuneisiin, ja pidä eri asiat eri lukuina (kalenteririvit ja jonotetut
+ilmoitukset eivät ole sama luku).
+
 ## Koodityyli
 
 Noudata olemassa olevan koodin tyyliä:
