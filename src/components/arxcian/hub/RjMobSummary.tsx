@@ -112,14 +112,24 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                           {value.runRate}
                         </span>
                         <span className="mt-0.5 block text-[11px] text-ax-faint">
-                          {value.target ? `tavoite ${value.target}` : 'kuun loppuun'}
+                          kuun loppuun
                         </span>
+                        {/* Prosentti vertaa **ennustetta** tavoitteeseen, kun
+                            tavoitteet-sivun oma RR% vertaa toteumaa. Kaksi eri
+                            kysymystä, joten kumpikin luku on oikein omassa
+                            paikassaan — siksi selite sanoo "ennuste yltää". */}
                         {value.targetPercent !== null && value.targetPercent !== undefined && (
-                          <span
-                            className={`mt-0.5 block text-[13px] font-medium tabular-nums ${targetColor(value.targetPercent)}`}
-                          >
-                            {value.targetPercent.toFixed(0)} % tavoitteesta
-                          </span>
+                          <>
+                            <span
+                              className={`mt-2 block text-[15px] font-medium tabular-nums ${targetColor(value.targetPercent)}`}
+                            >
+                              {value.targetPercent.toFixed(0)} %
+                            </span>
+                            <span className="block text-[10px] leading-tight text-ax-faint">
+                              ennuste yltää
+                              {value.target ? ` tavoitteesta ${value.target}` : ' tavoitteesta'}
+                            </span>
+                          </>
                         )}
                       </>
                     ) : (
