@@ -460,7 +460,10 @@ Erotin on sama kuin YouTube-hauissa: **saman ajon muiden laitteiden tulos.**
 Poistopäätös tehdään vasta kun koko erä on lähetetty
 ([send.ts](src/lib/arxcian/push/send.ts):n `ratkaiseAvainvirheet`), ja
 poistetaan vain kun **molemmat** pätevät: jokin toinen laite sai ilmoituksen
-samassa erässä, ja tämän tilauksen oma avain ei ole nykyinen.
+samassa erässä **samasta push-palvelusta**, ja tämän tilauksen oma avain ei ole
+nykyinen. Palvelurajaus on olennainen: Apple ja Google tarkastavat
+`sub`-kentän, kellon ja allekirjoituksen erikseen, joten FCM:ään mennyt
+ilmoitus ei kerro mitään siitä miksi Apple hylkäsi pyynnön.
 
 **Myös `vanha` vaatii sen onnistuneen lähetyksen**, vaikka se näyttää suoralta
 todisteelta. "Vanha" tarkoittaa eroa nykyiseen `VAPID_PUBLIC_KEY`hyn, joten se

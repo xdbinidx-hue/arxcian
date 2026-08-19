@@ -49,10 +49,14 @@ export async function POST() {
  * annettu. Palvelun antama virhe on aina tarkempi tieto kuin laitelistan
  * tila, joten se katsotaan ensin.
  *
- * Kolme poistosyytä pidetään erillään, koska ne vaativat eri korjauksen:
- * palvelimen avainpari korjataan Vercelin ympäristömuuttujiin, vanhentunut
- * tilaus korjaantuu itsestään sivun avaamisella, ja kuollut tilaus vaatii
+ * Poistosyyt pidetään erillään, koska ne vaativat eri korjauksen: palvelimen
+ * asetusvirhe korjataan Vercelin ympäristömuuttujiin ja kuollut tilaus vaatii
  * ilmoitusluvan uudelleen.
+ *
+ * `prunedStale` ei saa omaa haaraansa, koska sitä ei voi tässä nähdä:
+ * kelpaamattoman avaimen poisto edellyttää onnistunutta lähetystä samaan
+ * push-palveluun, ja tänne päädytään vain kun mikään ei mennyt perille.
+ * Haara olisi viesti jota kukaan ei voi saada.
  */
 function syy(result: SendResult): string {
   // Lähetykset ajetaan rinnakkain, joten failures[0] on se joka sattui
@@ -86,12 +90,6 @@ function syy(result: SendResult): string {
     }
 
     return `Lähetys epäonnistui (${koodiTeksti}).`
-  }
-
-  if (result.prunedStale > 0) {
-    // Ei luvata automaattista korjausta: paneeli uusii vain sen laitteen jolla
-    // sivu on auki, ja muut laitteet vaativat oman käyntinsä.
-    return `${result.prunedStale} tilausta oli tehty vanhalla VAPID-avaimella eikä kelvannut enää, joten ne poistettiin. Ota push käyttöön uudelleen tällä laitteella — muut laitteet uusivat tilauksensa itse kun tämä sivu avataan niillä.`
   }
 
   if (result.pruned > 0) return 'Tilaus oli vanhentunut ja poistettiin. Salli ilmoitukset uudelleen.'

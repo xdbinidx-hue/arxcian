@@ -9,8 +9,10 @@ import {
   subscribeThisDevice,
   unsubscribeThisDevice,
 } from '@/lib/arxcian/push/client'
-
-type KeyState = 'nykyinen' | 'vanha' | 'tuntematon'
+// Vain tyyppinä: `import type` katoaa käännöksessä, joten `web-push` ei
+// päädy selainniputukseen. Käsin kopioitu unioni ajautuisi erilleen juuri
+// siinä kohtaa jossa avaintilan väärä tulkinta maksaa eniten.
+import type { KeyState, VapidKeyCheck } from '@/lib/arxcian/push/send'
 
 type Device = {
   endpoint: string
@@ -21,7 +23,7 @@ type Device = {
 }
 
 type Diag = {
-  avainpari: 'eheä' | 'epäsuhta' | 'viallinen' | 'puuttuu'
+  avainpari: VapidKeyCheck
   subject: { arvo: string | null; kelpaa: boolean }
   sendUrl: string
   jonossa: { yhteensa: number; tulevat: number }
@@ -68,10 +70,20 @@ export function PushDevices() {
     try {
       const res = await fetch('/api/arxcian/push/subscribe')
       const data = await res.json()
+      // Tilaa ei saa päivittää epäonnistuneesta vastauksesta: vanhentunut
+      // istunto vastaa 401:llä, jolloin tyhjä `devices` näyttäisi siltä että
+      // laitteet on poistettu ja puuttuva `publicKey` siltä että push on
+      // konfiguroimatta. Kumpikin on väärä syy oikeaan oireeseen.
+      if (!res.ok) throw new Error(data.error ?? 'Laitelistan haku epäonnistui.')
+
       setPublicKey(data.publicKey ?? null)
       setDevices(data.devices ?? [])
-    } catch {
-      setError('Laitelistan haku epäonnistui.')
+      // Onnistunut haku kumoaa aiemman virheen: muuten yksi ohimenevä
+      // verkkokatko jäisi näkyviin ja peittäisi myöhemmän ilmoituksen,
+      // koska näkymä näyttää virheen ilmoituksen sijaan.
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Laitelistan haku epäonnistui.')
     }
 
     // Omassa suojassaan, ei `finally`-lohkossa: `getRegistration` ja
@@ -151,11 +163,11 @@ export function PushDevices() {
       await liita(publicKey)
       setNotice(enabledHere ? 'Laite liitettiin uudelleen.' : 'Laite lisätty.')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Tilaus epäonnistui.')
-      // Vanha tilaus on jo peruttu tässä vaiheessa, joten laite on ilman
-      // tilausta. Se on kerrottava, muuten käyttäjä luulee tilanteen olevan
-      // ennallaan.
+      // Lista haetaan ennen virheen asettamista: vanha tilaus on jo peruttu,
+      // joten näkymä olisi muuten väärässä — ja onnistunut haku nollaa
+      // virheen, joten järjestys toisin päin pyyhkisi juuri asetetun viestin.
       await refresh()
+      setError(e instanceof Error ? e.message : 'Tilaus epäonnistui.')
     } finally {
       setBusy(false)
     }
@@ -174,21 +186,22 @@ export function PushDevices() {
 
     korjattu.current = true
     setBusy(true)
-    void liita(publicKey)
-      .then(() => setNotice('Tämän laitteen tilaus oli vanhalla avaimella — laite liitettiin uudelleen.'))
-      .catch(e =>
+    void (async () => {
+      try {
+        await liita(publicKey)
+        setNotice('Tämän laitteen tilaus oli vanhalla avaimella — laite liitettiin uudelleen.')
+      } catch (e) {
+        // Sama järjestys kuin `enable`ssä: haku ensin, viesti sen jälkeen.
+        await refresh()
         setError(
           `Laitteen automaattinen uudelleenliitos epäonnistui: ${
             e instanceof Error ? e.message : 'tuntematon syy'
           }. Paina "Ota käyttöön tällä laitteella".`,
-        ),
-      )
-      // Lista haetaan uudelleen myös epäonnistuessa: vanha tilaus on jo
-      // peruttu, joten näkymä olisi muuten väärässä.
-      .finally(() => {
+        )
+      } finally {
         setBusy(false)
-        void refresh()
-      })
+      }
+    })()
   }, [busy, liita, loading, publicKey, refresh, thisEndpoint, vanhentunut])
 
   const remove = async (endpoint: string) => {
@@ -222,9 +235,10 @@ export function PushDevices() {
       const res = await fetch('/api/arxcian/push/test', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
-        // Poistot tapahtuivat vaikka lähetys epäonnistui, joten lista on
-        // haettava uudelleen myös virhehaarassa.
-        if (data.result?.pruned || data.result?.prunedStale) await refresh()
+        // Kuolleet tilaukset poistettiin vaikka lähetys epäonnistui, joten
+        // lista on haettava uudelleen myös virhehaarassa. `prunedStale` ei voi
+        // tänne osua: se edellyttää onnistunutta lähetystä samaan palveluun.
+        if (data.result?.pruned) await refresh()
         return setError(data.error ?? 'Testi epäonnistui.')
       }
 

@@ -39,9 +39,10 @@ export type PushPayload = {
  * Vercelin ympäristömuuttujiin, toinen puhelimessa — joten pelkkä statuskoodi
  * ei riitä vastaukseen.
  *
- * `tilauksen-avain` ei esiinny tässä listassa: sellainen tilaus poistetaan
- * eikä jää virheeksi kerrottavaksi. `avain-epäselvä` on rehellinen kolmas
- * tila — allekirjoitus hylättiin, eikä kumpaakaan voi osoittaa.
+ * Vanhaan avaimeen sidottu tilaus ei yleensä päädy tänne vaan poistetaan —
+ * mutta vain jos sama push-palvelu todisti samassa erässä toimivansa. Ilman
+ * sitä todistetta syy on `avain-epäselvä`: allekirjoitus hylättiin, eikä
+ * kumpaakaan päätä voi osoittaa.
  */
 export type FailureCause = 'palvelimen-avain' | 'avain-epäselvä' | 'muu'
 
@@ -70,11 +71,13 @@ export type SendResult = {
   /** Kuolleet tilaukset jotka poistettiin (404/410): sovellus poistettu tai lupa peruttu. */
   pruned: number
   /**
-   * Vanhaan VAPID-avaimeen sidotut tilaukset jotka poistettiin.
+   * Tilaukset jotka poistettiin kelpaamattoman avaimen takia.
    *
-   * Eri luku kuin `pruned`, koska syy ja korjaus ovat eri: kuollut tilaus
-   * vaatii luvan uudelleen, vanhentunut avain vain uuden tilauksen samalla
-   * luvalla. Yhteen laskettuina kumpaakaan ei voisi kertoa oikein.
+   * Mukana sekä kirjatusti vanha avain että kirjaamaton (`tuntematon`) —
+   * varmuus eroaa, korjaus ei. Eri luku kuin `pruned`, koska siinä syy ja
+   * korjaus ovat eri: kuollut tilaus vaatii ilmoitusluvan uudelleen,
+   * kelpaamaton avain vain uuden tilauksen samalla luvalla. Yhteen
+   * laskettuina kumpaakaan ei voisi kertoa oikein.
    */
   prunedStale: number
   /** Muut virheet: verkko, palvelun katko, palvelimen avainvirhe. Näitä ei poisteta. */
@@ -255,7 +258,7 @@ export async function sendToUser(user: UserId, payload: PushPayload): Promise<Se
     }),
   )
 
-  const ratkaisu = ratkaiseAvainvirheet(avainvirheet, delivered.length)
+  const ratkaisu = ratkaiseAvainvirheet(avainvirheet, delivered)
   failures.push(...ratkaisu.failures)
   await reconcileSubscriptions(user, { delivered, dead: [...dead, ...ratkaisu.stale] })
 
@@ -279,16 +282,19 @@ type Avainvirhe = { sub: PushSubscriptionRecord; status: number; body?: string }
  * on lähettävässä päässä eikä yhdessäkään tilauksessa, eikä silloin kosketa
  * mitään — myöskään sitä tilausta jonka avain näyttää vanhalta.
  *
- * **Miksi myös `vanha` vaatii onnistuneen lähetyksen.** "Vanha" tarkoittaa
+ * **Todiste on palvelukohtainen.** Onnistunut toimitus kelpaa todisteeksi vain
+ * saman push-palvelun sisällä: `sub`-kenttä, kello ja allekirjoituksen
+ * yksityiskohdat tarkastetaan Applella ja Googlella erikseen, joten FCM:ään
+ * mennyt ilmoitus ei kerro mitään siitä miksi Apple hylkäsi pyynnön. Ilman
+ * tätä rajausta iPhonen tilaus poistuisi silloin kun kone sai ilmoituksen ja
+ * vika oli palvelimen asetuksissa.
+ *
+ * **Miksi myös `vanha` vaatii sen onnistuneen lähetyksen.** "Vanha" tarkoittaa
  * eroa nykyiseen `VAPID_PUBLIC_KEY`hyn, joten se todistaa jotain vain jos
  * nykyinen julkinen avain on itse luotettava. Tavallisin tapa saada epäsuhta
  * pari on päivittää vain toinen puolikas — jolloin *jokainen* tilaus näyttää
  * vanhalta ja *jokainen* lähetys saa 403:n. Ehdoton poisto veisi silloin koko
  * laitelistan yhdellä ajolla palvelimen asetusvirheestä.
- *
- * Poistetaan siis vain kun jokin toinen laite sai ilmoituksen samassa erässä
- * — se on ainoa todiste siitä että avainpari, `sub`-kenttä ja kello ovat
- * kunnossa — ja tämän tilauksen oma avain ei ole nykyinen.
  *
  * **Seuraus joka on tietoinen valinta:** yhden laitteen käyttäjältä ei
  * koskaan poisteta mitään täällä, koska hänen ainoan lähetyksensä
@@ -299,15 +305,21 @@ type Avainvirhe = { sub: PushSubscriptionRecord; status: number; body?: string }
  */
 function ratkaiseAvainvirheet(
   virheet: Avainvirhe[],
-  onnistuneita: number,
+  onnistuneet: string[],
 ): { stale: string[]; failures: SendFailure[] } {
+  const toimivatPalvelut = new Set(onnistuneet.map(hostOf).filter((h): h is string => Boolean(h)))
   const stale: string[] = []
   const failures: SendFailure[] = []
 
   for (const { sub, status, body } of virheet) {
     const tila = subscriptionKeyState(sub)
+    const host = hostOf(sub.endpoint)
+    // Sama push-palvelu on juuri todistettu toimivaksi, joten palvelinpää on
+    // pois suljettu ja jäljelle jää tämän tilauksen oma avain. Jäsentymätön
+    // päätepiste ei ole todiste mistään, joten se ei koskaan täsmää.
+    const palveluTodettuToimivaksi = Boolean(host && toimivatPalvelut.has(host))
 
-    if (onnistuneita > 0 && tila !== 'nykyinen') {
+    if (palveluTodettuToimivaksi && tila !== 'nykyinen') {
       stale.push(sub.endpoint)
       console.warn('[push] tilauksen avain ei kelpaa, poistetaan', {
         endpointHost: hostOf(sub.endpoint),
@@ -323,9 +335,9 @@ function ratkaiseAvainvirheet(
       statusCode: status,
       body,
       endpointHost: hostOf(sub.endpoint),
-      // Onnistuneita nolla tarkoittaa ettei kummastakaan päästä voi sanoa
-      // mitään varmaa, olipa tämän tilauksen kirjattu avain mikä tahansa.
-      syy: onnistuneita === 0 && tila !== 'nykyinen' ? 'avain-epäselvä' : 'palvelimen-avain',
+      // Ilman saman palvelun onnistumista ei voi sanoa kummasta päästä vika
+      // on, olipa tämän tilauksen kirjattu avain mikä tahansa.
+      syy: !palveluTodettuToimivaksi && tila !== 'nykyinen' ? 'avain-epäselvä' : 'palvelimen-avain',
     }
     failures.push(failure)
     console.error('[push] lähetys epäonnistui', {
