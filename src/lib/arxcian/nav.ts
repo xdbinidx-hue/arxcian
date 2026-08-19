@@ -37,7 +37,7 @@ export const SECTIONS: readonly Section[] = [
     id: 'personal',
     label: 'Personal',
     href: '/arxcian/personal',
-    description: 'Kalenteri, tavoitteet ja rutiinit',
+    description: 'Tehtävät, kalenteri, tavoitteet ja rutiinit',
   },
 ]
 

@@ -3,10 +3,12 @@ import { currentUser, currentOwner } from '@/lib/session'
 import { getGoals } from '@/lib/arxcian/personal/goals'
 import { getHabits } from '@/lib/arxcian/personal/habits'
 import { getNotes } from '@/lib/arxcian/personal/notes'
+import { getTodos } from '@/lib/arxcian/personal/todos'
 import { getCalendarStatus } from '@/lib/arxcian/personal/calendar/events'
 import { GoalsPanel } from '@/components/arxcian/personal/GoalsPanel'
 import { HabitTracker } from '@/components/arxcian/personal/HabitTracker'
 import { NotesInbox } from '@/components/arxcian/personal/NotesInbox'
+import { TodoList } from '@/components/arxcian/personal/TodoList'
 import { CalendarPanel } from '@/components/arxcian/personal/calendar/CalendarPanel'
 import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 
@@ -29,10 +31,11 @@ export default async function PersonalPage({
   const owner = await currentOwner()
   const user = await currentUser()
 
-  const [goals, habits, notes, calendar] = await Promise.all([
+  const [goals, habits, notes, todos, calendar] = await Promise.all([
     getGoals(user),
     getHabits(user),
     getNotes(user),
+    getTodos(user),
     owner
       ? getCalendarStatus(owner, requestOrigin())
       : Promise.resolve(CALENDAR_DISCONNECTED),
@@ -42,12 +45,14 @@ export default async function PersonalPage({
     <div className="mx-auto max-w-6xl">
       <header className="ax-rise pb-6 pt-2">
         <h1 className="text-2xl font-light tracking-tight text-ax-text">Personal</h1>
-        <p className="mt-1 text-[13px] text-ax-dim">Kalenteri, tavoitteet ja rutiinit</p>
+        <p className="mt-1 text-[13px] text-ax-dim">Päivän tehtävät, kalenteri, tavoitteet ja rutiinit</p>
       </header>
 
       <div className="mb-4">
         <CalendarPanel status={calendar} notice={searchParams.kalenteri} />
       </div>
+
+      <div className="mb-4">{owner && <TodoList initialTodos={todos} currentUser={owner} />}</div>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-2">
         {owner && <GoalsPanel initialGoals={goals} currentUser={owner} />}
