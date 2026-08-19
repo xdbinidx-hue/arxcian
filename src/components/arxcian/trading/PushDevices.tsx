@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Panel } from '@/components/arxcian/Panel'
 import { timeAgo } from '@/lib/arxcian/time'
 import {
@@ -10,11 +10,23 @@ import {
   unsubscribeThisDevice,
 } from '@/lib/arxcian/push/client'
 
+type KeyState = 'nykyinen' | 'vanha' | 'tuntematon'
+
 type Device = {
   endpoint: string
   label: string
   createdAt?: number
   lastSentAt?: number | null
+  avainTila?: KeyState
+}
+
+type Diag = {
+  avainpari: 'eheä' | 'epäsuhta' | 'puuttuu'
+  subject: { arvo: string | null; kelpaa: boolean }
+  sendUrl: string
+  jonossa: { yhteensa: number; tulevat: number }
+  qstash: { ok: boolean; error?: string }
+  env: Record<string, boolean>
 }
 
 /**
@@ -37,6 +49,12 @@ export function PushDevices() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [diag, setDiag] = useState<Diag | null>(null)
+
+  // Automaattinen uudelleenliitos yritetään korkeintaan kerran latausta
+  // kohti: jos tilaus ei onnistu, uudelleenyritys joka renderöinnillä olisi
+  // silmukka jossa selain kysyy lupaa loputtomiin.
+  const korjattu = useRef(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -58,6 +76,47 @@ export function PushDevices() {
     void currentSubscription().then(sub => setThisEndpoint(sub?.endpoint ?? null))
   }, [refresh])
 
+  const thisDevice = devices.find(d => d.endpoint === thisEndpoint) ?? null
+  const enabledHere = Boolean(thisDevice)
+  // Vanha tai tuntematon avain tarkoittaa samaa lopputulosta: push-palvelu
+  // hylkää lähetyksen eikä laite saa mitään. Rivi on listalla, joten mikään
+  // muu näkymässä ei kertoisi siitä.
+  const vanhentunut = Boolean(thisDevice && thisDevice.avainTila !== 'nykyinen')
+
+  /**
+   * Tilaa tämän laitteen — myös silloin kun tilaus on jo olemassa mutta
+   * sidottu vanhaan VAPID-avaimeen.
+   *
+   * Selaimen vanha tilaus perutaan ensin: `pushManager.subscribe` hylkää
+   * uuden `applicationServerKey`n jos tilaus on jo voimassa toisella
+   * avaimella, joten ilman peruutusta korjaus ei tekisi mitään.
+   */
+  const liita = useCallback(
+    async (avain: string, edellinen: string | null) => {
+      if (edellinen) await unsubscribeThisDevice()
+
+      const subscription = await subscribeThisDevice(avain)
+      const res = await fetch('/api/arxcian/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Tallennus epäonnistui')
+
+      // Uusi tilaus voi saada uuden päätepisteen, jolloin vanha rivi jäisi
+      // listalle kuolleena ja jokainen lähetys epäonnistuisi siihen.
+      if (edellinen && edellinen !== subscription.endpoint) {
+        await fetch(`/api/arxcian/push/subscribe?endpoint=${encodeURIComponent(edellinen)}`, {
+          method: 'DELETE',
+        })
+      }
+
+      setThisEndpoint(subscription.endpoint)
+      await refresh()
+    },
+    [refresh],
+  )
+
   const enable = async () => {
     setError(null)
     setNotice(null)
@@ -67,23 +126,39 @@ export function PushDevices() {
 
     setBusy(true)
     try {
-      const subscription = await subscribeThisDevice(publicKey)
-      const res = await fetch('/api/arxcian/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription),
-      })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Tallennus epäonnistui')
-
-      setThisEndpoint(subscription.endpoint)
-      await refresh()
-      setNotice('Laite lisätty.')
+      await liita(publicKey, vanhentunut ? thisEndpoint : null)
+      setNotice(vanhentunut ? 'Laite liitettiin uudelleen.' : 'Laite lisätty.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Tilaus epäonnistui.')
     } finally {
       setBusy(false)
     }
   }
+
+  /**
+   * Vanhaan avaimeen sidottu tilaus uusitaan itsestään.
+   *
+   * Ilmoituslupa on jo annettu eikä se liity VAPID-avaimeen, joten selain ei
+   * kysy mitään — käyttäjän ei siis tarvitse tietää avaimista mitään eikä
+   * poistaa ja antaa ilmoituslupia uudelleen. Riittää että sivu avataan.
+   */
+  useEffect(() => {
+    if (korjattu.current || loading || busy) return
+    if (!publicKey || !thisEndpoint || !vanhentunut) return
+
+    korjattu.current = true
+    setBusy(true)
+    void liita(publicKey, thisEndpoint)
+      .then(() => setNotice('Tämän laitteen tilaus oli vanhalla avaimella — laite liitettiin uudelleen.'))
+      .catch(e =>
+        setError(
+          `Laitteen automaattinen uudelleenliitos epäonnistui: ${
+            e instanceof Error ? e.message : 'tuntematon syy'
+          }`,
+        ),
+      )
+      .finally(() => setBusy(false))
+  }, [busy, liita, loading, publicKey, thisEndpoint, vanhentunut])
 
   const remove = async (endpoint: string) => {
     setError(null)
@@ -115,16 +190,22 @@ export function PushDevices() {
     try {
       const res = await fetch('/api/arxcian/push/test', { method: 'POST' })
       const data = await res.json()
-      if (!res.ok) return setError(data.error ?? 'Testi epäonnistui.')
+      if (!res.ok) {
+        // Poistot tapahtuivat vaikka lähetys epäonnistui, joten lista on
+        // haettava uudelleen myös virhehaarassa.
+        if (data.result?.pruned || data.result?.prunedStale) await refresh()
+        return setError(data.error ?? 'Testi epäonnistui.')
+      }
 
-      const { delivered, pruned, failed } = data.result
+      const { delivered, pruned, prunedStale, failed } = data.result
       setNotice(
         `Lähetetty ${delivered} laitteelle` +
-          (pruned ? `, ${pruned} vanhentunutta poistettu` : '') +
+          (pruned ? `, ${pruned} kuollutta poistettu` : '') +
+          (prunedStale ? `, ${prunedStale} vanhalla avaimella poistettu` : '') +
           (failed ? `, ${failed} epäonnistui` : '') +
           '.',
       )
-      if (pruned || failed) await refresh()
+      if (pruned || prunedStale || failed) await refresh()
     } catch {
       setError('Testi epäonnistui.')
     } finally {
@@ -132,8 +213,29 @@ export function PushDevices() {
     }
   }
 
+  /**
+   * Diagnostiikka samasta lähteestä kuin reitti.
+   *
+   * Näytetään käyttöliittymässä eikä jätetä pelkäksi JSONiksi, koska
+   * puhelimella reitin avaaminen käsin on juuri se este jonka takia vika jää
+   * toteamatta silloin kun se on ajankohtainen.
+   */
+  const haeDiag = async () => {
+    setError(null)
+    setBusy(true)
+    try {
+      const res = await fetch('/api/arxcian/push/diag')
+      const data = await res.json()
+      if (!res.ok) return setError(data.error ?? 'Diagnostiikka epäonnistui.')
+      setDiag(data)
+    } catch {
+      setError('Diagnostiikka epäonnistui.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const supported = pushSupported()
-  const enabledHere = Boolean(thisEndpoint && devices.some(d => d.endpoint === thisEndpoint))
 
   return (
     <Panel title="Push-laitteet" meta={loading ? '…' : `${devices.length} kpl`}>
@@ -147,10 +249,14 @@ export function PushDevices() {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
               onClick={enable}
-              disabled={busy || enabledHere}
+              disabled={busy || (enabledHere && !vanhentunut)}
               className="rounded-md bg-ax-accent/15 px-3 py-1.5 text-[12px] font-medium text-ax-accent transition-colors hover:bg-ax-accent/25 disabled:opacity-40"
             >
-              {enabledHere ? 'Tämä laite on käytössä' : 'Ota käyttöön tällä laitteella'}
+              {vanhentunut
+                ? 'Liitä tämä laite uudelleen'
+                : enabledHere
+                  ? 'Tämä laite on käytössä'
+                  : 'Ota käyttöön tällä laitteella'}
             </button>
             <button
               onClick={test}
@@ -158,6 +264,13 @@ export function PushDevices() {
               className="rounded-md border border-ax-line px-3 py-1.5 text-[12px] text-ax-dim transition-colors hover:border-ax-line-strong hover:text-ax-text disabled:opacity-40"
             >
               Testaa push
+            </button>
+            <button
+              onClick={haeDiag}
+              disabled={busy}
+              className="rounded-md border border-ax-line px-3 py-1.5 text-[12px] text-ax-dim transition-colors hover:border-ax-line-strong hover:text-ax-text disabled:opacity-40"
+            >
+              Diagnostiikka
             </button>
           </div>
 
@@ -186,6 +299,11 @@ export function PushDevices() {
                       {device.endpoint === thisEndpoint && (
                         <span className="ml-1.5 text-[10px] text-ax-accent">tämä laite</span>
                       )}
+                      {device.avainTila && device.avainTila !== 'nykyinen' && (
+                        <span className="ml-1.5 text-[10px] text-ax-down">
+                          {device.avainTila === 'vanha' ? 'vanha avain' : 'avain tuntematon'}
+                        </span>
+                      )}
                     </div>
                     <div className="truncate font-mono text-[10px] text-ax-faint">
                       {device.lastSentAt ? `viimeksi ${timeAgo(device.lastSentAt)}` : 'ei vielä lähetyksiä'}
@@ -211,14 +329,50 @@ export function PushDevices() {
         </p>
       )}
 
-      {/* Kaksi rajoitusta jotka käyttäjä ei voi päätellä puuttuvasta
+      {diag && (
+        <dl className="mt-3 space-y-1 rounded-md border border-ax-line px-3 py-2 font-mono text-[10px] text-ax-dim">
+          <DiagRivi
+            nimi="VAPID-avainpari"
+            arvo={diag.avainpari}
+            hyva={diag.avainpari === 'eheä'}
+          />
+          <DiagRivi
+            nimi="subject"
+            arvo={diag.subject.kelpaa ? (diag.subject.arvo ?? '—') : 'ei kelpaa'}
+            hyva={diag.subject.kelpaa}
+          />
+          <DiagRivi
+            nimi="QStash"
+            arvo={diag.qstash.ok ? 'vastaa' : (diag.qstash.error ?? 'ei vastaa')}
+            hyva={diag.qstash.ok}
+          />
+          <DiagRivi
+            nimi="jonossa"
+            arvo={`${diag.jonossa.tulevat} tulevaa / ${diag.jonossa.yhteensa}`}
+            hyva={diag.jonossa.tulevat > 0}
+          />
+          <DiagRivi nimi="lähetysosoite" arvo={diag.sendUrl} hyva={diag.sendUrl.startsWith('https://')} />
+        </dl>
+      )}
+
+      {/* Yksi rajoitus jota käyttäjä ei voi päätellä puuttuvasta
           ilmoituksesta: kehityksessä service workeria ei rekisteröidä
-          lainkaan, ja ajastettu lähetys ei ole vielä kytketty. */}
+          lainkaan, joten push ei toimi paikallisesti. */}
       <p className="mt-3 text-[10px] leading-relaxed text-ax-faint">
         Push toimii vain tuotantoversiossa — kehityspalvelimella service workeria ei rekisteröidä.
-        Ajastettu lähetys markkinoiden avautuessa ei ole vielä käytössä; toistaiseksi vain
-        testipainike lähettää.
+        Vanhalla VAPID-avaimella tehty tilaus uusitaan automaattisesti kun tämä sivu avataan.
       </p>
     </Panel>
+  )
+}
+
+function DiagRivi({ nimi, arvo, hyva }: { nimi: string; arvo: string; hyva: boolean }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="shrink-0 text-ax-faint">{nimi}</dt>
+      <dd className={`min-w-0 flex-1 truncate text-right ${hyva ? 'text-ax-up' : 'text-ax-down'}`}>
+        {arvo}
+      </dd>
+    </div>
   )
 }
