@@ -9,6 +9,11 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    // Sallii ".ts"-päätteen importissa. Tarvitaan jotta yksikkötestatut
+    // src/lib/shifts-moduulit voidaan ajaa "node --test"illä ilman
+    // käännösvaihetta: Noden ESM-resolveri vaatii päätteen, Next ja tsc
+    // eivät välitä. Vain sallii, ei pakota.
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",

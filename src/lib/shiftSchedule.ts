@@ -211,10 +211,45 @@ function templatesFor(store: StoreName, weekday: number): ShiftTemplate[] {
 }
 
 /** Montako henkeä myymälään tarvitaan tänä päivänä. */
-function headcountFor(store: StoreName, weekday: number, soloStores: StoreName[]): number {
+export function headcountFor(store: StoreName, weekday: number, soloStores: StoreName[]): number {
   if (soloStores.includes(store)) return 1
   if (weekday === 6) return SATURDAY_HEADCOUNT[store]
   return templatesFor(store, weekday).length
+}
+
+/**
+ * Täyttämättä jääneet paikat.
+ *
+ * Johdetaan valmiista `DayInfo[]`:stä eikä generoinnin sisäisestä tilasta,
+ * jotta **käsin muokattu luonnos laskee vajeet samalla säännöllä** kuin
+ * generaattori. Kaksi eri laskentaa ajautuisi erilleen juuri silloin kun
+ * ero on vaarallisin: käyttäjä on itse poistanut vuoron eikä varoitus
+ * päivity.
+ */
+export function laskeVajeet(days: DayInfo[]): Vaje[] {
+  const vajeet: Vaje[] = []
+  for (const day of days) {
+    if (day.closed) continue
+    for (const store of STORES) {
+      const saatu = day.shifts.filter(s => s.store === store).length
+      const tarve = headcountFor(store, day.weekday, day.soloStores)
+      if (saatu < tarve) vajeet.push({ date: day.date, weekday: day.weekday, store, saatu, tarve })
+    }
+  }
+  return vajeet
+}
+
+/** Myyjä → kuukauden tunnit ja vuorojen määrä. */
+export function laskeTunnit(days: DayInfo[]): { tunnit: Record<string, number>; vuorot: Record<string, number> } {
+  const tunnit: Record<string, number> = {}
+  const vuorot: Record<string, number> = {}
+  for (const day of days) {
+    for (const s of day.shifts) {
+      tunnit[s.seller] = (tunnit[s.seller] ?? 0) + s.hours
+      vuorot[s.seller] = (vuorot[s.seller] ?? 0) + 1
+    }
+  }
+  return { tunnit, vuorot }
 }
 
 function dateStr(vuosi: number, kuukausi: number, paiva: number): string {
@@ -308,7 +343,6 @@ export function generateMonth(
 
   const ledger: Record<string, number> = {}
   const vuorot: Record<string, number> = {}
-  const vajeet: Vaje[] = []
   const byDate = new Map<string, DayInfo>()
 
   // Päivät viikoittain (maanantai-avain), jotta viikkokiintiöt ja ankkurit
@@ -348,18 +382,14 @@ export function generateMonth(
 
   const days: DayInfo[] = []
   for (let paiva = 1; paiva <= daysInMonth; paiva++) {
-    const date = dateStr(vuosi, kuukausi, paiva)
-    const day = byDate.get(date)!
-    days.push(day)
-    if (day.closed) continue
-    for (const store of STORES) {
-      const saatu = day.shifts.filter(s => s.store === store).length
-      const tarve = headcountFor(store, day.weekday, day.soloStores)
-      if (saatu < tarve) vajeet.push({ date, weekday: day.weekday, store, saatu, tarve })
-    }
+    days.push(byDate.get(dateStr(vuosi, kuukausi, paiva))!)
   }
 
-  return { days, vajeet, tunnit: ledger, vuorot }
+  // Vajeet ja tunnit johdetaan valmiista listasta samoilla apureilla joita
+  // käyttöliittymä käyttää muokkauksen jälkeen — näin luvut eivät voi
+  // erota toisistaan.
+  const { tunnit, vuorot: vuoroLkm } = laskeTunnit(days)
+  return { days, vajeet: laskeVajeet(days), tunnit, vuorot: vuoroLkm }
 }
 
 function buildDay(
