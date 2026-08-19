@@ -45,24 +45,23 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
     >
       {data ? (
         <>
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-ax-faint">
+          <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-ax-faint">
             Tämän kuun myyntiseuranta
           </p>
 
-          {/* Ennusteen merkintä on paneelissa eikä pelkästään koodin
-              kommentissa: nuoli ja prosentti näyttäisivät muuten toteumalta,
-              vaikka ne vertaavat kuukauden loppuun projisoitua lukua. */}
-          {data.projected && (
-            <p className="mb-2 text-[9px] leading-snug text-ax-faint">
-              Muutos vertaa kuukauden loppuun projisoitua ennustetta edelliseen
-              kuukauteen. Isot luvut ovat toteutunut kertymä.
+          {/* Ennusteen peruste näkyy paneelissa eikä pelkästään koodin
+              kommentissa: "1157 kpl kuun loppuun" on pelkkä väite, jos
+              lukija ei näe montako työpäivää sen takana on. */}
+          {data.workdays && data.workdays.total > 0 && (
+            <p className="mb-3 text-[11px] leading-snug text-ax-faint">
+              {data.workdays.elapsed}/{data.workdays.total} työpäivää tehty.
+              Ennuste kertoo mihin nykyisellä tahdilla päästään kuun loppuun.
             </p>
           )}
 
           <div className="divide-y divide-ax-line/10">
             {METRICS.map(metric => {
               const value = data.metrics[metric.key]
-              const up = value.changePercent !== null && value.changePercent >= 0
 
               return (
                 <div key={metric.key} className="grid grid-cols-[34px_1fr_auto] gap-3 py-3">
@@ -74,7 +73,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                   </span>
 
                   <span>
-                    <span className="block text-[9px] uppercase tracking-wide text-ax-faint">
+                    <span className="block text-[11px] uppercase tracking-wide text-ax-faint">
                       {metric.label}
                     </span>
                     <span className="block text-xl font-light tabular-nums text-ax-text">
@@ -93,19 +92,17 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
                   </span>
 
                   <span className="self-center text-right">
-                    {value.changePercent !== null ? (
+                    {value.runRate ? (
                       <>
-                        <span
-                          className={`block font-mono text-[10px] ${up ? 'text-ax-up' : 'text-ax-down'}`}
-                        >
-                          {up ? '↑' : '↓'} {Math.abs(value.changePercent).toFixed(0)}%
+                        <span className="block text-lg font-light tabular-nums text-ax-accent">
+                          {value.runRate}
                         </span>
-                        <span className="mt-1 block text-[7px] text-ax-faint">
-                          vs. ed. kuukausi
+                        <span className="mt-0.5 block text-[11px] text-ax-faint">
+                          kuun loppuun
                         </span>
                       </>
                     ) : (
-                      <span className="block font-mono text-[10px] text-ax-faint">—</span>
+                      <span className="block text-[11px] text-ax-faint">—</span>
                     )}
                   </span>
                 </div>
@@ -115,7 +112,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
 
           <Link
             href="/arxcian/rj-mob/tuotto"
-            className="mt-3 inline-block text-[11px] text-ax-faint transition-colors hover:text-ax-accent"
+            className="mt-3 inline-block text-[12px] text-ax-faint transition-colors hover:text-ax-accent"
           >
             Koko tuottoseuranta →
           </Link>

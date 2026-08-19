@@ -1,5 +1,6 @@
 import { listSeurantaFiles, monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDrive'
 import { loadDashData, type DashData } from '@/lib/rjmobSheets'
+import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
 import { readCached, writeCached, type Fetched } from './cache'
 import { todayISOHelsinki } from './time'
 
@@ -53,16 +54,16 @@ const MONTH_TTL_SECONDS = 365 * 24 * 60 * 60
 const MAX_HISTORY_MONTHS = 12
 
 /**
- * Kuinka monta päivää kuukaudesta on oltava kulunut ennen kuin ennustetta
+ * Kuinka monta työpäivää kuukaudesta on oltava tehtynä ennen kuin ennustetta
  * näytetään lainkaan.
  *
- * Kerroin on kuukauden päivät jaettuna kuluneilla, eli kuun 1. päivänä ×31.
- * Silloin yksi poikkeava päivä — tai taulukon täyttämisen viive — heiluttaa
- * prosenttia satoja yksiköitä, ja etusivu näyttäisi romahdusta tai raketin
- * nousua ilman että kummallakaan on katetta. Viikon jälkeen kerroin on enää
- * noin ×4 ja luku alkaa kertoa jotain. Koskee vain kuluvaa kuukautta.
+ * Kerroin on kuukauden työpäivät jaettuna kuluneilla, eli ensimmäisenä
+ * työpäivänä ×26. Silloin yksi poikkeava päivä — tai taulukon täyttämisen
+ * viive — heittää ennusteen moninkertaiseksi, ja etusivu lupaisi lukuja
+ * joilla ei ole katetta. Viikon jälkeen kerroin on enää noin ×4 ja luku alkaa
+ * kertoa jotain. Koskee vain kuluvaa kuukautta.
  */
-const MIN_DAYS_FOR_PROJECTION = 7
+const MIN_WORKDAYS_FOR_PROJECTION = 6
 
 /**
  * Kassaprovisiosta kassakatteeseen. Sama luku kuin `KASSAKATE_JAKAJA`
@@ -82,6 +83,12 @@ export type RjMobMetric = {
    * jättää rivin silloin yhden luvun varaan eikä näytä tyhjää riviä.
    */
   sub?: string
+  /**
+   * Kuukauden loppuun projisoitu luku nykyisellä tahdilla, valmiiksi
+   * muotoiltuna — esim. "1157 kpl". Null kun kuukausi on jo valmis (silloin
+   * `display` on toteuma) tai kun työpäiviä on liian vähän takana.
+   */
+  runRate?: string | null
   /** Muutos edelliseen kuukauteen prosentteina, tai null jos vertailua ei ole */
   changePercent: number | null
 }
@@ -93,6 +100,13 @@ export type RjMobSummaryData = {
   monthLabel: string
   /** Onko changePercent laskettu ennusteesta (kuukausi kesken) */
   projected: boolean
+  /**
+   * Kuukauden työpäivätilanne, ma–la ilman pyhiä
+   * ([rjmobWorkdays.ts](../rjmobWorkdays.ts)). Paneeli näyttää tämän
+   * ennusteen rinnalla: ilman sitä "1157 kpl kuun loppuun" on luku jonka
+   * perustetta lukija ei näe.
+   */
+  workdays: { elapsed: number; total: number }
   metrics: {
     liittymat: RjMobMetric
     fsecure: RjMobMetric
@@ -272,13 +286,24 @@ function dashLoader(): (id: string) => Promise<DashData> {
   }
 }
 
-/** Kuluneet päivät ja kuukauden pituus Helsingin aikaa. */
-function monthProgress(): { daysElapsed: number; daysInMonth: number } {
-  const [year, num, day] = todayISOHelsinki().split('-').map(Number)
+/**
+ * Kuluneet ja kaikki työpäivät kuluvassa kuukaudessa, Helsingin aikaa.
+ *
+ * Työpäivä on ma–la ilman arkipyhiä (`laskeTyopaivat`), ja se on nimenomaan
+ * se yksikkö jolla ennuste kuuluu tehdä: tavoitteet_ja_runrate_ohje sanoo
+ * "tehty tähän mennessä jaettuna kuluneilla työpäivillä … kerrotaan jäljellä
+ * olevilla työpäivillä". Kalenteripäivillä laskettu ennuste olisi väärässä
+ * joka kuukausi, koska sunnuntait ja pyhät eivät tuota myyntiä mutta
+ * kasvattaisivat nimittäjää.
+ *
+ * Päivä luetaan `todayISOHelsinki`ista eikä `new Date()`stä: palvelin on
+ * UTC:ssä, jolloin Suomen ilta olisi vielä edellinen päivä.
+ */
+function workdayProgress(): { elapsed: number; total: number } {
+  const [year, month, day] = todayISOHelsinki().split('-').map(Number)
   return {
-    daysElapsed: day,
-    // Kuukauden num päivä 0 = edellisen kuukauden viimeinen päivä.
-    daysInMonth: new Date(Date.UTC(year, num, 0)).getUTCDate(),
+    elapsed: laskeTyopaivat(year, month, day),
+    total: laskeTyopaivat(year, month),
   }
 }
 
@@ -295,22 +320,32 @@ async function summaryFor(
 
   // Projisoidaan vain jos taulukko on kuluvalta kalenterikuukaudelta.
   const isRunningMonth = sheet.month === currentMonthKey()
-  const { daysElapsed, daysInMonth } = monthProgress()
-  const factor = isRunningMonth ? daysInMonth / Math.max(daysElapsed, 1) : 1
+  const workdays = workdayProgress()
+  const factor = isRunningMonth ? workdays.total / Math.max(workdays.elapsed, 1) : 1
 
-  // Kesken olevasta kuukaudesta ei näytetä vertailua ennen kuin kertymää on
-  // tarpeeksi. Isot luvut näkyvät silti heti — vain muutosprosentti odottaa.
-  const tooEarly = isRunningMonth && daysElapsed < MIN_DAYS_FOR_PROJECTION
+  // Kesken olevasta kuukaudesta ei näytetä ennustetta ennen kuin kertymää on
+  // tarpeeksi. Isot luvut näkyvät silti heti — vain ennuste odottaa.
+  const tooEarly = isRunningMonth && workdays.elapsed < MIN_WORKDAYS_FOR_PROJECTION
   const prevData = tooEarly ? null : previous
   const prev = prevData?.totals
+
+  /**
+   * Kuukauden loppuun projisoitu luku, tai null kun ennustetta ei näytetä.
+   * Valmiissa kuukaudessa `display` on jo toteuma, joten ennuste olisi sama
+   * luku kahdesti.
+   */
+  const runRate = (value: number, fmt: (n: number) => string): string | null =>
+    isRunningMonth && !tooEarly ? fmt(value * factor) : null
 
   return {
     month: sheet.month,
     monthLabel: monthLabelOf(sheet.name),
     projected: isRunningMonth && Boolean(prev),
+    workdays,
     metrics: {
       liittymat: {
         display: `${fmtKpl(current.totals.liittKpl)} kpl`,
+        runRate: runRate(current.totals.liittKpl, n => `${fmtKpl(n)} kpl`),
         // Provisio kulkee kappaleiden rinnalla, ei omana rivinään: se on saman
         // myynnin toinen puoli, ja tuottoseurannan laatta näyttää ne samoin.
         // Muutosprosentti lasketaan kappaleista, koska rivi on kappalerivi.
@@ -319,12 +354,14 @@ async function summaryFor(
       },
       kassakate: {
         display: fmtEur(kassakateOf(current)),
+        runRate: runRate(kassakateOf(current), fmtEur),
         changePercent: prevData
           ? changeOf(kassakateOf(current), kassakateOf(prevData), factor)
           : null,
       },
       fsecure: {
         display: `${fmtKpl(fsecKplOf(current))} kpl`,
+        runRate: runRate(fsecKplOf(current), n => `${fmtKpl(n)} kpl`),
         changePercent: prevData
           ? changeOf(fsecKplOf(current), fsecKplOf(prevData), factor)
           : null,
