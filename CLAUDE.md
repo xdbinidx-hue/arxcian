@@ -804,6 +804,17 @@ avainvirheeksi ja veisi tilauksia mukanaan.
 niiden korjaus on eri: kuollut vaatii ilmoitusluvan uudelleen, vanhentunut vain
 uuden tilauksen samalla luvalla.
 
+**Avain leimataan myös onnistuneesta lähetyksestä, ei vain tilaushetkestä.**
+Perille mennyt ilmoitus on vahvempi todiste kuin mikään mitä tilaushetkellä
+voitiin tallentaa: push-palvelu itse hyväksyi allekirjoituksen. Siksi
+`reconcileSubscriptions` kirjaa nykyisen avaimen jokaiselle laitteelle joka sai
+ilmoituksen. Ilman sitä `tuntematon` jäisi pysyväksi tilaksi riveille jotka
+ovat kenttää vanhempia — todettu 20.8.2026: testi-push meni molempiin
+laitteisiin klo 22.48, mutta kumpikin näytti yhä kirjaamattomalta, koska
+selaimessa pyöri sivun aiemmasta latauksesta vanha JS eikä automaattinen
+uudelleentilaus ajanut. Selaimen uusinta korjaa `vanha`n, tämä korjaa
+`tuntematon`in, eikä kumpikaan vaadi käyttäjältä mitään.
+
 **Tilaus tallentaa sen avaimen jolla se tehtiin** ([subscriptions.ts](src/lib/arxcian/push/subscriptions.ts)).
 Ilman kenttää vanhaan avaimeen sidottua tilausta ei voi erottaa palvelimen
 asetusvirheestä, ja laite jäisi listalle näyttämään toimivalta. Arvo otetaan
