@@ -379,6 +379,105 @@ tallella mittauslukujensa takia, ei toteutettavana suunnitelmana.
 
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
 
+## Työvuorolista
+
+Kuukauden kierto on: Albin täyttää tapahtumat Drive-taulukkoon → Generoi →
+korjaa käsin → Vahvista → taulukko päivittyy. Kuukauden vaihtuminen **ei vaadi
+koodimuutosta** — tapahtumat, onnenpäivät ja poissaolot luetaan taulukosta.
+
+| Tiedosto | Vastuu |
+|---|---|
+| [tyovuoroExcel.ts](src/lib/shifts/tyovuoroExcel.ts) | Taulukon rakenne ja jäsennys — **puhdas**, ei Drive-yhteyttä |
+| [shiftSchedule.ts](src/lib/shiftSchedule.ts) | Vuorosäännöt ja generointi — **puhdas** |
+| [tyovuoroKirjoitus.ts](src/lib/shifts/tyovuoroKirjoitus.ts) | Kirjoitussuunnitelma — **puhdas** |
+| [tyovuoroDrive.ts](src/lib/shifts/tyovuoroDrive.ts) | Luku Drivestä, readonly-scope |
+| [tyovuoroDriveKirjoitus.ts](src/lib/shifts/tyovuoroDriveKirjoitus.ts) | Kirjoitus Driveen, ainoa kirjoitusoikeus |
+| [shiftStore.ts](src/lib/shifts/shiftStore.ts) | KV-avaimet ja migraatio |
+
+Drive-kansio: `1TQbm2sYst8Bz_Z1WoZm0lEasM6fTrTKT`, tiedostonimi "Työvuorot 9.
+Syyskuu 2026", **natiivi Google Sheets** (todettu kuiva-ajolla 19.8.2026), yksi
+välilehti `Taulukko1`. Kuukausi tunnistetaan `monthOrder`illa eli samalla
+`vuosi × 100 + kuukausi` -säännöllä kuin tuottoseurannassa.
+
+**Luonnos ja vahvistettu lista ovat eri avaimissa.** Aiemmin oli vain
+`shifts:<YYYY-MM>`, johon Generoi kirjoitti suoraan — jolloin uudelleengenerointi
+tuhosi käsin tehdyt korjaukset. Nyt `shifts:draft:*` on generoinnin ainoa kohde
+ja `shifts:final:*` ainoa totuus. Vanha avain luetaan yhä finalin varalähteenä
+eikä sitä poisteta.
+
+**Kirjoitus on yksi `updateCells` alueeseen B4:AH33** (31 päivän kuukaudessa
+AH34). Suorakaide on turvaominaisuus eikä optimointi: sarakkeisiin A (Pvm), AR
+(Tapahtumat) ja AU (Toiveet) tai riville 35 (tuntisummakaavat) ei voi osua edes
+bugin sattuessa, ja kenttämaski tyhjentää vanhat jäänteet samalla kertaa.
+Väritetään **vain myymäläsarake**; vuoro- ja tuntisarake jäävät valkoisiksi.
+
+**Sarake AU luetaan tarkoituksella ohi.** Siinä on toiveiden lisäksi
+viikkorutiini- ja onnenpäivälegenda, eli vapaata tekstiä jossa esiintyy
+myymälöiden nimiä ja sana "OP" — automaattinen luku tekisi siitä valheellisia
+onnenpäiviä.
+
+**Poissaolomerkinnät kirjoitetaan takaisin.** Kirjoitusalue on täsmälleen sama
+jossa Albinin omat merkinnät ("Nizza", "loma") ovat, joten pelkkä tyhjennys söisi
+ne eikä seuraava generointi enää löytäisi poissaoloja lainkaan.
+
+**31 päivän kuukausi ulottuu riville 34.** Toimeksiannon "rivit 4–33" mitattiin
+syyskuun tiedostosta, jossa on 30 päivää. Päivärivit johdetaan kuukauden
+pituudesta. Ennen ensimmäistä 31 päivän kuukautta on tarkistettava ulottuuko
+`SUM(C4:C33)` riville 34 — se korjataan taulukossa, ei koodissa.
+
+### Säännöt tulevat referenssilistasta, eivät koodista taaksepäin
+
+Syyskuun 2026 lista tehtiin Coworkissa käsin ja se toimii. Generaattori on
+portattu siitä, ja golden-testi vaatii **päivälleen saman tuloksen**: Alec 156 ·
+Joona 155 · Arbnor 131 · Kasperi 126 · Hamza 125 · Vladimir 124 · Krenar 122 ·
+Lauri 119 · Ramin 82 · Antti 33 · Albin 11 = 1 184 h, ja täsmälleen yksi vaje
+(pe 18.9., Arbnor Nizzassa). Jos muutat sääntöä ja testi hajoaa, **oletus on
+että muutos on väärä** — älä päivitä odotettuja lukuja ilman uutta
+referenssilistaa.
+
+Neljä sääntöä syntyi oikeista virheistä eivätkä ole tyylikysymyksiä:
+
+1. **Lauantai täytetään viikon sisällä ensin**, vasta sitten ma–pe. Muuten
+   kokoaikaisten viisi viikkovuoroa kuluvat arkeen eikä lauantaille jää ketään.
+2. **Arkipäivä täytetään kerroksittain** myymälöiden yli (kaikkien ensimmäiset
+   vuorot, sitten toiset). Myymälä kerrallaan kaataa koko vajeen viimeisen
+   myymälän niskaan.
+3. **Valinta kertyneiden tuntien mukaan.** Ilman tätä ero kokoaikaisten välillä
+   kasvoi 44 tuntiin kuukaudessa.
+4. **Päällikölle pisin *vapaa* vuoro.** Keskiviikkoisin kolme päällikköä jakaa
+   Malmin kolme paikkaa, ja pelkkä "pisin" pudotti kolmannen kokonaan pois.
+
+Keskiviikon sääntö (**kaikki kolme päällikköä Malmilla**) on ehdoton, ei toive.
+Onnenpäivänä kyseiseen myymälään merkitään vain päällikkö, mutta **muut myymälät
+toimivat normaalisti** — aiempi toteutus jätti ne miehittämättä.
+
+Ramin päätyy syyskuussa 82 h eli kaksi tuntia yli 60–80 h tavoitehaarukan. Se on
+tiedossa ja hyväksytty: haarukka on tavoite eikä kova raja, ja kiristäminen
+rikkoisi golden-testin.
+
+**Miehitys on matemaattisesti tiukka:** tarve 46 vuoroa/viikko, kapasiteetti 48
+kun kaikki ovat paikalla ja alle tarpeen heti kun joku on lomalla. Siksi vajeet
+näytetään käyttöliittymässä päivineen — tyhjä solu jonka voi ohittaa vahingossa
+on vaarallisempi kuin näkyvä varoitus.
+
+### Testit ajetaan ilman testiajuria
+
+`npm test` → `node --test "src/**/*.test.mts"`. Node 24 ajaa TypeScriptiä
+natiivisti, joten vitestiä tai jestiä ei tarvita. Kaksi ehtoa seuraa siitä:
+
+- Testitiedostojen pääte on **`.test.mts`** (repo on CJS-oletuksella).
+- Testattavissa moduuleissa importit ovat joko `import type` (katoaa
+  käännöksessä) tai päättyvät **`.ts`**:ään — Noden ESM-resolveri ei osaa
+  extensiotonta muotoa. `allowImportingTsExtensions` on tsconfigissa tätä varten.
+
+Siksi I/O on erotettu puhtaista funktioista: `.env.local`in palvelutiliavain on
+paikanpitäjä eikä Drive-koodia voi ajaa Macilla lainkaan, mutta säännöt ja
+kirjoitussuunnitelma testataan täysin ilman verkkoa.
+
+**Ensimmäinen kirjoitus ajetaan aina kuivana.** `/api/shifts/vahvista?kuiva=1`
+(sivulla Kuiva-ajo-nappi) kertoo kohdealueen ja lukumäärät kirjoittamatta
+mitään. Sama kuri kuin Winpos-putkessa, jossa kuiva-ajo paljasti oikean bugin.
+
 ## Markkina-ajat ja ilmoitukset
 
 Forex-istuntojen (Aasia/Tokio, Lontoo, New York) aukiolot ja käyttäjän omat
