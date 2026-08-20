@@ -75,17 +75,37 @@ Noudata olemassa olevan koodin tyyliä:
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Calendar (käyttäjän oma tili, arxcian) |
 | `ANTHROPIC_API_KEY` | AI-tiivistelmät |
 | `WATCH_SOURCES_SHEET_ID` | watchin lähdelistan taulukko (valinnainen — ilman sitä varalista) |
-
-**`GOOGLE_SERVICE_ACCOUNT_KEY` on rikki development-ympäristössä** (todettu
-19.8.2026): arvo on kolme merkkiä (`"{"`) sekä Vercelissä että
-`.env.local`issa, joten `JSON.parse` kaatuu ja kaikki palvelutiliä käyttävä
-työ on **paikallisesti** poikki — RJ-Mobin Sheets-luku, Driven ohjeet ja
-watchin lähdelista. Tuotanto ja preview ovat kunnossa, eikä niiden arvoa saa
-takaisin: muuttuja on niissä Sensitive. Korjaus vaatii palvelutilin oman
-JSON-avaimen, ja sen jälkeen `./scripts/korjaa-dev-avain.sh <polku>` hoitaa
-loput. Huom. ettei `private_key`n `\n`-escapeja saa korvata — korvaus rikkoo
-avaimen.
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis -välimuisti |
+
+**`GOOGLE_SERVICE_ACCOUNT_KEY` katkeaa paikallisesti joka kerta kun
+`.env.local` vedetään Vercelistä.** Muuttuja itsessään on kunnossa kaikissa
+kolmessa ympäristössä (korjattu 20.8.2026 `korjaa-dev-avain.sh`:lla), ja
+tuotanto lukee sen suoraan prosessin ympäristöstä ilman välikäsiä. Vika on
+`vercel env pull`issa: se kirjoittaa **jokaisen** arvon lainausmerkkeihin, ja
+Next.js:n dotenv-lukija laajentaa lainausmerkkien sisällä olevat `\n`-escapet
+oikeiksi rivinvaihdoiksi. Silloin `private_key`hyn tulee raakoja rivinvaihtoja
+kesken JSON-merkkijonon ja `JSON.parse` kaatuu virheeseen *"Bad control
+character in string literal at position 169"*.
+
+Korjaus on poistaa **vain sen rivin** ympäröivät lainausmerkit `.env.local`ista
+— ilman lainausmerkkejä dotenv ei laajenna mitään ja `\n` säilyy escapena,
+jollaisena JSON sen itse purkaa. `korjaa-dev-avain.sh` tekee tämän nykyään
+pullin jälkeen automaattisesti.
+
+Kaksi ansaa jotka maksoivat tunnin 20.8.2026:
+
+- **`\n`-escapeja ei saa korvata rivinvaihdoilla** — korvaus rikkoo avaimen.
+  Tämä on eri asia kuin se mitä dotenv tekee vahingossa; suunta on sama, ja
+  siksi korjaus on lainausmerkkien poisto eikä merkkijonon muokkaus.
+- **Varmistus on tehtävä samalla tavalla kuin sovellus lukee.** Skriptin
+  vanha varmistus riisui lainausmerkit itse ja tulosti `VARMISTUS OK`, vaikka
+  sovellus kaatui samaan arvoon — juuri se `"ok": true` jonka takana ei
+  tapahtunut mitään.
+
+Huom. myös että worktreessä `.env.local` kannattaa olla **oikea tiedosto eikä
+symlinkki**: Next.js:n tiedostovahti ei seuraa symlinkin kohdetta, joten
+`Reload env` ei laukea eikä korjattu avain tule voimaan ilman uudelleen-
+käynnistystä.
 
 Kaksi eri Google-tunnistautumista tarkoituksella: RJ-Mob lukee jaettuja taulukoita **palvelutilillä**, arxcianin kalenteri vaatii **käyttäjän oman OAuth-luvan** omaan kalenteriinsa. Näitä ei voi yhdistää.
 
