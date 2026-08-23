@@ -4,6 +4,10 @@
 # joten ajastus hoidetaan täältä. Työ vain kutsuu sovelluksen cron-reittiä,
 # joka päättää mitä haetaan — työt lisätään koodissa JOBS-rekisteriin.
 #
+# Osoite on rjmob-portal.vercel.app eikä arxcian.vercel.app: repo nimettiin
+# uudelleen, Vercel-projektia ei. Se on nykyinen tuotanto-osoite eikä jäänne
+# — älä "korjaa" sitä. Ks. CLAUDE.md, "Nimet".
+#
 # GitHubin ajastus on UTC:ssä eikä tunne kesäaikaa, joten yksi UTC-aika ei
 # osu Suomen kelloon ympäri vuoden: talvella (UTC+2) ajo tulee tuntia
 # aiemmin kuin kesällä (UTC+3). Siksi jokaiselle hakuajalle on kaksi

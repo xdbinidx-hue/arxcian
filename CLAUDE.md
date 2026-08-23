@@ -9,6 +9,37 @@ Osiot arxcianin alla: RJ-Mob, Trading, Uutiset, Personal. Yksi määrittely: [na
 
 RJ-Mobin sivut saavat arxcianin tumman kehyksen (Shell), mutta niiden **data pysyy tarkoituksella valkoisena** — taulukot ja seurannat on tarkoitettu luettaviksi, ei tunnelmallisiksi. Valkoisen pinnan antaa [rj-mob/layout.tsx](src/app/arxcian/rj-mob/layout.tsx), osionavigaation jaettu [RjMobNav](src/components/rjmob/RjMobNav.tsx).
 
+## Nimet: repo on arxcian, Vercel-projekti on rjmob-portal
+
+Repo, GitHub-projekti ja paikallinen kansio ovat nimeltään **arxcian**
+(ent. `rjmob-portal`). Vercelin projekti **ei ole**, eikä sitä nimetä
+uudelleen:
+
+| Mikä | Nimi |
+|---|---|
+| GitHub-repo | `xdbinidx-hue/arxcian` |
+| paikallinen kansio | `~/Downloads/arxcian` |
+| npm-paketti ([package.json](package.json)) | `arxcian` |
+| **Vercel-projekti** | **`rjmob-portal`** |
+| **tuotanto-osoite** | **`https://rjmob-portal.vercel.app`** |
+
+**Ero on tahallinen, älä "siisti" sitä.** Vercel-projektin uudelleennimeäminen
+katkaisisi GitHub-kytkennän josta deploy syntyy pushista, ja vaihtaisi samalla
+`.vercel.app`-osoitteen — jolloin jokainen kovakoodattu tuotanto-URL osoittaisi
+olemattomaan isäntään. Niitä on kaksi paikkaa, ja molemmissa on sama varoitus
+kommenttina:
+
+- [.github/workflows/arxcian-cron.yml](.github/workflows/arxcian-cron.yml) —
+  päivittäiset cron-kutsut, jotka ovat ainoa ajastus (ks. Ulkoinen data)
+- [api/webhook/register/route.ts](src/app/api/webhook/register/route.ts) —
+  Drive watch -kanavan callback-osoite, joka on rekisteröity Googlelle tällä
+  nimellä
+
+`rjmob-portal` koodissa ei siis ole jäänne vanhasta nimestä vaan nykyinen
+tuotanto-osoite. Jos nimi joskus halutaan vaihtaa, se on oma vaiheensa:
+Vercelissä uudelleennimeäminen, molempien URL-kohtien päivitys ja Drive watch
+-kanavan uudelleenrekisteröinti samalla kertaa.
+
 ## Mallin valinta
 
 - **Opus 5** — isot arkkitehtuuripäätökset ja monimutkaiset ongelmat: auth- ja tietomallipäätökset, integraatiot joissa on kiertoteitä (Notion, Rumble, Forex Factory), suorituskyky- ja välimuististrategia, mitä tahansa mikä vaikuttaa useaan osioon kerralla.
