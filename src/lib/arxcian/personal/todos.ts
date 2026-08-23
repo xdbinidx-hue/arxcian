@@ -35,7 +35,10 @@ export async function addTodo(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
-  return store.mutate(all => normalize([todo, ...all]))
+  return store.mutate(all =>
+    // Kadonnut kuittaus yritetään uudelleen, joten rivi voi jo olla listalla.
+    all.some(t => t.id === todo.id) ? null : normalize([todo, ...all]),
+  )
 }
 
 // Muutokset tarkistavat omistajuuden: pelkkä id ei riitä, muuten kirjautunut

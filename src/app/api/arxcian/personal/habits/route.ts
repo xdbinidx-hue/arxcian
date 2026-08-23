@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withStoreErrors } from '@/lib/arxcian/personal/storeResponse'
 import { currentUser, currentOwner, visibleTo } from '@/lib/session'
 import { getHabits, addHabit, toggleHabitToday, removeHabit } from '@/lib/arxcian/personal/habits'
 import type { Owner, SessionUser } from '@/lib/session'
@@ -17,7 +18,7 @@ export async function GET() {
   return respond(await getHabits(user), user)
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const me = await currentOwner()
   if (!me) return NextResponse.json({ error: 'Kirjautuminen vaaditaan' }, { status: 401 })
 
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
 }
 
 /** Kääntää tämän päivän tehty-tilan. */
-export async function PATCH(req: NextRequest) {
+async function patchHandler(req: NextRequest) {
   const user = await currentUser()
   if (!user) return NextResponse.json({ error: 'Kirjautuminen vaaditaan' }, { status: 401 })
 
@@ -39,7 +40,7 @@ export async function PATCH(req: NextRequest) {
   return respond(await toggleHabitToday(id, user), user)
 }
 
-export async function DELETE(req: NextRequest) {
+async function deleteHandler(req: NextRequest) {
   const user = await currentUser()
   if (!user) return NextResponse.json({ error: 'Kirjautuminen vaaditaan' }, { status: 401 })
 
@@ -48,3 +49,9 @@ export async function DELETE(req: NextRequest) {
 
   return respond(await removeHabit(id, user), user)
 }
+
+// Kirjoitusvirhe on saatava vastaukseen asti, ei vain lokiin — ks.
+// [storeResponse.ts](src/lib/arxcian/personal/storeResponse.ts).
+export const POST = (req: NextRequest) => withStoreErrors(() => postHandler(req))
+export const PATCH = (req: NextRequest) => withStoreErrors(() => patchHandler(req))
+export const DELETE = (req: NextRequest) => withStoreErrors(() => deleteHandler(req))

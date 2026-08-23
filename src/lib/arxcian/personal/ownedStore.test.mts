@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { runMutate, type StoreBackend } from './ownedStore.ts'
+import { runMutate, StoreWriteError, type StoreBackend, type WriteOutcome } from './ownedStore.ts'
 
 type Rivi = { id: string; owner: 'albin' | 'arbnor' | 'shared' }
 
@@ -30,12 +30,12 @@ function backend(alku: Rivi[] = []) {
       }
       return tila
     },
-    async write(expected, next) {
-      if (expected !== String(version)) return false
+    async write(expected, next): Promise<WriteOutcome> {
+      if (expected !== String(version)) return 'conflict'
       items = [...next]
       version += 1
       kirjoituksia += 1
-      return true
+      return 'ok'
     },
   }
 
@@ -58,7 +58,7 @@ test('kilpaileva kirjoitus ei hukkaa toisen käyttäjän lisäystä', () => {
   // Arbnor ehtii väliin heti kun Albinin muutos on lukenut listan.
   s.kilpailija({ id: 'arbnorin', owner: 'arbnor' })
 
-  return runMutate(s.b, current => [{ id: 'albinin', owner: 'albin' }, ...current]).then(tulos => {
+  return runMutate('testi', s.b, current => [{ id: 'albinin', owner: 'albin' }, ...current]).then(tulos => {
     const idt = tulos.map(r => r.id)
     // Molempien lisäykset ovat tallessa — ennen korjausta 'arbnorin' katosi.
     assert.ok(idt.includes('albinin'), 'Albinin lisäys puuttuu')
@@ -73,14 +73,14 @@ test('kilpaileva kirjoitus ei hukkaa toisen käyttäjän lisäystä', () => {
 
 test('törmäämätön kirjoitus menee läpi yhdellä yrityksellä', async () => {
   const s = backend([])
-  await runMutate(s.b, current => [{ id: 'a', owner: 'albin' }, ...current])
+  await runMutate('testi', s.b, current => [{ id: 'a', owner: 'albin' }, ...current])
   assert.equal(s.kirjoituksia(), 1)
   assert.deepEqual(s.nykyiset().map(r => r.id), ['a'])
 })
 
 test('null-muutos ei kirjoita mitään', async () => {
   const s = backend([{ id: 'a', owner: 'albin' }])
-  const tulos = await runMutate(s.b, () => null)
+  const tulos = await runMutate('testi', s.b, () => null)
   assert.equal(s.kirjoituksia(), 0)
   assert.deepEqual(tulos.map(r => r.id), ['a'])
 })
@@ -90,7 +90,7 @@ test('muutosfunktio näkee kilpailijan kirjoituksen uudella yrityksellä', async
   s.kilpailija({ id: 'kilpailija', owner: 'arbnor' })
 
   const nahdyt: string[][] = []
-  await runMutate(s.b, current => {
+  await runMutate('testi', s.b, current => {
     nahdyt.push(current.map(r => r.id))
     return [{ id: 'oma', owner: 'albin' }, ...current]
   })
@@ -101,18 +101,60 @@ test('muutosfunktio näkee kilpailijan kirjoituksen uudella yrityksellä', async
   assert.deepEqual(nahdyt[1], ['kilpailija'])
 })
 
-test('loputon törmäys ei jää silmukkaan eikä ylikirjoita', async () => {
+test('loputon törmäys heittää eikä palauta hiljaa vanhaa listaa', async () => {
   let version = 0
   const b: StoreBackend<Rivi> = {
     async read() {
       version += 1 // versio muuttuu joka luvun jälkeen -> kirjoitus ei osu koskaan
       return { items: [{ id: 'pysyy', owner: 'shared' }], version: String(version) }
     },
-    async write() {
-      return false
+    async write(): Promise<WriteOutcome> {
+      return 'conflict'
     },
   }
-  const tulos = await runMutate(b, current => [{ id: 'uusi', owner: 'albin' }, ...current])
-  // Palautetaan luettu tila, ei väkisin kirjoitettua.
-  assert.deepEqual(tulos.map(r => r.id), ['pysyy'])
+
+  // Ennen korjausta tämä palautti listan ilman käyttäjän lisäystä ja reitti
+  // vastasi 200 OK — juuri se hiljainen epäonnistuminen jota ownedStore estää.
+  await assert.rejects(
+    () => runMutate('testi', b, current => [{ id: 'uusi', owner: 'albin' }, ...current]),
+    (e: unknown) => e instanceof StoreWriteError && e.reason === 'conflict',
+  )
+})
+
+test('kova virhe heittää heti eikä kuluta yrityksiä', async () => {
+  let lukuja = 0
+  const b: StoreBackend<Rivi> = {
+    async read() {
+      lukuja += 1
+      return { items: [], version: '0' }
+    },
+    async write(): Promise<WriteOutcome> {
+      return 'error'
+    },
+  }
+
+  await assert.rejects(
+    () => runMutate('testi', b, () => [{ id: 'uusi', owner: 'albin' }]),
+    (e: unknown) => e instanceof StoreWriteError && e.reason === 'error',
+  )
+  // Rikkinäinen Redis ei parane yrittämällä uudelleen.
+  assert.equal(lukuja, 1)
+})
+
+test('lukuvirhe kulkee läpi eikä muutu tyhjäksi listaksi', async () => {
+  const b: StoreBackend<Rivi> = {
+    async read() {
+      throw new Error('Redis alhaalla')
+    },
+    async write(): Promise<WriteOutcome> {
+      return 'ok'
+    },
+  }
+
+  // Tyhjä lista lukuvirheen tilalla johtaisi siihen että ensimmäinen kirjoitus
+  // korvaa koko olemassa olevan listan yhdellä rivillä.
+  await assert.rejects(
+    () => runMutate('testi', b, current => [{ id: 'uusi', owner: 'albin' }, ...current]),
+    /Redis alhaalla/,
+  )
 })

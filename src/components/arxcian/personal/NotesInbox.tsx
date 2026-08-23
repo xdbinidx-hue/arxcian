@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { StoreError, useStoreError } from './storeError'
 import type { Note } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
 
@@ -34,6 +35,7 @@ const REVIEW_PROMPTS = {
 
 export function NotesInbox({ initialNotes, currentUser }: Props) {
   const [notes, setNotes] = useState<Note[]>(initialNotes)
+  const { virhe, setVirhe, lue } = useStoreError()
   const [text, setText] = useState('')
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -46,8 +48,8 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: noteText, owner }),
     })
-    const data = await res.json()
-    if (data.notes) setNotes(data.notes)
+    const lista = await lue<Note>(res, 'notes')
+    if (lista) setNotes(lista)
   }
 
   const add = async (e: React.FormEvent) => {
@@ -87,17 +89,16 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const data = await res.json()
-    if (data.notes) setNotes(data.notes)
+    const lista = await lue<Note>(res, 'notes')
+    if (lista) setNotes(lista)
   }
 
   const remove = async (id: string) => {
     const previous = notes
     setNotes(notes.filter(n => n.id !== id))
     const res = await fetch(`/api/arxcian/personal/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (data.notes) setNotes(data.notes)
-    else setNotes(previous)
+    const lista = await lue<Note>(res, 'notes')
+    setNotes(lista ?? previous)
   }
 
   return (
@@ -121,6 +122,7 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
         {reviewMode ? (
           <div className="mb-4 rounded-md border border-ax-line-strong p-3">
             <p className="mb-2 text-[11px] uppercase tracking-wider text-ax-accent">

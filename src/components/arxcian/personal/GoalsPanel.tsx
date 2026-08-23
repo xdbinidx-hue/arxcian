@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { StoreError, useStoreError } from './storeError'
 import { GOAL_AREAS, GOAL_AREA_LABELS, type Goal, type GoalArea } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
 
@@ -11,6 +12,7 @@ type Props = {
 
 export function GoalsPanel({ initialGoals, currentUser }: Props) {
   const [goals, setGoals] = useState<Goal[]>(initialGoals)
+  const { virhe, setVirhe, lue } = useStoreError()
   const [title, setTitle] = useState('')
   const [area, setArea] = useState<GoalArea>('henkilokohtainen')
   const [shared, setShared] = useState(false)
@@ -26,8 +28,8 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ area, title: title.trim(), owner: shared ? 'shared' : currentUser }),
       })
-      const data = await res.json()
-      if (data.goals) setGoals(data.goals)
+      const lista = await lue<Goal>(res, 'goals')
+      if (lista) setGoals(lista)
       setTitle('')
     } finally {
       setBusy(false)
@@ -41,17 +43,16 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const data = await res.json()
-    if (data.goals) setGoals(data.goals)
+    const lista = await lue<Goal>(res, 'goals')
+    if (lista) setGoals(lista)
   }
 
   const remove = async (id: string) => {
     const previous = goals
     setGoals(goals.filter(g => g.id !== id))
     const res = await fetch(`/api/arxcian/personal/goals?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (data.goals) setGoals(data.goals)
-    else setGoals(previous)
+    const lista = await lue<Goal>(res, 'goals')
+    setGoals(lista ?? previous)
   }
 
   return (
@@ -61,6 +62,7 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
         <form onSubmit={add} className="mb-4 flex flex-wrap items-center gap-2">
           <select
             value={area}

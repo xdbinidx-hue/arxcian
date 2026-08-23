@@ -25,7 +25,7 @@ export async function addGoal(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
-  return store.mutate(all => [goal, ...all])
+  return store.mutate(all => (all.some(g => g.id === goal.id) ? null : [goal, ...all]))
 }
 
 // Muutokset tarkistavat omistajuuden: pelkkä id ei riitä, muuten kirjautunut
@@ -70,6 +70,6 @@ export async function createGoalFromNote(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
-  await store.mutate(all => [goal, ...all])
+  await store.mutate(all => (all.some(g => g.id === goal.id) ? null : [goal, ...all]))
   return goal
 }

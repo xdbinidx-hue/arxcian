@@ -27,7 +27,9 @@ export async function addNote(input: { owner: Owner; text: string }): Promise<No
     createdAt: Date.now(),
     promotedToGoalId: null,
   }
-  return store.mutate(all => [note, ...all].slice(0, MAX_NOTES))
+  return store.mutate(all =>
+    all.some(n => n.id === note.id) ? null : [note, ...all].slice(0, MAX_NOTES),
+  )
 }
 
 /** Tarkistaa omistajuuden ennen poistoa, ks. goals.ts. */

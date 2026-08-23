@@ -13,6 +13,7 @@ import {
 } from '@/lib/arxcian/personal/todoGroups'
 import type { Todo } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
+import { StoreError, useStoreError } from './storeError'
 
 type Props = {
   initialTodos: Todo[]
@@ -91,6 +92,7 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showDone, setShowDone] = useState(false)
+  const { virhe, setVirhe, lue } = useStoreError()
 
   // Päivä ratkeaa vasta selaimessa: palvelin renderöi UTC:ssa, joten
   // ryhmittely palvelimella eroaisi selaimen näkemästä päivästä.
@@ -140,12 +142,21 @@ export function TodoList({ initialTodos, currentUser }: Props) {
     setNotifyState(await Notification.requestPermission())
   }
 
+  // Epäonnistunut tallennus on kerrottava käyttäjälle. Palvelin vastaa
+  // törmäykseen 409:llä ja Redis-virheeseen 503:lla; kumpaankin kuuluu eri
+  // korjaus, joten viesti tulee palvelimelta eikä ole kiinteä tässä.
   const send = useCallback(async (init: RequestInit, query = '') => {
-    const res = await fetch(`/api/arxcian/personal/todos${query}`, init)
-    const data = (await res.json()) as { todos?: Todo[] }
-    if (data.todos) setTodos(data.todos)
-    return Boolean(data.todos)
-  }, [])
+    try {
+      const res = await fetch(`/api/arxcian/personal/todos${query}`, init)
+      const lista = await lue<Todo>(res, 'todos')
+      if (!lista) return false
+      setTodos(lista)
+      return true
+    } catch {
+      setVirhe('Yhteys katkesi. Tallennus ei mennyt läpi.')
+      return false
+    }
+  }, [lue, setVirhe])
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -279,6 +290,8 @@ export function TodoList({ initialTodos, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
+
         {dueNow.length > 0 && (
           <div className="mb-4 rounded-md border border-ax-warn/40 px-3 py-2">
             <div className="flex items-start justify-between gap-2">

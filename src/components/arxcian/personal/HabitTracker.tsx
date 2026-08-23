@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { StoreError, useStoreError } from './storeError'
 import { calculateStreak } from '@/lib/arxcian/personal/streak'
 import type { Habit } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
@@ -16,6 +17,7 @@ function todayISO() {
 
 export function HabitTracker({ initialHabits, currentUser }: Props) {
   const [habits, setHabits] = useState<Habit[]>(initialHabits)
+  const { virhe, setVirhe, lue } = useStoreError()
   const [title, setTitle] = useState('')
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -30,8 +32,8 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), owner: shared ? 'shared' : currentUser }),
       })
-      const data = await res.json()
-      if (data.habits) setHabits(data.habits)
+      const lista = await lue<Habit>(res, 'habits')
+      if (lista) setHabits(lista)
       setTitle('')
     } finally {
       setBusy(false)
@@ -57,17 +59,16 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const data = await res.json()
-    if (data.habits) setHabits(data.habits)
+    const lista = await lue<Habit>(res, 'habits')
+    if (lista) setHabits(lista)
   }
 
   const remove = async (id: string) => {
     const previous = habits
     setHabits(habits.filter(h => h.id !== id))
     const res = await fetch(`/api/arxcian/personal/habits?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (data.habits) setHabits(data.habits)
-    else setHabits(previous)
+    const lista = await lue<Habit>(res, 'habits')
+    setHabits(lista ?? previous)
   }
 
   const today = todayISO()
@@ -79,6 +80,7 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
         <form onSubmit={add} className="mb-4 flex flex-wrap items-center gap-2">
           <input
             value={title}

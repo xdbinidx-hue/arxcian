@@ -660,8 +660,10 @@ taulukon sarakkeesta (`tehoTaulukko: parseNum(row[idxTehoMyyja])`), leikkuri
 ohitettuna. **Sitä ei mergetä.** Haara on tallella mittauslukujensa takia, ei
 toteutettavana suunnitelmana.
 
-Tämä kohta luki 23.8.2026 asti haaran nimenä `claude/rj-mob-osio-8b7572`, jota
-ei ole olemassa. Varoitus osoitti siis haamuun samalla kun kielletyn mallin
+Tämä kohta luki 23.8.2026 asti haaran nimenä `claude/rj-mob-osio-8b7572`, joka
+on sittemmin nimetty uudelleen — osa sen historiasta on mainissa, mutta
+kielletty malli ei ole. **Haara on olemassa vain paikallisesti**: originissa on
+pelkkä `main`, joten tämän kohdan osoittama haara katoaa jos työkopio katoaa. Varoitus osoitti siis haamuun samalla kun kielletyn mallin
 toteuttava haara istui repossa nimeämättömänä — eli juuri siinä muodossa jossa
 seuraava lukija mergeää sen, koska mikään ei kerro että tämä on se haara.
 **Jos haara joskus nimetään uudelleen, päivitä nimi tähän samalla.**
