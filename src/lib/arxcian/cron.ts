@@ -225,8 +225,8 @@ const globeJobs: CronJob[] = [
     id: 'globe-weather',
     description: 'Maapallo: kaupunkien sää',
     run: async () => {
-      const result = await getCityWeather()
-      return { key: CITIES_CACHE_KEY, items: result.data.length }
+      const result = await getCityWeather(true)
+      return { key: CITIES_CACHE_KEY, items: result.data.length, source: result.source }
     },
   },
 ]
