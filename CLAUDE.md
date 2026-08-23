@@ -356,6 +356,13 @@ muistiinpano varataan sillä ensin, ja tavoite luodaan vasta varauksen
 onnistuttua. Luonti takaisinkutsun sisällä tekisi kahden tavoitteen
 kaksoiskappaleen yhdestä muistiinpanosta heti kun kirjoitus törmää kerran.
 
+**Varaus ei saa jäädä viimeistelemättä.** Sama funktio ei siksi lopeta siihen
+että muistiinpano on jo varattu: jos tavoitteen luonti kaatui varauksen
+jälkeen, uusi yritys vastaisi `200 OK` tekemättä mitään ja tavoite jäisi
+syntymättä pysyvästi. `goalExists` tarkistaa varatun id:n ja luonti ajetaan
+tarvittaessa uudelleen. **Älä siis "yksinkertaista" `promotedToGoalId`:tä
+pelkäksi lipuksi** — sillä myös tunnistetaan puuttuva tavoite.
+
 Kolme yritystä riittää (kirjoittajia on kaksi). Jos kaikki törmäävät,
 palautetaan viimeisin luettu tila eikä kirjoiteta väkisin — hiljainen
 ylikirjoitus on juuri se vika jota tämä estää. `ownedStore.test.mts` väärentää

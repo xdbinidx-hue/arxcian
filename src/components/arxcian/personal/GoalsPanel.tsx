@@ -41,15 +41,20 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
 
   const toggle = async (id: string) => {
     // Optimistinen tila peruutetaan epäonnistuessa: muuten ruksi jäisi
-    // valheellisesti päälle sivun päivitykseen asti.
-    const previous = goals
-    setGoals(goals.map(g => (g.id === id ? { ...g, done: !g.done } : g)))
+    // valheellisesti päälle sivun päivitykseen asti. Peruutus kääntää saman
+    // rivin takaisin funktionaalisesti eikä palauta talteen otettua listaa —
+    // rinnakkainen onnistunut muutos toiseen riviin ei saa kadota tämän
+    // epäonnistumisen mukana.
+    const kaanna = (gs: Goal[]) => gs.map(g => (g.id === id ? { ...g, done: !g.done } : g))
+    setGoals(kaanna)
+
     const lista = await laheta<Goal>('/api/arxcian/personal/goals', 'goals', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    setGoals(lista ?? previous)
+    if (lista) setGoals(lista)
+    else setGoals(kaanna)
   }
 
   const remove = async (id: string) => {

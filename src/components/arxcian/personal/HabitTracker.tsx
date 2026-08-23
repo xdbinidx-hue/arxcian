@@ -46,9 +46,8 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
   const toggleToday = async (id: string) => {
     const today = todayISO()
     // Optimistinen tila peruutetaan epäonnistuessa, ks. GoalsPanel.toggle.
-    const previous = habits
-    setHabits(
-      habits.map(h =>
+    const kaanna = (hs: Habit[]) =>
+      hs.map(h =>
         h.id === id
           ? {
               ...h,
@@ -57,14 +56,16 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
                 : [...h.completedDates, today],
             }
           : h,
-      ),
-    )
+      )
+    setHabits(kaanna)
+
     const lista = await laheta<Habit>('/api/arxcian/personal/habits', 'habits', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    setHabits(lista ?? previous)
+    if (lista) setHabits(lista)
+    else setHabits(kaanna)
   }
 
   const remove = async (id: string) => {

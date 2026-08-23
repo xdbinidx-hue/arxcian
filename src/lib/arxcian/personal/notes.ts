@@ -49,10 +49,22 @@ export async function removeNote(id: string, user: SessionUser | null): Promise<
  * tavoitteen luonti sen sisällä tekisi kaksi tavoitetta yhdestä
  * muistiinpanosta jos kirjoitus törmää kerran.
  *
- * Jos varaus onnistuu mutta tavoitteen luonti kaatuu, muistiinpano jää
- * osoittamaan tavoitteeseen jota ei ole. Se on pienempi haitta kuin
- * kaksoiskappale: `promotedToGoalId` on käytössä vain lippuna "tämä on jo
- * ylennetty", eikä sillä haeta tavoitetta.
+ * **Keskeneräinen ylennys viimeistellään uudella yrityksellä.** Jos varaus
+ * onnistui mutta tavoitteen luonti kaatui, muistiinpano osoittaa tavoitteeseen
+ * jota ei ole. Silloin uusi yritys ei saa lopettaa varattuun tilaan — se
+ * vastaisi 200 OK tekemättä mitään ja tavoite jäisi syntymättä pysyvästi.
+ * Siksi `goalExists` tarkistaa varatun id:n ja luonti ajetaan tarvittaessa
+ * uudelleen samalla id:llä.
+ *
+ * `promotedToGoalId` on siis kaksoiskäytössä: lippu "tämä on jo ylennetty"
+ * **ja** viittaus jolla puuttuva tavoite tunnistetaan. Älä oleta sitä pelkäksi
+ * lipuksi.
+ *
+ * Huom. että viimeistely on käytännössä saman istunnon sisäinen: NotesInbox
+ * piilottaa ylennysnapin heti kun `promotedToGoalId` on asetettu, joten sivun
+ * lataamisen jälkeen uutta yritystä ei voi käynnistää käyttöliittymästä.
+ * Napin näyttäminen ylennetyille on oma päätöksensä — sen kanssa tulee myös
+ * se että poistettu tavoite syntyisi uudelleen.
  */
 export async function promoteNoteToGoal(id: string, user: SessionUser | null): Promise<Note[]> {
   const uusiId = crypto.randomUUID()

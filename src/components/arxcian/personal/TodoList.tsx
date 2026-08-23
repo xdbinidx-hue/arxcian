@@ -145,9 +145,6 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   // Epäonnistunut tallennus on kerrottava käyttäjälle. Palvelin vastaa
   // törmäykseen 409:llä ja Redis-virheeseen 503:lla; kumpaankin kuuluu eri
   // korjaus, joten viesti tulee palvelimelta eikä ole kiinteä tässä.
-  // Epäonnistunut tallennus on kerrottava käyttäjälle. Palvelin vastaa
-  // törmäykseen 409:llä ja Redis-virheeseen 503:lla; kumpaankin kuuluu eri
-  // korjaus, joten viesti tulee palvelimelta eikä ole kiinteä tässä.
   const send = useCallback(
     async (init: RequestInit, query = '') => {
       const lista = await laheta<Todo>(`/api/arxcian/personal/todos${query}`, 'todos', init)
@@ -185,22 +182,30 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   }
 
   const toggle = async (id: string) => {
-    setTodos(ts => ts.map(t => (t.id === id ? { ...t, done: !t.done } : t)))
-    await send({
+    const kaanna = (ts: Todo[]) => ts.map(t => (t.id === id ? { ...t, done: !t.done } : t))
+    setTodos(kaanna)
+
+    const ok = await send({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, action: 'toggle' }),
     })
+    // Peruutus kääntää saman rivin takaisin funktionaalisesti eikä palauta
+    // talteen otettua listaa: rinnakkainen onnistunut muutos toiseen riviin
+    // ei saa kadota tämän epäonnistumisen mukana.
+    if (!ok) setTodos(kaanna)
   }
 
   /** Siirtää tehtävän huomiselle ja säilyttää kellonajan. */
   const pushToTomorrow = async (todo: Todo) => {
     const base = todo.date ?? today
     if (!base) return
+    const oliMuistutettu = remindedRef.current.has(todo.id)
     remindedRef.current.delete(todo.id)
     saveReminded(remindedRef.current)
     setDueNow(prev => prev.filter(t => t.id !== todo.id))
-    await send({
+
+    const ok = await send({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -210,6 +215,16 @@ export function TodoList({ initialTodos, currentUser }: Props) {
         remindAt: todo.remindAt,
       }),
     })
+
+    // Siirron kaatuessa muistutus kuuluu yhä tälle päivälle. Ilman palautusta
+    // palkki katoaisi vaikka tehtävä jäi siirtymättä.
+    if (!ok) {
+      if (oliMuistutettu) {
+        remindedRef.current.add(todo.id)
+        saveReminded(remindedRef.current)
+      }
+      setDueNow(prev => (prev.some(t => t.id === todo.id) ? prev : [...prev, todo]))
+    }
   }
 
   const remove = async (id: string) => {
