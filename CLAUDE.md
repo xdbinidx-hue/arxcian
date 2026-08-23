@@ -105,6 +105,8 @@ Noudata olemassa olevan koodin tyyliä:
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | Google Sheets / Drive (palvelutili, RJ-Mob) |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Calendar (käyttäjän oma tili, arxcian) |
 | `ANTHROPIC_API_KEY` | AI-tiivistelmät |
+| `ELEVENLABS_API_KEY` | puhesynteesi ([tts.ts](src/lib/arxcian/tts.ts)) |
+| `ELEVENLABS_VOICE_ID`, `ELEVENLABS_VOICE_ID_FI` | avustajan ääni per kieli — molemmat pakollisia, puuttuvasta ei palata toiseen ääneen |
 | `WATCH_SOURCES_SHEET_ID` | watchin lähdelistan taulukko (valinnainen — ilman sitä varalista) |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis -välimuisti |
 
