@@ -13,6 +13,7 @@ import {
 } from '@/lib/arxcian/personal/todoGroups'
 import type { Todo } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
+import { StoreError, useStoreError } from './storeError'
 
 type Props = {
   initialTodos: Todo[]
@@ -91,6 +92,7 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showDone, setShowDone] = useState(false)
+  const { virhe, setVirhe, laheta } = useStoreError()
 
   // Päivä ratkeaa vasta selaimessa: palvelin renderöi UTC:ssa, joten
   // ryhmittely palvelimella eroaisi selaimen näkemästä päivästä.
@@ -140,19 +142,25 @@ export function TodoList({ initialTodos, currentUser }: Props) {
     setNotifyState(await Notification.requestPermission())
   }
 
-  const send = useCallback(async (init: RequestInit, query = '') => {
-    const res = await fetch(`/api/arxcian/personal/todos${query}`, init)
-    const data = (await res.json()) as { todos?: Todo[] }
-    if (data.todos) setTodos(data.todos)
-    return Boolean(data.todos)
-  }, [])
+  // Epäonnistunut tallennus on kerrottava käyttäjälle. Palvelin vastaa
+  // törmäykseen 409:llä ja Redis-virheeseen 503:lla; kumpaankin kuuluu eri
+  // korjaus, joten viesti tulee palvelimelta eikä ole kiinteä tässä.
+  const send = useCallback(
+    async (init: RequestInit, query = '') => {
+      const lista = await laheta<Todo>(`/api/arxcian/personal/todos${query}`, 'todos', init)
+      if (!lista) return false
+      setTodos(lista)
+      return true
+    },
+    [laheta],
+  )
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
     setBusy(true)
     try {
-      await send({
+      const ok = await send({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -162,30 +170,42 @@ export function TodoList({ initialTodos, currentUser }: Props) {
           remindAt: remindAt || null,
         }),
       })
-      setTitle('')
-      setRemindAt('')
+      // Kentät tyhjennetään vain onnistuessa — muuten epäonnistunut tallennus
+      // veisi kirjoitetun tehtävän mukanaan.
+      if (ok) {
+        setTitle('')
+        setRemindAt('')
+      }
     } finally {
       setBusy(false)
     }
   }
 
   const toggle = async (id: string) => {
-    setTodos(ts => ts.map(t => (t.id === id ? { ...t, done: !t.done } : t)))
-    await send({
+    const kaanna = (ts: Todo[]) => ts.map(t => (t.id === id ? { ...t, done: !t.done } : t))
+    setTodos(kaanna)
+
+    const ok = await send({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, action: 'toggle' }),
     })
+    // Peruutus kääntää saman rivin takaisin funktionaalisesti eikä palauta
+    // talteen otettua listaa: rinnakkainen onnistunut muutos toiseen riviin
+    // ei saa kadota tämän epäonnistumisen mukana.
+    if (!ok) setTodos(kaanna)
   }
 
   /** Siirtää tehtävän huomiselle ja säilyttää kellonajan. */
   const pushToTomorrow = async (todo: Todo) => {
     const base = todo.date ?? today
     if (!base) return
+    const oliMuistutettu = remindedRef.current.has(todo.id)
     remindedRef.current.delete(todo.id)
     saveReminded(remindedRef.current)
     setDueNow(prev => prev.filter(t => t.id !== todo.id))
-    await send({
+
+    const ok = await send({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -195,6 +215,16 @@ export function TodoList({ initialTodos, currentUser }: Props) {
         remindAt: todo.remindAt,
       }),
     })
+
+    // Siirron kaatuessa muistutus kuuluu yhä tälle päivälle. Ilman palautusta
+    // palkki katoaisi vaikka tehtävä jäi siirtymättä.
+    if (!ok) {
+      if (oliMuistutettu) {
+        remindedRef.current.add(todo.id)
+        saveReminded(remindedRef.current)
+      }
+      setDueNow(prev => (prev.some(t => t.id === todo.id) ? prev : [...prev, todo]))
+    }
   }
 
   const remove = async (id: string) => {
@@ -279,6 +309,8 @@ export function TodoList({ initialTodos, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
+
         {dueNow.length > 0 && (
           <div className="mb-4 rounded-md border border-ax-warn/40 px-3 py-2">
             <div className="flex items-start justify-between gap-2">

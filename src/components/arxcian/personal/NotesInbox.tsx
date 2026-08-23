@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { StoreError, useStoreError } from './storeError'
 import type { Note } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
 
@@ -34,6 +35,7 @@ const REVIEW_PROMPTS = {
 
 export function NotesInbox({ initialNotes, currentUser }: Props) {
   const [notes, setNotes] = useState<Note[]>(initialNotes)
+  const { virhe, setVirhe, laheta } = useStoreError()
   const [text, setText] = useState('')
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -41,13 +43,14 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
   const [reviewAnswers, setReviewAnswers] = useState<string[]>([])
 
   const postNote = async (noteText: string, owner: Owner) => {
-    const res = await fetch('/api/arxcian/personal/notes', {
+    const lista = await laheta<Note>('/api/arxcian/personal/notes', 'notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: noteText, owner }),
     })
-    const data = await res.json()
-    if (data.notes) setNotes(data.notes)
+    if (!lista) return false
+    setNotes(lista)
+    return true
   }
 
   const add = async (e: React.FormEvent) => {
@@ -55,8 +58,9 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
     if (!text.trim()) return
     setBusy(true)
     try {
-      await postNote(text.trim(), shared ? 'shared' : currentUser)
-      setText('')
+      // Kenttä tyhjennetään vain onnistuessa — muuten epäonnistunut tallennus
+      // veisi kirjoitetun tekstin mukanaan.
+      if (await postNote(text.trim(), shared ? 'shared' : currentUser)) setText('')
     } finally {
       setBusy(false)
     }
@@ -73,31 +77,35 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
     const body = prompts.map((q, i) => `${q}\n${reviewAnswers[i] || '(ei vastausta)'}`).join('\n\n')
     setBusy(true)
     try {
-      await postNote(`/${reviewMode}katsaus\n\n${body}`, currentUser)
-      setReviewMode(null)
-      setReviewAnswers([])
+      // Lomake nollataan vain onnistuessa: epäonnistunut tallennus veisi koko
+      // katsauksen vastaukset mukanaan, mikä on tässä kalleinta menetettävää.
+      if (await postNote(`/${reviewMode}katsaus\n\n${body}`, currentUser)) {
+        setReviewMode(null)
+        setReviewAnswers([])
+      }
     } finally {
       setBusy(false)
     }
   }
 
   const promote = async (id: string) => {
-    const res = await fetch('/api/arxcian/personal/notes', {
+    const lista = await laheta<Note>('/api/arxcian/personal/notes', 'notes', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const data = await res.json()
-    if (data.notes) setNotes(data.notes)
+    if (lista) setNotes(lista)
   }
 
   const remove = async (id: string) => {
     const previous = notes
     setNotes(notes.filter(n => n.id !== id))
-    const res = await fetch(`/api/arxcian/personal/notes?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (data.notes) setNotes(data.notes)
-    else setNotes(previous)
+    const lista = await laheta<Note>(
+      `/api/arxcian/personal/notes?id=${encodeURIComponent(id)}`,
+      'notes',
+      { method: 'DELETE' },
+    )
+    setNotes(lista ?? previous)
   }
 
   return (
@@ -121,6 +129,7 @@ export function NotesInbox({ initialNotes, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
         {reviewMode ? (
           <div className="mb-4 rounded-md border border-ax-line-strong p-3">
             <p className="mb-2 text-[11px] uppercase tracking-wider text-ax-accent">

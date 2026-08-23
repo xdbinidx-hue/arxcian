@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { StoreError, useStoreError } from './storeError'
 import { calculateStreak } from '@/lib/arxcian/personal/streak'
 import type { Habit } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
@@ -16,6 +17,7 @@ function todayISO() {
 
 export function HabitTracker({ initialHabits, currentUser }: Props) {
   const [habits, setHabits] = useState<Habit[]>(initialHabits)
+  const { virhe, setVirhe, laheta } = useStoreError()
   const [title, setTitle] = useState('')
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -25,14 +27,17 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
     if (!title.trim()) return
     setBusy(true)
     try {
-      const res = await fetch('/api/arxcian/personal/habits', {
+      const lista = await laheta<Habit>('/api/arxcian/personal/habits', 'habits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), owner: shared ? 'shared' : currentUser }),
       })
-      const data = await res.json()
-      if (data.habits) setHabits(data.habits)
-      setTitle('')
+      // Kenttä tyhjennetään vain onnistuessa — muuten epäonnistunut
+      // tallennus veisi kirjoitetun tekstin mukanaan.
+      if (lista) {
+        setHabits(lista)
+        setTitle('')
+      }
     } finally {
       setBusy(false)
     }
@@ -40,8 +45,9 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
 
   const toggleToday = async (id: string) => {
     const today = todayISO()
-    setHabits(
-      habits.map(h =>
+    // Optimistinen tila peruutetaan epäonnistuessa, ks. GoalsPanel.toggle.
+    const kaanna = (hs: Habit[]) =>
+      hs.map(h =>
         h.id === id
           ? {
               ...h,
@@ -50,24 +56,27 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
                 : [...h.completedDates, today],
             }
           : h,
-      ),
-    )
-    const res = await fetch('/api/arxcian/personal/habits', {
+      )
+    setHabits(kaanna)
+
+    const lista = await laheta<Habit>('/api/arxcian/personal/habits', 'habits', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const data = await res.json()
-    if (data.habits) setHabits(data.habits)
+    if (lista) setHabits(lista)
+    else setHabits(kaanna)
   }
 
   const remove = async (id: string) => {
     const previous = habits
     setHabits(habits.filter(h => h.id !== id))
-    const res = await fetch(`/api/arxcian/personal/habits?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (data.habits) setHabits(data.habits)
-    else setHabits(previous)
+    const lista = await laheta<Habit>(
+      `/api/arxcian/personal/habits?id=${encodeURIComponent(id)}`,
+      'habits',
+      { method: 'DELETE' },
+    )
+    setHabits(lista ?? previous)
   }
 
   const today = todayISO()
@@ -79,6 +88,7 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
         <form onSubmit={add} className="mb-4 flex flex-wrap items-center gap-2">
           <input
             value={title}

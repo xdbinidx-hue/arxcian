@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { StoreError, useStoreError } from './storeError'
 import { GOAL_AREAS, GOAL_AREA_LABELS, type Goal, type GoalArea } from '@/lib/arxcian/personal/types'
 import type { Owner } from '@/lib/session'
 
@@ -11,6 +12,7 @@ type Props = {
 
 export function GoalsPanel({ initialGoals, currentUser }: Props) {
   const [goals, setGoals] = useState<Goal[]>(initialGoals)
+  const { virhe, setVirhe, laheta } = useStoreError()
   const [title, setTitle] = useState('')
   const [area, setArea] = useState<GoalArea>('henkilokohtainen')
   const [shared, setShared] = useState(false)
@@ -21,37 +23,49 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
     if (!title.trim()) return
     setBusy(true)
     try {
-      const res = await fetch('/api/arxcian/personal/goals', {
+      const lista = await laheta<Goal>('/api/arxcian/personal/goals', 'goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ area, title: title.trim(), owner: shared ? 'shared' : currentUser }),
       })
-      const data = await res.json()
-      if (data.goals) setGoals(data.goals)
-      setTitle('')
+      // Kenttä tyhjennetään vain onnistuessa — muuten epäonnistunut tallennus
+      // veisi kirjoitetun tekstin mukanaan.
+      if (lista) {
+        setGoals(lista)
+        setTitle('')
+      }
     } finally {
       setBusy(false)
     }
   }
 
   const toggle = async (id: string) => {
-    setGoals(goals.map(g => (g.id === id ? { ...g, done: !g.done } : g)))
-    const res = await fetch('/api/arxcian/personal/goals', {
+    // Optimistinen tila peruutetaan epäonnistuessa: muuten ruksi jäisi
+    // valheellisesti päälle sivun päivitykseen asti. Peruutus kääntää saman
+    // rivin takaisin funktionaalisesti eikä palauta talteen otettua listaa —
+    // rinnakkainen onnistunut muutos toiseen riviin ei saa kadota tämän
+    // epäonnistumisen mukana.
+    const kaanna = (gs: Goal[]) => gs.map(g => (g.id === id ? { ...g, done: !g.done } : g))
+    setGoals(kaanna)
+
+    const lista = await laheta<Goal>('/api/arxcian/personal/goals', 'goals', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const data = await res.json()
-    if (data.goals) setGoals(data.goals)
+    if (lista) setGoals(lista)
+    else setGoals(kaanna)
   }
 
   const remove = async (id: string) => {
     const previous = goals
     setGoals(goals.filter(g => g.id !== id))
-    const res = await fetch(`/api/arxcian/personal/goals?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const data = await res.json()
-    if (data.goals) setGoals(data.goals)
-    else setGoals(previous)
+    const lista = await laheta<Goal>(
+      `/api/arxcian/personal/goals?id=${encodeURIComponent(id)}`,
+      'goals',
+      { method: 'DELETE' },
+    )
+    setGoals(lista ?? previous)
   }
 
   return (
@@ -61,6 +75,7 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
       </header>
 
       <div className="p-4">
+        <StoreError virhe={virhe} onSulje={() => setVirhe(null)} />
         <form onSubmit={add} className="mb-4 flex flex-wrap items-center gap-2">
           <select
             value={area}
