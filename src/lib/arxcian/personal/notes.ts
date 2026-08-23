@@ -1,6 +1,6 @@
 import { canView, type Owner, type SessionUser } from '@/lib/session'
 import { createOwnedStore } from './ownedStoreKv'
-import { createGoalFromNote } from './goals'
+import { createGoalFromNote, goalExists } from './goals'
 import type { Note } from './types'
 
 const TTL_SECONDS = 5 * 365 * 24 * 60 * 60
@@ -27,9 +27,7 @@ export async function addNote(input: { owner: Owner; text: string }): Promise<No
     createdAt: Date.now(),
     promotedToGoalId: null,
   }
-  return store.mutate(all =>
-    all.some(n => n.id === note.id) ? null : [note, ...all].slice(0, MAX_NOTES),
-  )
+  return store.mutate(all => [note, ...all].slice(0, MAX_NOTES))
 }
 
 /** Tarkistaa omistajuuden ennen poistoa, ks. goals.ts. */
@@ -57,27 +55,34 @@ export async function removeNote(id: string, user: SessionUser | null): Promise<
  * ylennetty", eikä sillä haeta tavoitetta.
  */
 export async function promoteNoteToGoal(id: string, user: SessionUser | null): Promise<Note[]> {
-  const goalId = crypto.randomUUID()
+  const uusiId = crypto.randomUUID()
   let ylennettava: Note | null = null
 
   const updated = await store.mutate(all => {
     const note = all.find(n => n.id === id)
-    if (!note || note.promotedToGoalId || !canView(note.owner, user)) return null
-
+    if (!note || !canView(note.owner, user)) return null
     ylennettava = note
-    return all.map(n => (n.id === id ? { ...n, promotedToGoalId: goalId } : n))
+    // Jo varattu: älä varaa uudelleen, mutta älä myöskään lopeta tähän —
+    // tavoite on voinut jäädä syntymättä, ks. viimeistely alla.
+    if (note.promotedToGoalId) return null
+
+    return all.map(n => (n.id === id ? { ...n, promotedToGoalId: uusiId } : n))
   })
 
-  // Takaisinkutsu on voinut ajautua ja perua itsensä viimeisellä yrityksellä,
-  // joten varaus varmistetaan lopputuloksesta eikä pelkästä sivuvaikutuksesta.
-  const varattu = updated.find(n => n.id === id)?.promotedToGoalId === goalId
-  if (varattu && ylennettava) {
-    await createGoalFromNote({
-      id: goalId,
-      owner: (ylennettava as Note).owner,
-      title: (ylennettava as Note).text.slice(0, 200),
-    })
-  }
+  const note = ylennettava as Note | null
+  const varattuId = updated.find(n => n.id === id)?.promotedToGoalId
+  if (!note || !varattuId) return updated
+
+  // Uudelleenyritys viimeistelee keskeneräisen ylennyksen. Ilman tätä
+  // tavoitteen luonnin kaaduttua muistiinpano jäisi pysyvästi "ylennetyksi"
+  // ilman tavoitetta, ja uusi yritys vastaisi 200 OK tekemättä mitään.
+  if (varattuId !== uusiId && (await goalExists(varattuId, user))) return updated
+
+  await createGoalFromNote({
+    id: varattuId,
+    owner: note.owner,
+    title: note.text.slice(0, 200),
+  })
 
   return updated
 }

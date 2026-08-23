@@ -20,7 +20,7 @@ export async function addHabit(input: { owner: Owner; title: string }): Promise<
     createdAt: Date.now(),
     completedDates: [],
   }
-  return store.mutate(all => (all.some(h => h.id === habit.id) ? null : [habit, ...all]))
+  return store.mutate(all => [habit, ...all])
 }
 
 /** Kääntää tämän päivän tehty-tilan päälle/pois. Tarkistaa omistajuuden, ks. goals.ts. */

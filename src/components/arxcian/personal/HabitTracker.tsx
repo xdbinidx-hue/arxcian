@@ -17,7 +17,7 @@ function todayISO() {
 
 export function HabitTracker({ initialHabits, currentUser }: Props) {
   const [habits, setHabits] = useState<Habit[]>(initialHabits)
-  const { virhe, setVirhe, lue } = useStoreError()
+  const { virhe, setVirhe, laheta } = useStoreError()
   const [title, setTitle] = useState('')
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -27,14 +27,17 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
     if (!title.trim()) return
     setBusy(true)
     try {
-      const res = await fetch('/api/arxcian/personal/habits', {
+      const lista = await laheta<Habit>('/api/arxcian/personal/habits', 'habits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), owner: shared ? 'shared' : currentUser }),
       })
-      const lista = await lue<Habit>(res, 'habits')
-      if (lista) setHabits(lista)
-      setTitle('')
+      // Kenttä tyhjennetään vain onnistuessa — muuten epäonnistunut
+      // tallennus veisi kirjoitetun tekstin mukanaan.
+      if (lista) {
+        setHabits(lista)
+        setTitle('')
+      }
     } finally {
       setBusy(false)
     }
@@ -42,6 +45,8 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
 
   const toggleToday = async (id: string) => {
     const today = todayISO()
+    // Optimistinen tila peruutetaan epäonnistuessa, ks. GoalsPanel.toggle.
+    const previous = habits
     setHabits(
       habits.map(h =>
         h.id === id
@@ -54,20 +59,22 @@ export function HabitTracker({ initialHabits, currentUser }: Props) {
           : h,
       ),
     )
-    const res = await fetch('/api/arxcian/personal/habits', {
+    const lista = await laheta<Habit>('/api/arxcian/personal/habits', 'habits', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const lista = await lue<Habit>(res, 'habits')
-    if (lista) setHabits(lista)
+    setHabits(lista ?? previous)
   }
 
   const remove = async (id: string) => {
     const previous = habits
     setHabits(habits.filter(h => h.id !== id))
-    const res = await fetch(`/api/arxcian/personal/habits?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const lista = await lue<Habit>(res, 'habits')
+    const lista = await laheta<Habit>(
+      `/api/arxcian/personal/habits?id=${encodeURIComponent(id)}`,
+      'habits',
+      { method: 'DELETE' },
+    )
     setHabits(lista ?? previous)
   }
 

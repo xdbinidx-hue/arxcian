@@ -12,7 +12,7 @@ type Props = {
 
 export function GoalsPanel({ initialGoals, currentUser }: Props) {
   const [goals, setGoals] = useState<Goal[]>(initialGoals)
-  const { virhe, setVirhe, lue } = useStoreError()
+  const { virhe, setVirhe, laheta } = useStoreError()
   const [title, setTitle] = useState('')
   const [area, setArea] = useState<GoalArea>('henkilokohtainen')
   const [shared, setShared] = useState(false)
@@ -23,35 +23,43 @@ export function GoalsPanel({ initialGoals, currentUser }: Props) {
     if (!title.trim()) return
     setBusy(true)
     try {
-      const res = await fetch('/api/arxcian/personal/goals', {
+      const lista = await laheta<Goal>('/api/arxcian/personal/goals', 'goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ area, title: title.trim(), owner: shared ? 'shared' : currentUser }),
       })
-      const lista = await lue<Goal>(res, 'goals')
-      if (lista) setGoals(lista)
-      setTitle('')
+      // Kenttä tyhjennetään vain onnistuessa — muuten epäonnistunut tallennus
+      // veisi kirjoitetun tekstin mukanaan.
+      if (lista) {
+        setGoals(lista)
+        setTitle('')
+      }
     } finally {
       setBusy(false)
     }
   }
 
   const toggle = async (id: string) => {
+    // Optimistinen tila peruutetaan epäonnistuessa: muuten ruksi jäisi
+    // valheellisesti päälle sivun päivitykseen asti.
+    const previous = goals
     setGoals(goals.map(g => (g.id === id ? { ...g, done: !g.done } : g)))
-    const res = await fetch('/api/arxcian/personal/goals', {
+    const lista = await laheta<Goal>('/api/arxcian/personal/goals', 'goals', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    const lista = await lue<Goal>(res, 'goals')
-    if (lista) setGoals(lista)
+    setGoals(lista ?? previous)
   }
 
   const remove = async (id: string) => {
     const previous = goals
     setGoals(goals.filter(g => g.id !== id))
-    const res = await fetch(`/api/arxcian/personal/goals?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    const lista = await lue<Goal>(res, 'goals')
+    const lista = await laheta<Goal>(
+      `/api/arxcian/personal/goals?id=${encodeURIComponent(id)}`,
+      'goals',
+      { method: 'DELETE' },
+    )
     setGoals(lista ?? previous)
   }
 

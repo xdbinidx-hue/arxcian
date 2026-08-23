@@ -92,7 +92,7 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   const [shared, setShared] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showDone, setShowDone] = useState(false)
-  const { virhe, setVirhe, lue } = useStoreError()
+  const { virhe, setVirhe, laheta } = useStoreError()
 
   // Päivä ratkeaa vasta selaimessa: palvelin renderöi UTC:ssa, joten
   // ryhmittely palvelimella eroaisi selaimen näkemästä päivästä.
@@ -145,25 +145,25 @@ export function TodoList({ initialTodos, currentUser }: Props) {
   // Epäonnistunut tallennus on kerrottava käyttäjälle. Palvelin vastaa
   // törmäykseen 409:llä ja Redis-virheeseen 503:lla; kumpaankin kuuluu eri
   // korjaus, joten viesti tulee palvelimelta eikä ole kiinteä tässä.
-  const send = useCallback(async (init: RequestInit, query = '') => {
-    try {
-      const res = await fetch(`/api/arxcian/personal/todos${query}`, init)
-      const lista = await lue<Todo>(res, 'todos')
+  // Epäonnistunut tallennus on kerrottava käyttäjälle. Palvelin vastaa
+  // törmäykseen 409:llä ja Redis-virheeseen 503:lla; kumpaankin kuuluu eri
+  // korjaus, joten viesti tulee palvelimelta eikä ole kiinteä tässä.
+  const send = useCallback(
+    async (init: RequestInit, query = '') => {
+      const lista = await laheta<Todo>(`/api/arxcian/personal/todos${query}`, 'todos', init)
       if (!lista) return false
       setTodos(lista)
       return true
-    } catch {
-      setVirhe('Yhteys katkesi. Tallennus ei mennyt läpi.')
-      return false
-    }
-  }, [lue, setVirhe])
+    },
+    [laheta],
+  )
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
     setBusy(true)
     try {
-      await send({
+      const ok = await send({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -173,8 +173,12 @@ export function TodoList({ initialTodos, currentUser }: Props) {
           remindAt: remindAt || null,
         }),
       })
-      setTitle('')
-      setRemindAt('')
+      // Kentät tyhjennetään vain onnistuessa — muuten epäonnistunut tallennus
+      // veisi kirjoitetun tehtävän mukanaan.
+      if (ok) {
+        setTitle('')
+        setRemindAt('')
+      }
     } finally {
       setBusy(false)
     }

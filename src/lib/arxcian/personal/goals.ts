@@ -25,7 +25,7 @@ export async function addGoal(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
-  return store.mutate(all => (all.some(g => g.id === goal.id) ? null : [goal, ...all]))
+  return store.mutate(all => [goal, ...all])
 }
 
 // Muutokset tarkistavat omistajuuden: pelkkä id ei riitä, muuten kirjautunut
@@ -52,6 +52,11 @@ export async function removeGoal(id: string, user: SessionUser | null): Promise<
   })
 }
 
+/** Onko tavoite olemassa. promoteNoteToGoal käyttää keskeneräisen ylennyksen tunnistamiseen. */
+export async function goalExists(id: string, user: SessionUser | null): Promise<boolean> {
+  return (await store.visible(user)).some(g => g.id === id)
+}
+
 /** notes.ts kutsuu tätä kun muistiinpano ylennetään tavoitteeksi. */
 export async function createGoalFromNote(input: {
   /** Id tulee kutsujalta, ks. promoteNoteToGoal — varaus tehdään ennen luontia. */
@@ -70,6 +75,9 @@ export async function createGoalFromNote(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
+  // Id tulee kutsujalta (promoteNoteToGoal), ja sama ylennys voidaan yrittää
+  // uudelleen — siksi olemassaolo tarkistetaan. Muilla lisäyspoluilla id on
+  // joka kutsulla uusi crypto.randomUUID(), eikä tarkistus voi osua.
   await store.mutate(all => (all.some(g => g.id === goal.id) ? null : [goal, ...all]))
   return goal
 }

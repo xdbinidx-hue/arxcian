@@ -14,28 +14,43 @@ export function useStoreError() {
   const [virhe, setVirhe] = useState<string | null>(null)
 
   /**
-   * Poimii listan vastauksesta tai nostaa virheen näkyviin.
+   * Lähettää pyynnön ja poimii listan vastauksesta, tai nostaa virheen näkyviin.
    *
-   * Viesti tulee palvelimelta: törmäys korjaantuu sivun päivityksellä ja
-   * Redis-virhe ei, joten kiinteä teksti kertoisi väärin toisessa tapauksessa.
+   * **Myös `fetch` itse on kääreen sisällä.** Aiemmin vain `res.json()` oli
+   * suojattu, jolloin verkon katketessa poikkeus lensi käsittelijästä ulos:
+   * optimistinen poisto oli jo tehty, peruutusta ei koskaan ajettu, ja rivi
+   * katosi näkymästä vaikka se oli palvelimella tallella — ilman virhettä.
+   *
+   * Viesti tulee ensisijaisesti palvelimelta: törmäys (409) korjaantuu sivun
+   * päivityksellä ja Redis-virhe (503) ei, joten kiinteä teksti kertoisi
+   * toisessa tapauksessa väärin. Rungoton virhe (esim. 500) tunnistetaan
+   * statuskoodista eikä sitä saa esittää yhteyskatkona — se olisi sama väärä
+   * virheviesti jota CLAUDE.md varoittaa maksavan puoli tuntia.
    */
-  const lue = useCallback(async <T,>(res: Response, kentta: string): Promise<T[] | null> => {
-    try {
-      const data = (await res.json()) as Record<string, unknown>
-      const lista = data[kentta]
-      if (Array.isArray(lista)) {
-        setVirhe(null)
-        return lista as T[]
-      }
-      setVirhe(typeof data.error === 'string' ? data.error : 'Tallennus epäonnistui.')
-      return null
-    } catch {
-      setVirhe('Yhteys katkesi. Tallennus ei mennyt läpi.')
-      return null
-    }
-  }, [])
+  const laheta = useCallback(
+    async <T,>(url: string, kentta: string, init?: RequestInit): Promise<T[] | null> => {
+      try {
+        const res = await fetch(url, init)
+        const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
 
-  return { virhe, setVirhe, lue }
+        const lista = data?.[kentta]
+        if (Array.isArray(lista)) {
+          setVirhe(null)
+          return lista as T[]
+        }
+
+        const viesti = data && typeof data.error === 'string' ? data.error : null
+        setVirhe(viesti ?? `Tallennus epäonnistui (${res.status}).`)
+        return null
+      } catch {
+        setVirhe('Yhteys katkesi. Tallennus ei mennyt läpi.')
+        return null
+      }
+    },
+    [],
+  )
+
+  return { virhe, setVirhe, laheta }
 }
 
 export function StoreError({ virhe, onSulje }: { virhe: string | null; onSulje: () => void }) {
