@@ -13,6 +13,12 @@ import {
   saveProposal,
   type ProposalTool,
 } from '@/lib/arxcian/assistant/proposals'
+import {
+  ACTION_TOOLS,
+  isActionTool,
+  resolveNavTarget,
+  type ActionTool,
+} from '@/lib/arxcian/assistant/actions'
 
 /**
  * Chat-tyylinen AI-avustaja arxcianin datalla. Kaikki lukutyökalut lukevat vain
@@ -43,6 +49,15 @@ const MAX_TOOL_ROUNDS = 4
 const MAX_PROPOSALS = 1
 
 /**
+ * Siirtymiä yksi per pyyntö.
+ *
+ * Kaksi siirtymää samassa vuorossa tarkoittaisi että ensimmäinen näkymä
+ * välähtää ohi ennen kuin käyttäjä ehtii nähdä sitä, eikä avustajan selostus
+ * voisi kertoa kumpaa katsotaan. Yksi komento, yksi näkymä.
+ */
+const MAX_ACTIONS = 1
+
+/**
  * Kielikohtainen kappale system promptiin.
  *
  * Vaatimus on oma kappaleensa ja perusteluineen, koska pelkkä "Answer in X" ei
@@ -70,7 +85,18 @@ niitä sellaisenaan.`,
  * luetaan ääneen että näytetään sellaisenaan ilman markdown-renderöijää, joten
  * korostusmerkinnät näkyvät tähtinä ruudulla ja kuuluvat ääneen luettuina.
  */
-function systemPrompt(language: AssistantLanguage): string {
+/**
+ * Ohjeteksti navigoinnista. Oma vakionsa, koska se liitetään promptiin vain kun
+ * ohjaustyökalut ovat käytössä — vanhalle asiakkaalle luvattu siirtymä ei
+ * tapahtuisi missään.
+ */
+const NAVIGATION_RULE = `You can also move the user around the app with the navigate tool.
+Use it when they ask to see, open or go to a view. The view changes immediately and
+needs no confirmation, so say in one short sentence which view you opened.
+Call it at most once per turn. When the user only asks a question, answer the question
+instead of navigating.`
+
+function systemPrompt(language: AssistantLanguage, canAct: boolean): string {
   return `You are arxcian's assistant. Answer concisely.
 
 ${LANGUAGE_RULES[language]}
@@ -91,7 +117,9 @@ you have proposed it and that it is waiting for the user's confirmation. Call at
 most one writing tool per turn, and never call the same one twice.
 
 The set_language tool is different: it changes the answer language immediately
-and needs no confirmation. After calling it, answer in the new language.`
+and needs no confirmation. After calling it, answer in the new language.
+
+${canAct ? NAVIGATION_RULE : ''}`
 }
 
 /** Anthropicin palvelinpuolen hakutyökalu: sitä ei suoriteta täällä. */
@@ -101,7 +129,20 @@ const WEB_SEARCH = {
   max_uses: 3,
 } satisfies Anthropic.Messages.ToolUnion
 
-const TOOLS: Anthropic.Messages.ToolUnion[] = [...READ_TOOLS, ...WRITE_TOOLS, WEB_SEARCH]
+const BASE_TOOLS: Anthropic.Messages.ToolUnion[] = [...READ_TOOLS, ...WRITE_TOOLS, WEB_SEARCH]
+
+/**
+ * Ohjaustyökalut tarjotaan **vain suoratoistavalle asiakkaalle**.
+ *
+ * Siirtymä ei tapahdu palvelimella vaan selaimessa, ja se kulkee virran
+ * tapahtumana. Deployn jälkeen auki oleva vanha välilehti lukee yhä pelkän
+ * kertavastauksen `text`-kentän, joten se ei näkisi tapahtumaa — avustaja
+ * kertoisi avanneensa näkymän, eikä mitään tapahtuisi. Työkalu jätetään siltä
+ * pois, jolloin se ei voi luvata mitä ei voi tehdä.
+ */
+function toolsFor(canAct: boolean): Anthropic.Messages.ToolUnion[] {
+  return canAct ? [...BASE_TOOLS, ...ACTION_TOOLS] : BASE_TOOLS
+}
 
 let client: Anthropic | null = null
 function getClient() {
@@ -123,10 +164,18 @@ const encoder = new TextEncoder()
  */
 type ProposalEvent = { id: string; tool: ProposalTool; summary: string }
 
+/**
+ * Selaimessa suoritettava toimi. `label` on sama nimi jonka käyttäjä näkee
+ * valikossa, jotta ruudulla ja äänessä puhutaan samasta paikasta samalla
+ * nimellä.
+ */
+type ActionEvent = { action: 'navigate'; href: string; label: string }
+
 type StreamEvent =
   | { type: 'text'; value: string }
   | { type: 'error'; value: string }
   | { type: 'proposal'; value: ProposalEvent }
+  | { type: 'action'; value: ActionEvent }
 
 /**
  * Yksi NDJSON-tapahtuma. Rivinvaihto erottaa tapahtumat, jotta selain voi
@@ -148,14 +197,30 @@ type ToolContext = {
   user: SessionUser
   /** Kalenterityökalu tarvitsee originin OAuth-asiakkaan rakentamiseen. */
   origin: string
+  /** Osaako asiakas suorittaa ohjaustapahtumia (ks. toolsFor). */
+  canAct: boolean
 }
+
+/** Ohjaustyökalun vastaus mallille: tehtiin, tai miksi ei voitu tehdä. */
+type ActResult = { ok: boolean; message: string }
 
 async function toolResultFor(
   block: Anthropic.ToolUseBlock,
   ctx: ToolContext,
   propose: (tool: ProposalTool, input: unknown) => Promise<ProposeResult>,
+  act: (tool: ActionTool, input: unknown) => ActResult,
 ): Promise<Anthropic.ToolResultBlockParam> {
   try {
+    if (isActionTool(block.name)) {
+      const result = act(block.name, block.input)
+      return {
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: result.message,
+        ...(result.ok ? {} : { is_error: true }),
+      }
+    }
+
     if (isWriteTool(block.name)) {
       const result = await propose(block.name, block.input)
       return {
@@ -199,17 +264,52 @@ async function toolResultFor(
 async function runAssistant(
   prompt: string,
   ctx: ToolContext,
-  handlers: { onText: (chunk: string) => void; onProposal: (event: ProposalEvent) => void },
+  handlers: {
+    onText: (chunk: string) => void
+    onProposal: (event: ProposalEvent) => void
+    onAction: (event: ActionEvent) => void
+  },
 ): Promise<void> {
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }]
   const { onText } = handlers
   let proposalsMade = 0
+  let actionsMade = 0
+  const tools = toolsFor(ctx.canAct)
 
   // Kieli luetaan kerran pyynnön alussa. Jos malli vaihtaa sen kesken vuoron
   // (set_language), promptia ei rakenneta uudelleen: työkalun vastaus kertoo
   // uuden kielen ja on mallin viimeisin ohje, joten se voittaa promptin.
   // Seuraava pyyntö saa uuden kielen jo promptissa.
-  const system = systemPrompt(await getLanguage(ctx.user))
+  const system = systemPrompt(await getLanguage(ctx.user), ctx.canAct)
+
+  /**
+   * Ohjaustyökalun kutsu: tarkistaa kohteen ja lähettää tapahtuman selaimelle.
+   * Siirtymä itse tapahtuu vasta siellä, joten mallille kerrottu tulos on
+   * lupaus tapahtumasta — ei kuittaus siitä että näkymä on jo vaihtunut.
+   */
+  const act = (_tool: ActionTool, input: unknown): ActResult => {
+    if (actionsMade >= MAX_ACTIONS) {
+      return {
+        ok: false,
+        message: 'Vain yksi siirtymä kerrallaan. Kerro loput sanallisesti.',
+      }
+    }
+
+    const resolved = resolveNavTarget(input)
+    if (!resolved.ok) return { ok: false, message: resolved.error }
+
+    actionsMade++
+    handlers.onAction({
+      action: 'navigate',
+      href: resolved.target.href,
+      label: resolved.target.label,
+    })
+
+    return {
+      ok: true,
+      message: `Näkymä "${resolved.target.label}" avataan käyttäjälle. Kerro se yhdellä lyhyellä lauseella.`,
+    }
+  }
 
   /**
    * Kirjoitustyökalun kutsu: tallentaa ehdotuksen ja kertoo siitä selaimelle.
@@ -257,7 +357,7 @@ async function runAssistant(
       model: MODEL_ASSISTANT,
       max_tokens: MAX_TOKENS,
       system,
-      tools: TOOLS,
+      tools,
       messages,
     })
     stream.on('text', onText)
@@ -278,7 +378,9 @@ async function runAssistant(
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     )
-    const results = await Promise.all(toolUses.map(block => toolResultFor(block, ctx, propose)))
+    const results = await Promise.all(
+      toolUses.map(block => toolResultFor(block, ctx, propose, act)),
+    )
     messages.push({ role: 'user', content: results })
   }
 
@@ -317,14 +419,16 @@ export async function POST(req: NextRequest) {
   const question = prompt
   // Otsakkeet luetaan tässä, ei työkalun suorituksessa: suoratoistettu vastaus
   // jatkuu ReadableStreamin sisällä pyyntökäsittelijän palattua.
-  const ctx: ToolContext = { user, origin: requestOrigin() }
-
   // Suoratoisto vain pyydettäessä. Deployn jälkeen avoinna oleva välilehti ja
   // asennettu PWA ajavat yhä vanhaa JS:ää, joka kutsuu res.json():ia — moniriviseen
   // NDJSON-virtaan se kaatuu ja käyttäjä näkee vain "Jokin meni pieleen." Vanha
   // asiakas ei lähetä tätä otsaketta, joten se saa entisen kertavastauksen ja
   // korjaantuu itsestään kun sivu seuraavan kerran latautuu.
   const wantsStream = req.headers.get('accept')?.includes(NDJSON_TYPE) ?? false
+
+  // Otsakkeet luetaan tässä, ei työkalun suorituksessa: suoratoistettu vastaus
+  // jatkuu ReadableStreamin sisällä pyyntökäsittelijän palattua.
+  const ctx: ToolContext = { user, origin: requestOrigin(), canAct: wantsStream }
 
   if (!wantsStream) {
     let text = ''
@@ -341,6 +445,10 @@ export async function POST(req: NextRequest) {
         onProposal: event => {
           proposal = event
         },
+        // Vanha asiakas ei saa ohjaustyökaluja lainkaan (toolsFor), joten
+        // tänne ei päädytä. Käsittelijä on silti olemassa, koska tyhjä
+        // toteutus on ainoa rehellinen vaihtoehto: siirtymää ei voi tehdä.
+        onAction: () => {},
       })
     } catch (error) {
       console.error('[api/arxcian/assistant] generointi epäonnistui', error)
@@ -367,6 +475,12 @@ export async function POST(req: NextRequest) {
           // saman tien.
           onProposal: event => {
             controller.enqueue(encodeEvent({ type: 'proposal', value: event }))
+          },
+          // Siirtymä lähtee heti kun kohde on tarkistettu, eli ennen mallin
+          // selostusta: näkymä ehtii latautua sillä aikaa kun avustaja kertoo
+          // avanneensa sen.
+          onAction: event => {
+            controller.enqueue(encodeEvent({ type: 'action', value: event }))
           },
         })
         if (emitted === 0) {

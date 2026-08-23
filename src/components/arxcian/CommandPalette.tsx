@@ -55,6 +55,14 @@ type AssistantEvent =
   | { type: 'text'; value: string }
   | { type: 'error'; value: string }
   | { type: 'proposal'; value: { id: string; tool: string; summary: string } }
+  | { type: 'action'; value: AssistantAction }
+
+/**
+ * Avustajan pyytämä siirtymä. Osoite on tarkistettu palvelimella
+ * (lib/arxcian/assistant/actions.ts) eikä tule mallilta sellaisenaan, joten
+ * selain voi ohjata siihen kysymättä enempää.
+ */
+type AssistantAction = { action: 'navigate'; href: string; label: string }
 
 /** Vahvistusta odottava kirjoitustoimi ja sen tila selaimessa. */
 type ProposalCard = {
@@ -401,6 +409,13 @@ export function CommandPalette({ user }: { user: UserId }) {
   const [voiceError, setVoiceError] = useState<string | null>(null)
   /** Vahvistusta odottava kirjoitustoimi. */
   const [proposal, setProposal] = useState<ProposalCard | null>(null)
+  /**
+   * Paletti on telakoitunut alalaitaan, koska avustaja vaihtoi näkymän.
+   *
+   * Peittävä tausta väistyy, jotta juuri avattu näkymä näkyy — muuten
+   * "näytä trading" avaisi tradingin mustan kalvon taakse.
+   */
+  const [docked, setDocked] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
@@ -785,6 +800,20 @@ export function CommandPalette({ user }: { user: UserId }) {
             // "[object Object]" ja luki senkin ääneen. Summaryä ei lueta
             // erikseen — malli selostaa saman asian heti perään, ja kortti on
             // joka tapauksessa se mitä käyttäjä vahvistaa.
+            // Siirtymä omana haaranaan ennen tekstin kertymistä, samasta
+            // syystä kuin ehdotus: value on olio, ei tekstipala.
+            //
+            // Palettia **ei suljeta** vaikka näkymä vaihtuu: sulkeminen
+            // katkaisee sekä kesken olevan virran että puhejonon (ks.
+            // open-efekti), jolloin avustaja vaikenisi kesken lauseen juuri
+            // sen komennon kohdalla joka onnistui. Telakointi jättää
+            // vastauksen näkyviin ja keskustelun käyntiin.
+            if (event.type === 'action') {
+              setDocked(true)
+              router.push(event.value.href)
+              continue
+            }
+
             if (event.type === 'proposal') {
               gotProposal = true
               const card: ProposalCard = { ...event.value, status: 'pending' }
@@ -834,7 +863,7 @@ export function CommandPalette({ user }: { user: UserId }) {
         }
       }
     },
-    [getSpeech, dropProposal],
+    [getSpeech, dropProposal, router],
   )
 
   /**
@@ -950,8 +979,13 @@ export function CommandPalette({ user }: { user: UserId }) {
     if (open) {
       setQuery('')
       setIndex(0)
+      // Telakointi kuuluu yhteen avauskertaan: seuraava avaus alkaa taas
+      // keskeltä ruutua, muuten paletti jäisi alalaitaan ilman että kukaan
+      // pyysi sitä sinne.
+      setDocked(false)
       inputRef.current?.focus()
     } else {
+      setDocked(false)
       // Paletti voi sulkeutua monesta reitistä (go(), taustaklikkaus, Escape)
       // — nollataan kysymystila täällä yhdessä paikassa sen sijaan että
       // jokainen sulkukohta joutuisi muistamaan sen itse.
@@ -1348,16 +1382,25 @@ export function CommandPalette({ user }: { user: UserId }) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 pt-[14vh] backdrop-blur-sm"
+          className={
+            docked
+              ? 'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'
+              : 'fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 pt-[14vh] backdrop-blur-sm'
+          }
           onMouseDown={e => {
-            if (e.target === e.currentTarget) setOpen(false)
+            // Telakoituna tausta ei ole enää paletin omaa pinta-alaa vaan
+            // näkymä jota käyttäjä katsoo — klikkaus kuuluu sille.
+            if (!docked && e.target === e.currentTarget) setOpen(false)
           }}
         >
           <div
             role="dialog"
-            aria-modal="true"
+            // Telakoitu paletti ei estä muun sivun käyttöä, joten se ei ole
+            // modaali. Väärä aria-modal kertoisi ruudunlukijalle että sivun
+            // muu sisältö on piilossa vaikka se on käytettävissä.
+            aria-modal={docked ? undefined : true}
             aria-label="Komentopaletti"
-            className="w-full max-w-lg overflow-hidden ax-glass rounded-xl shadow-2xl"
+            className="pointer-events-auto w-full max-w-lg overflow-hidden ax-glass rounded-xl shadow-2xl"
           >
             <div className="flex items-center gap-3 ax-glass-divide border-b px-4">
               <IconSearch className="h-4 w-4 shrink-0 text-ax-faint" />

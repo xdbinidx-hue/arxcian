@@ -448,6 +448,51 @@ AI-geokoodauksen jossa sijainti on pääteltu eikä artikkelin metadataa.
 Edetään näidenkin kanssa "Työtapa"-osion periaatteella: vaihe kerrallaan, ei
 kaikkea kerralla.
 
+## Avustaja ohjaa näkymää: kolmas työkalulaji
+
+Avustajalla on kolme lajia työkaluja, ja ne eroavat **suorituspaikan** mukaan:
+
+| Laji | Missä suoritetaan | Vahvistus | Tiedosto |
+|---|---|---|---|
+| luku | palvelimella, välimuistista | ei | [tools.ts](src/lib/arxcian/assistant/tools.ts) |
+| kirjoitus | vasta käyttäjän vahvistuksesta | kortti | [proposals.ts](src/lib/arxcian/assistant/proposals.ts) |
+| ohjaus | **selaimessa** | ei | [actions.ts](src/lib/arxcian/assistant/actions.ts) |
+
+Navigointia ei voi tehdä palvelimella lainkaan — reitittimen omistaa selain.
+Palvelin tarkistaa kohteen ja lähettää virtaan `action`-tapahtuman, jonka
+[CommandPalette](src/components/arxcian/CommandPalette.tsx) suorittaa.
+
+**Kohde on tunniste, ei osoite.** Malli valitsee `NAV_TARGETS`-listasta, joka
+johdetaan [nav.ts](src/lib/arxcian/nav.ts):stä (hub, neljä osiota, RJ-Mobin
+alasivut `RJMOB_PAGES`). Keksitty polku veisi 404-sivulle ja avustaja kertoisi
+silti avanneensa osion. RJ-Mobin alasivut ovat listassa erikseen, koska osion
+`href` osoittaa vain tuottoseurantaan: ilman niitä "näytä kassamyynti" avaisi
+väärän sivun hiljaa.
+
+`RJMOB_PAGES` siirtyi samalla `RjMobNav`ista `nav.ts`:ään. Kaksi käsin
+ylläpidettyä listaa erkanisi ensimmäisen uuden sivun kohdalla, ja `'use
+client'` -komponenttia ei voi tuoda palvelinmoduuliin ilman että koko
+komponentti tulee mukana.
+
+**Siirtymä ei tuota vahvistuskorttia**, samasta syystä kuin `set_language`:
+vahvistus on tietueen luontia varten, jossa väärin kuultu puhe jäisi listalle
+näyttämään oikealta. Näkymän vaihto ei jätä jälkeä mihinkään ja näkyy heti.
+
+Kaksi asiaa joita ei saa purkaa:
+
+- **Ohjaustyökalu tarjotaan vain suoratoistavalle asiakkaalle** (`toolsFor`).
+  Deployn jälkeen auki oleva vanha välilehti lukee vain `text`-kentän eikä näe
+  tapahtumaa — sille luvattu siirtymä olisi juuri se `"ok": true` jonka takana
+  ei tapahdu mitään.
+- **Paletti ei sulkeudu siirtymän yhteydessä.** Sulkeminen katkaisee sekä
+  virran että puhejonon (open-efekti), jolloin avustaja vaikenisi kesken
+  lauseen juuri onnistuneen komennon kohdalla. Sen sijaan paletti *telakoituu*
+  alalaitaan: peittävä tausta väistyy, uusi näkymä näkyy takaa, vastaus jää
+  luettavaksi ja keskustelu jatkuu. Telakointi nollautuu kun paletti suljetaan.
+
+Siirtymiä on yksi per vuoro (`MAX_ACTIONS`): kaksi tarkoittaisi että
+ensimmäinen näkymä välähtää ohi eikä selostus kertoisi kumpaa katsotaan.
+
 ## Hubin etusivu
 
 Etusivu on HUD-näkymä ([page.tsx](src/app/arxcian/page.tsx)): kello ja järjestelmän tila ylärivillä, maapallo keskellä, paneelit molemmin puolin ja avustajapalkki alalaidassa.

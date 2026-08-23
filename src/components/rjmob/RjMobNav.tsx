@@ -1,5 +1,7 @@
 'use client'
 
+import { RJMOB_PAGES } from '@/lib/arxcian/nav'
+
 /**
  * RJ-Mobin osionavigaatio. Sama palkki kaikilla RJ-Mobin sivuilla — aiemmin
  * jokainen sivu määritteli oman identtisen TopBar-kopionsa.
@@ -19,17 +21,6 @@
 /** Riittää kaikille sivujen omille DriveFile-tyypeille: vain nämä kentät luetaan. */
 type FileOption = { id: string; name: string }
 
-const ITEMS = [
-  {label:'Yhteenveto', href:'/arxcian/rj-mob/yhteenveto'},
-  {label:'Tuottoseuranta', href:'/arxcian/rj-mob/tuotto'},
-  {label:'Trendit', href:'/arxcian/rj-mob/trendit'},
-  {label:'Kassamyynti', href:'/arxcian/rj-mob/kassamyynti'},
-  {label:'Myyntiseuranta', href:'/arxcian/rj-mob/etela'},
-  {label:'Tavoitteet ja Run Rate', href:'/arxcian/rj-mob/tavoitteet'},
-  {label:'Laskuri', href:'/arxcian/rj-mob/laskuri'},
-  {label:'Työvuorot', href:'/arxcian/rj-mob/tyovuorot'},
-]
-
 export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChange }: {
   activePage?: string
   files?: FileOption[]
@@ -42,7 +33,7 @@ export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChan
       <span className="mr-6 shrink-0 text-[13px] font-medium tracking-[0.14em] text-ax-text">
         RJ-Mob
       </span>
-      {ITEMS.map(item => {
+      {RJMOB_PAGES.map(item => {
         const on = item.href === activePage
         return (
           <a

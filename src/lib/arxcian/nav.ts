@@ -48,3 +48,30 @@ export function activeSection(pathname: string): SectionId | null {
   const found = SECTIONS.find(s => pathname.startsWith(s.match ?? s.href))
   return found ? found.id : null
 }
+
+/**
+ * RJ-Mobin alasivut.
+ *
+ * Määrittely on täällä eikä [RjMobNav](src/components/rjmob/RjMobNav.tsx):ssä,
+ * koska navigaatiopalkki ei ole enää ainoa kutsuja: avustajan
+ * navigointityökalu ([assistant/actions.ts](src/lib/arxcian/assistant/actions.ts))
+ * tarvitsee saman listan. Sitä ei voi tuoda `'use client'`-komponentista
+ * palvelinpuolen moduuliin ilman että koko komponentti tulee mukana, ja kaksi
+ * käsin ylläpidettyä listaa erkanisi ensimmäisen uuden sivun kohdalla —
+ * avustaja väittäisi avaavansa sivun jota ei ole.
+ *
+ * `id` on avustajan käyttämä tunniste, `label` sama teksti jonka käyttäjä
+ * näkee palkissa.
+ */
+export type RjMobPage = { id: string; label: string; href: string }
+
+export const RJMOB_PAGES: readonly RjMobPage[] = [
+  { id: 'yhteenveto', label: 'Yhteenveto', href: '/arxcian/rj-mob/yhteenveto' },
+  { id: 'tuotto', label: 'Tuottoseuranta', href: '/arxcian/rj-mob/tuotto' },
+  { id: 'trendit', label: 'Trendit', href: '/arxcian/rj-mob/trendit' },
+  { id: 'kassamyynti', label: 'Kassamyynti', href: '/arxcian/rj-mob/kassamyynti' },
+  { id: 'myyntiseuranta', label: 'Myyntiseuranta', href: '/arxcian/rj-mob/etela' },
+  { id: 'tavoitteet', label: 'Tavoitteet ja Run Rate', href: '/arxcian/rj-mob/tavoitteet' },
+  { id: 'laskuri', label: 'Laskuri', href: '/arxcian/rj-mob/laskuri' },
+  { id: 'tyovuorot', label: 'Työvuorot', href: '/arxcian/rj-mob/tyovuorot' },
+]
