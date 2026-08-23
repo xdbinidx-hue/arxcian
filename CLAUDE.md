@@ -319,6 +319,48 @@ Kuluttajatuote WhatsAppin päällä. Ei julkista API:a, ei kehittäjädokumentaa
 
 Kohdat 1–2 eivät vaadi käyttäjältä mitään, joten ne eivät saa jäädä odottamaan kohtaa 3. Ilmoituskanava ei ole jonossa: sovelluksen sisäinen inbox syntyy kohdan 1 mukana, ja ulkoinen kanava on oma päätöksensä sitten kun sellaista halutaan. NotebookLM ja Memorae eivät ole jonossa lainkaan.
 
+## Personalin listat: yksi avain, atominen kirjoitus
+
+Tavoitteet, rutiinit, muistiinpanot ja tehtävät ovat kukin yhdessä avaimessa
+(`personal:goals`, `:habits`, `:notes`, `:todos`), ja avain on **jaettu
+molemmille käyttäjille** — `shared`-omistajuus tekee jakamisesta
+mahdottoman, toisin kuin kalenterin tileillä.
+
+Kirjoitus oli 23.8.2026 asti luku-muokkaa-kirjoita ilman lukkoa, joten kaksi
+yhtaikaista kirjoitusta hukkasi toisen hiljaa: Albinin lisäämä tehtävä katosi
+jos Arbnor merkitsi samalla hetkellä tavoitteen tehdyksi. Sama vaara on
+kirjattu kalenterin tokeneille, ja siellä se ratkaistiin jakamalla avain.
+
+**Ratkaisu on versionumero ja ehdollinen kirjoitus, ei uusi tietomuoto.**
+[ownedStore.ts](src/lib/arxcian/personal/ownedStore.ts) pitää
+lue–muokkaa–kirjoita-silmukan ja uudelleenyrityksen,
+[ownedStoreKv.ts](src/lib/arxcian/personal/ownedStoreKv.ts) tekee ehdollisen
+kirjoituksen Lua-skriptinä (`EVAL`, versio sivuavaimessa `<avain>:v`).
+Tallennettu muoto (`{ data, fetchedAt }`) ja avain säilyivät ennallaan, joten
+**migraatiota ei tarvittu**: puuttuva versioavain tarkoittaa versiota 0, ja
+ensimmäinen kirjoitus luo sen siinä sivussa.
+
+Redis-hash olisi poistanut koko kuvion, mutta hinta olisi ollut
+kertaluonteinen migraatio neljälle listalle joissa on käyttäjien omaa dataa.
+Kilpailun todennäköisyys on kahdella käyttäjällä pieni; migraatiobugin hinta
+ei ole. **Älä siis vaihda tallennusmuotoa ilman erillistä syytä.**
+
+**Omistajuustarkistus kuuluu mutaation sisään.** `canView` tarkistettiin
+aiemmin vanhentuneesta luvusta ja kirjoitus tehtiin sen perusteella. Nyt
+takaisinkutsu ajetaan joka yrityksellä sitä listaa vasten jota vasten
+kirjoitus oikeasti tehdään.
+
+**Takaisinkutsu voi ajautua useamman kerran — älä laita sinne sivuvaikutuksia.**
+`promoteNoteToGoal` on tästä esimerkki: tavoitteen id arvotaan etukäteen ja
+muistiinpano varataan sillä ensin, ja tavoite luodaan vasta varauksen
+onnistuttua. Luonti takaisinkutsun sisällä tekisi kahden tavoitteen
+kaksoiskappaleen yhdestä muistiinpanosta heti kun kirjoitus törmää kerran.
+
+Kolme yritystä riittää (kirjoittajia on kaksi). Jos kaikki törmäävät,
+palautetaan viimeisin luettu tila eikä kirjoiteta väkisin — hiljainen
+ylikirjoitus on juuri se vika jota tämä estää. `ownedStore.test.mts` väärentää
+kilpailevan kirjoittajan ja kaatuu jos versiotarkistus poistetaan.
+
 ## Google Calendar
 
 Käyttäjäkohtainen OAuth, erillään sovelluksen PIN-kirjautumisesta: [oauth.ts](src/lib/arxcian/personal/calendar/oauth.ts) hoitaa luvan, [accounts.ts](src/lib/arxcian/personal/calendar/accounts.ts) tilit ja tokenit, [events.ts](src/lib/arxcian/personal/calendar/events.ts) haun.

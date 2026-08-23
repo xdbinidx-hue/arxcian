@@ -1,22 +1,14 @@
-import { readCached, writeCached } from '../cache'
-import { canView, visibleTo, type Owner, type SessionUser } from '@/lib/session'
+import { canView, type Owner, type SessionUser } from '@/lib/session'
+import { createOwnedStore } from './ownedStoreKv'
 import type { Goal, GoalArea } from './types'
 
-const CACHE_KEY = 'personal:goals'
 const TTL_SECONDS = 5 * 365 * 24 * 60 * 60 // "pysyvä" — ei haluta tavoitteiden vanhentuvan
 
-async function getAll(): Promise<Goal[]> {
-  const cached = await readCached<Goal[]>(CACHE_KEY)
-  return cached?.data ?? []
-}
-
-async function saveAll(goals: Goal[]): Promise<void> {
-  await writeCached(CACHE_KEY, goals, TTL_SECONDS, 0)
-}
+const store = createOwnedStore<Goal>('personal:goals', TTL_SECONDS)
 
 /** Palauttaa vain käyttäjän näkemät tavoitteet — suodatus aina palvelinpuolella. */
 export async function getGoals(user: SessionUser | null): Promise<Goal[]> {
-  return visibleTo(await getAll(), user)
+  return store.visible(user)
 }
 
 export async function addGoal(input: {
@@ -33,42 +25,42 @@ export async function addGoal(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
-  const all = [goal, ...(await getAll())]
-  await saveAll(all)
-  return all
+  return store.mutate(all => [goal, ...all])
 }
 
 // Muutokset tarkistavat omistajuuden: pelkkä id ei riitä, muuten kirjautunut
 // käyttäjä voisi arvata toisen käyttäjän tietueen tunnisteen ja muokata sitä.
+// Tarkistus on mutaation sisällä, joten se tehdään sitä listaa vasten jota
+// vasten kirjoitetaan — ei vanhentuneesta luvusta.
 export async function toggleGoalDone(id: string, user: SessionUser | null): Promise<Goal[]> {
-  const all = await getAll()
-  const target = all.find(g => g.id === id)
-  if (!target || !canView(target.owner, user)) return all
+  return store.mutate(all => {
+    const target = all.find(g => g.id === id)
+    if (!target || !canView(target.owner, user)) return null
 
-  const updated = all.map(g =>
-    g.id === id ? { ...g, done: !g.done, completedAt: !g.done ? Date.now() : null } : g,
-  )
-  await saveAll(updated)
-  return updated
+    return all.map(g =>
+      g.id === id ? { ...g, done: !g.done, completedAt: !g.done ? Date.now() : null } : g,
+    )
+  })
 }
 
 export async function removeGoal(id: string, user: SessionUser | null): Promise<Goal[]> {
-  const all = await getAll()
-  const target = all.find(g => g.id === id)
-  if (!target || !canView(target.owner, user)) return all
+  return store.mutate(all => {
+    const target = all.find(g => g.id === id)
+    if (!target || !canView(target.owner, user)) return null
 
-  const updated = all.filter(g => g.id !== id)
-  await saveAll(updated)
-  return updated
+    return all.filter(g => g.id !== id)
+  })
 }
 
 /** notes.ts kutsuu tätä kun muistiinpano ylennetään tavoitteeksi. */
 export async function createGoalFromNote(input: {
+  /** Id tulee kutsujalta, ks. promoteNoteToGoal — varaus tehdään ennen luontia. */
+  id: string
   owner: Owner
   title: string
 }): Promise<Goal> {
   const goal: Goal = {
-    id: crypto.randomUUID(),
+    id: input.id,
     owner: input.owner,
     area: 'henkilokohtainen',
     title: input.title,
@@ -78,7 +70,6 @@ export async function createGoalFromNote(input: {
     createdAt: Date.now(),
     completedAt: null,
   }
-  const all = [goal, ...(await getAll())]
-  await saveAll(all)
+  await store.mutate(all => [goal, ...all])
   return goal
 }
