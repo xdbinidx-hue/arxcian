@@ -42,7 +42,22 @@ export type WeatherData = {
 }
 
 const CACHE_KEY = 'weather:current'
-const TTL_SECONDS = 20 * 60
+
+/**
+ * Neljä tuntia eli cronin ajoväli (8, 12, 16, 20).
+ *
+ * Aiempi 20 min oli lyhyempi kuin ajoväli, jolloin välimuisti oli lähes aina
+ * umpeutunut kun hub avattiin ja sivulataus haki itse — vastoin periaatetta
+ * "sivulataus ei odota ulkoista lähdettä jos välimuistissa on tuoretta dataa".
+ *
+ * Hinta on tiedossa ja hyväksytty: näytetty lämpötila voi olla neljä tuntia
+ * vanha. Se ei jää piiloon, koska paneeli näyttää hakuajan otsikkorivillään
+ * ([panelStatusLogic.ts](panelStatusLogic.ts)) — vanha luku on eri asia kuin
+ * vanha luku josta ei kerrota. Yön yli ajoväli on 12 h, jolloin TTL umpeutuu
+ * ja ensimmäinen aamun avaaja hakee itse; Suspense-raja pitää huolen ettei
+ * sivun runko odota sitä.
+ */
+const TTL_SECONDS = 4 * 60 * 60
 
 type OpenMeteoResponse = {
   current: {
@@ -220,8 +235,13 @@ async function fetchCityWeather(): Promise<CityWeather[]> {
   })).filter((_, i) => data[i] !== undefined)
 }
 
-export async function getCityWeather() {
-  return fetchAndCache({ key: CITIES_CACHE_KEY, ttl: TTL_SECONDS }, fetchCityWeather)
+export async function getCityWeather(force = false) {
+  // force on cronia varten. Kun TTL nostettiin ajovälin mittaiseksi, ilman
+  // lippua ajastettu työ palauttaisi tuoreen välimuistin tekemättä hakua ja
+  // raportoisi silti onnistuneensa — sama tyhjäkäynti kuin `hub-channels`illa
+  // (ks. CLAUDE.md). Lyhyellä TTL:llä vika ei näkynyt, koska välimuisti oli
+  // ajon hetkellä aina jo umpeutunut.
+  return fetchAndCache({ key: CITIES_CACHE_KEY, ttl: TTL_SECONDS, force }, fetchCityWeather)
 }
 
 /** WMO-säätunnuksen suomenkielinen kuvaus ja ikonimerkki (Open-Meteon weather_code). */

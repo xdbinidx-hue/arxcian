@@ -492,6 +492,69 @@ eivät kuudessa erillisessä toteutuksessa. Tila kootaan
 | MARKKINAT | `trading-quotes` | `trading:quotes` |
 | UUTTA (watch) | `watch-trading` + `watch-personal` | molempien tilat yhdistettynä |
 
+### Jokainen paneeli on oman Suspense-rajansa takana
+
+Päätös 23.8.2026. Hub on `force-dynamic` ja jokainen paneeli on oma
+`async`-komponenttinsa, joten ilman rajaa koko sivu odotti hitainta niistä.
+Se ei ollut teoreettista: KANAVAT-paneelin aikakatkaisu on 30 s ja YouTube
+estää Vercelin konesali-IP:n suunnilleen päivittäin, jolloin yksi lähde
+jumitti koko komentokeskuksen. Fallback on
+[PanelSkeleton](src/components/arxcian/PanelSkeleton.tsx), joka käyttää samaa
+`Panel`-kehystä otsikkoineen — paneeli ei siis hyppää paikaltaan kun data
+saapuu. **Uusi verkkoa käyttävä paneeli lisätään rajan kanssa**, ei ilman.
+
+`MarketSessions` ja `QuickActions` ovat rajan ulkopuolella tarkoituksella:
+ne eivät hae mitään.
+
+### Sään TTL on ajovälin mittainen, ja vanha luku näkyy hakuaikana
+
+Päätös 23.8.2026. TTL oli 20 min mutta cron ajaa 4 h välein, joten välimuisti
+oli lähes aina umpeutunut kun hub avattiin ja **sivulataus haki itse** —
+vastoin periaatetta "sivulataus ei odota ulkoista lähdettä jos välimuistissa
+on tuoretta dataa". Nyt TTL on 4 h eli sama kuin ajoväli.
+
+Hinta on tiedossa ja hyväksytty: näytetty lämpötila voi olla neljä tuntia
+vanha. **Se ei jää piiloon**, koska paneeli näyttää hakuajan otsikkorivillään.
+Vanha luku ja vanha luku josta ei kerrota ovat eri asioita — vain
+jälkimmäinen on vika.
+
+Sama vakio koskee maapallon kaupunkisäätä (`CITIES_CACHE_KEY`). Muutos
+paljasti siellä piilevän vian: `globe-weather` kutsui `getCityWeather()`ta
+**ilman `force`ia**, mikä lyhyellä TTL:llä ei näkynyt koska välimuisti oli ajon
+hetkellä aina jo umpeutunut. Ajovälin mittaisella TTL:llä työ olisi
+palauttanut tuoreen välimuistin tekemättä hakua ja raportoinut silti
+onnistuneensa — sama tyhjäkäynti kuin `hub-channels`illa. **TTL:n nosto ja
+`force`-lippu kuuluvat siis yhteen**: jos lisäät ajastetulle työlle TTL:ää,
+tarkista että se pakottaa haun.
+
+### Paneelin hakuaika tulee kirjekuoresta kun sivu on hakenut itse
+
+Päätös 23.8.2026. `panelFetchState` suosi cronin `lastSuccess`ia välimuistin
+kirjekuoren aikaleiman yli, ja kirjekuori oli vain varalla. Se oli väärin
+päin: kirjekuori kirjoitetaan **vain onnistuneesta hausta**, joten se on datan
+todellinen ikä, kun taas `lastSuccess` kertoo vain milloin *ajastettu* haku
+onnistui. Aina kun TTL ehtii umpeutua ajojen välissä, paneeli näytti
+edellisen cron-ajon kellonajan sekunteja sitten haetulle luvulle.
+
+Pahempi suunta oli väärä hälytys: jos aamun cron kaatui mutta sivun oma haku
+onnistui, tuoreen datan päälle tuli punainen ⚠ ja "viimeisin hakuyritys
+epäonnistui". Se on juuri se `"ok": true` -periaate toisin päin — **väärä
+virheviesti maksaa saman kuin kertomatta jätetty vika.**
+
+Kirjekuori voittaa nyt kun se on uudempi, ja onnistunut oma haku kumoaa
+merkin kun se on kaatunutta yritystä uudempi. Vanhentuneisuutta ei silti
+päätellä datan iästä — kumoaminen vaatii todisteen, ei ikärajaa. Monen
+avaimen pessimistinen yhdistely (watch) säilyy, koska ne kutsujat eivät
+välitä kirjekuorta lainkaan. Säännöt ovat
+[panelStatusLogic.ts](src/lib/arxcian/panelStatusLogic.ts):ssä ja
+`panelStatusLogic.test.mts` vartioi molempia suuntia.
+
+Ero koskee vain niitä paneeleita joiden hakutilan kirjoittaa `cron.ts`:n
+`kirjaaYritys` (`hub-weather`, `hub-prayer`, `trading-quotes`,
+`rjmob-summary`). `hub-channels`, `watch-*`, `news-*` ja `trading-ict`
+kirjoittavat tilansa itse kirjastoissaan, joten niillä oma haku päivittää myös
+`lastSuccess`in eivätkä luvut eroa.
+
 ### Hubin TO-DO on tehtävälista, ei tavoitelista
 
 Päätös 20.8.2026. Paneeli

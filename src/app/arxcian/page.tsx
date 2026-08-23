@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { currentOwner } from '@/lib/session'
 import { MarketSnapshot } from '@/components/arxcian/hub/MarketSnapshot'
 import { Globe } from '@/components/arxcian/globe/Globe'
@@ -16,6 +17,7 @@ import { RjMobSummary } from '@/components/arxcian/hub/RjMobSummary'
 import { MarketSessions } from '@/components/arxcian/hub/MarketSessions'
 import { SunWeather } from '@/components/arxcian/hub/SunWeather'
 import { PrayerTimes } from '@/components/arxcian/hub/PrayerTimes'
+import { PanelSkeleton } from '@/components/arxcian/PanelSkeleton'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,26 +98,44 @@ export default async function ArxcianHub() {
             </GlobeFrame>
           </div>
           <div className="mx-auto w-full max-w-[520px] xl:max-w-[820px]">
-            <PrayerTimes delay={0.18} />
+            <Suspense fallback={<PanelSkeleton title="Rukousajat" delay={0.18} />}>
+              <PrayerTimes delay={0.18} />
+            </Suspense>
           </div>
         </div>
 
         <div className="grid content-start gap-3 xl:col-start-1 xl:row-start-1">
-          <TodayFocus delay={0.12} />
-          <SunWeather delay={0.16} />
-          <RjMobSummary delay={0.2} />
-          <Channels delay={0.24} />
-          <WatchInbox delay={0.28} />
+          <Suspense fallback={<PanelSkeleton title="Tänään" delay={0.12} />}>
+            <TodayFocus delay={0.12} />
+          </Suspense>
+          <Suspense fallback={<PanelSkeleton title="Sää & aurinko" delay={0.16} />}>
+            <SunWeather delay={0.16} />
+          </Suspense>
+          <Suspense fallback={<PanelSkeleton title="RJ-Mob" delay={0.2} />}>
+            <RjMobSummary delay={0.2} />
+          </Suspense>
+          <Suspense fallback={<PanelSkeleton title="Kanavat" delay={0.24} />}>
+            <Channels delay={0.24} />
+          </Suspense>
+          <Suspense fallback={<PanelSkeleton title="Uutta" delay={0.28} />}>
+            <WatchInbox delay={0.28} />
+          </Suspense>
         </div>
 
         <div className="grid content-start gap-3 xl:col-start-3 xl:row-start-1">
-          <MarketSnapshot delay={0.24} />
+          <Suspense fallback={<PanelSkeleton title="Markkinat" delay={0.24} />}>
+            <MarketSnapshot delay={0.24} />
+          </Suspense>
           {/* Istunnot heti kurssien alle: molemmat vastaavat markkinaa
               koskevaan kysymykseen, ja "onko Lontoo auki" on se joka
               ratkaisee kannattaako kursseja edes katsoa juuri nyt. */}
           <MarketSessions now={now} delay={0.28} />
-          <CalendarMonth delay={0.32} />
-          <TodoPanel delay={0.36} />
+          <Suspense fallback={<PanelSkeleton title="Kalenteri" delay={0.32} />}>
+            <CalendarMonth delay={0.32} />
+          </Suspense>
+          <Suspense fallback={<PanelSkeleton title="To-do" delay={0.36} />}>
+            <TodoPanel delay={0.36} />
+          </Suspense>
           <QuickActions delay={0.4} />
         </div>
       </div>
