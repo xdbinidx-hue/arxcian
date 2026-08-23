@@ -613,9 +613,16 @@ Muilla sarjat ovat numeerisesti identtiset. Kentät ovat `tehoLiitt`/`teho`/
 F-Secure-leikkuri **vaikuttaa tehoon**: luvut lasketaan leikatuista
 provisioista (`jaljelle`-kerroin), samoin kuin palkka ja kate.
 
-Haara `claude/rj-mob-osio-8b7572` ehdotti päinvastaista mallia — teho luettuna
-taulukon sarakkeesta, leikkuri ohitettuna. **Sitä ei mergetä.** Haara on
-tallella mittauslukujensa takia, ei toteutettavana suunnitelmana.
+Haara **`rj-mob-palautus`** ehdotti päinvastaista mallia — teho luettuna
+taulukon sarakkeesta (`tehoTaulukko: parseNum(row[idxTehoMyyja])`), leikkuri
+ohitettuna. **Sitä ei mergetä.** Haara on tallella mittauslukujensa takia, ei
+toteutettavana suunnitelmana.
+
+Tämä kohta luki 23.8.2026 asti haaran nimenä `claude/rj-mob-osio-8b7572`, jota
+ei ole olemassa. Varoitus osoitti siis haamuun samalla kun kielletyn mallin
+toteuttava haara istui repossa nimeämättömänä — eli juuri siinä muodossa jossa
+seuraava lukija mergeää sen, koska mikään ei kerro että tämä on se haara.
+**Jos haara joskus nimetään uudelleen, päivitä nimi tähän samalla.**
 
 **Liittymäteholla on oma statusraja 8,5 €/h, muilla 9 €/h.** Päätös 19.8.2026.
 Liittymäteho on kolmesta luvusta aina pienin — pelkkä liittymäprovisio ilman
