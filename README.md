@@ -22,6 +22,13 @@ muuttujat on lueteltu [CLAUDE.md](CLAUDE.md):n Ympäristömuuttujat-osiossa ja
 
 Push `main`iin julkaisee Vercelissä automaattisesti.
 
+**Vercel-projekti on nimeltään `rjmob-portal`, ei `arxcian`** — repo ja kansio
+nimettiin uudelleen, Vercel-projektia ei. Tuotanto on siksi osoitteessa
+`https://rjmob-portal.vercel.app`, ja se osoite on kovakoodattuna
+cron-workflow'ssa ja Drive-webhookin rekisteröinnissä. Älä nimeä
+Vercel-projektia uudelleen "johdonmukaisuuden" vuoksi: se katkaisisi
+deploy-kytkennän ja molemmat URL:t. Ks. CLAUDE.md, "Nimet".
+
 ```bash
 npx vercel@latest env add <NIMI> production --yes   # uusi muuttuja tuotantoon
 ```

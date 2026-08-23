@@ -4,6 +4,10 @@ import { google } from 'googleapis'
 import crypto from 'crypto'
 import { authorizeCron } from '@/lib/arxcian/cron'
 
+// Vercel-projekti on nimeltään rjmob-portal vaikka repo on arxcian, joten tämä
+// on nykyinen tuotanto-osoite eikä jäänne vanhasta nimestä. Osoite on lisäksi
+// rekisteröity Googlelle watch-kanavan callbackiksi — vaihto vaatii kanavan
+// uudelleenrekisteröinnin. Ks. CLAUDE.md, "Nimet".
 const WEBHOOK_ADDRESS = 'https://rjmob-portal.vercel.app/api/webhook/drive'
 
 function getAuth() {
