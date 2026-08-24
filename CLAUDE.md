@@ -588,6 +588,36 @@ eivät kuudessa erillisessä toteutuksessa. Tila kootaan
 | MARKKINAT | `trading-quotes` | `trading:quotes` |
 | UUTTA (watch) | `watch-trading` + `watch-personal` | molempien tilat yhdistettynä |
 
+#### RJ-Mob hakee itsestään, muut eivät
+
+Päätös 25.8.2026. Sama luku näytti taas jumittuneelta, ja mittaus kertoi
+ettei mikään ollut rikki: cron oli ajanut neljästi, luvut täsmäsivät
+taulukkoon rivi riviltä, aikaleima oli tuore. **Näkyvä ei ollut sama kuin
+ratkaistu** — korjaus vaati ihmiseltä napin muistamista, eikä taulukkoon juuri
+kirjannut ihminen halua painaa nappia nähdäkseen kirjaamansa luvun.
+
+Ratkaisu on `refresh`-propin `auto`-kenttä: sitä vanhempi data haetaan
+itsestään kun paneeli avataan tai välilehti palaa esiin. RJ-Mobilla 15 min.
+
+**Ikäraja on sekä ehto että jäähy, ja se on koko kuvion ydin.** Epäonnistunut
+haku ei siirrä `fetchedAt`ia, joten pelkkä ikäehto olisi ajon jälkeen yhä tosi
+ja `router.refresh`in laukaisema uudelleenrenderöinti hakisi heti uudelleen —
+kaatunut lähde jäisi silmukkaan. Ehto on puhtaana funktiona
+[autoRefresh.ts](src/lib/arxcian/autoRefresh.ts):ssä ja
+`autoRefresh.test.mts` kaatuu jos jäähy poistetaan. Ajokirjanpito on
+moduulitasolla eikä komponentin tilassa, koska molemmat silmukat menevät
+komponentin ohi: `router.refresh` renderöi paneelin uudelleen ja hubista
+poistuminen irrottaa koko puun.
+
+**Älä laita `auto`a joka paneeliin.** Jokainen on yksi ulkoinen haku lisää
+jokaista hubin avausta kohti, ja hubissa on kuusi virkistettävää paneelia.
+Kolmella niistä ajovälin mittainen viive on lisäksi *päätetty* eikä siedetty:
+sään ja rukousaikojen TTL nostettiin ajovälin mittaiseksi 23.8.2026, ja
+kanavahaku kaatuu YouTuben IP-estoon suunnilleen päivittäin 30 s
+aikakatkaisulla. RJ-Mob on eri tapaus ja siksi toistaiseksi ainoa: sen lähde
+on taulukko jota **ihminen muokkaa ja jonka tuloksen hän haluaa nähdä heti
+perään**. Se on kriteeri, ei "tämä paneeli on tärkeä".
+
 ### Jokainen paneeli on oman Suspense-rajansa takana
 
 Päätös 23.8.2026. Hub on `force-dynamic` ja jokainen paneeli on oma

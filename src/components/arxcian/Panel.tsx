@@ -7,6 +7,21 @@ export type PanelRefreshProps = {
   /** Cron-työn id, tai useampi jos paneelin sisältö syntyy monesta työstä */
   job: string | readonly string[]
   state: PanelFetchState
+  /**
+   * Minuutteina: tätä vanhempi data haetaan itsestään paneelin auetessa.
+   *
+   * **Valinnainen tarkoituksella, älä laita tätä joka paneeliin.** Jokainen
+   * automaattinen paneeli on yksi ulkoinen haku lisää jokaista hubin avausta
+   * kohti, ja hubissa on kuusi virkistettävää paneelia. Kolmella niistä
+   * ajovälin mittainen viive on lisäksi *päätetty* eikä siedetty: sään ja
+   * rukousaikojen TTL nostettiin ajovälin mittaiseksi 23.8.2026, ja
+   * kanavahaku kaatuu YouTuben IP-estoon suunnilleen päivittäin 30 s
+   * aikakatkaisulla.
+   *
+   * RJ-Mob on eri tapaus, ja siksi toistaiseksi ainoa: sen lähde on taulukko
+   * jota ihminen muokkaa ja jonka tuloksen hän haluaa nähdä heti perään.
+   */
+  auto?: number
 }
 
 type PanelProps = {
@@ -93,7 +108,9 @@ export function Panel({
             </span>
           ) : null}
 
-          {refresh ? <PanelRefresh job={refresh.job} state={refresh.state} /> : null}
+          {refresh ? (
+            <PanelRefresh job={refresh.job} state={refresh.state} auto={refresh.auto} />
+          ) : null}
 
           {tyhjaOikea ? (
             <span aria-hidden="true" className="text-[10px] tracking-[0.3em] text-ax-accent/60">

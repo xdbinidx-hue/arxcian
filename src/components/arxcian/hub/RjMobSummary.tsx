@@ -22,6 +22,22 @@ import { UI_REFRESH_JOBS } from '@/lib/arxcian/cronAccess'
  * pahempi kuin tyhjä tila, koska sen erottaminen todellisesta ei onnistu.
  */
 
+/**
+ * Minuutteina: tätä vanhemmat luvut haetaan itsestään kun paneeli avataan.
+ *
+ * Cron ajaa neljästi vuorokaudessa (8, 12, 16, 20), joten pelkän cronin
+ * varassa juuri kirjattu myyntiseuranta näkyy hubissa vasta enimmillään
+ * neljän tunnin päästä. Se oli oikea suunnittelu — sivulataus ei saa odottaa
+ * Sheetsiä — mutta väärä oletus siitä milloin lukua katsotaan: taulukkoon
+ * kirjannut ihminen katsoo hubia heti perään.
+ *
+ * 15 min on kompromissi kahden kustannuksen välillä. `rjmob-summary` on noin
+ * viisi sekuntia ja kymmenkunta Sheets-kutsua, joten sitä ei voi ajaa joka
+ * sivulatauksella; toisaalta vartin vanha luku ei ehdi olla väärässä siitä
+ * mitä kuukaudesta on kertynyt. Sama luku toimii jäähynä, ks. PanelRefresh.
+ */
+const AUTO_MINUUTIT = 15
+
 type Metric = {
   key: keyof RjMobSummaryData['metrics']
   label: string
@@ -61,7 +77,7 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
     <Panel
       title="RJ-Mob"
       meta={data?.monthLabel}
-      refresh={{ job: UI_REFRESH_JOBS.rjmob, state: status }}
+      refresh={{ job: UI_REFRESH_JOBS.rjmob, state: status, auto: AUTO_MINUUTIT }}
       delay={delay}
       empty="Kuukauden luvut haetaan seuraavassa ajastetussa ajossa."
     >

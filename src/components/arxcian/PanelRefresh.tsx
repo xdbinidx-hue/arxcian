@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { fetchLabel } from '@/lib/arxcian/time'
+import { saakoAjaaAutomaattisesti } from '@/lib/arxcian/autoRefresh'
 import type { PanelFetchState } from '@/lib/arxcian/panelStatus'
 
 /**
@@ -14,6 +15,12 @@ import type { PanelFetchState } from '@/lib/arxcian/panelStatus'
  * rikki, mutta paneeli ei kertonut milloin sen luvut oli haettu — vian
  * etsimiseen meni tunti. Nappi antaa keinon ajaa haku heti, aikaleima kertoo
  * milloin se olisi muuten seuraavan kerran tapahtunut.
+ *
+ * **Näkyvä ei ole sama kuin ratkaistu.** 24.8.2026 sama luku näytti taas
+ * jumittuneelta, ja mittaus kertoi ettei mikään ollut rikki: cron oli ajanut
+ * neljästi, luvut täsmäsivät taulukkoon, aikaleima oli tuore. Vika oli siinä
+ * että korjaus vaati ihmiseltä napin muistamista. `auto` tekee samasta hausta
+ * itsestään tapahtuvan; nappi jää käsiohjaukseksi.
  *
  * **Tuore ja vanhentunut eivät saa näyttää samalta.** Tuore hakuaika on
  * himmeä; vanhentunut on punainen ja saa varoitusmerkin. Vanhentuneisuus on
@@ -29,6 +36,20 @@ import type { PanelFetchState } from '@/lib/arxcian/panelStatus'
 /** Jäähy onnistuneen ajon jälkeen. Työt hakevat ulkoisista rajapinnoista. */
 const JAAHY_MS = 20_000
 
+/**
+ * Milloin kukin työ viimeksi ajettiin **automaattisesti**, id-avaimella.
+ *
+ * Moduulitasolla eikä komponentin tilassa, koska molemmat tavat joilla haku
+ * muuten lähtisi silmukkaan menevät komponentin ohi: `router.refresh` renderöi
+ * paneelin uudelleen, ja hubista poistuminen ja takaisin tuleminen irrottaa
+ * koko puun. Kumpikin nollaisi refin, ja kaatunut lähde hakattaisiin uudelleen
+ * joka kerta.
+ *
+ * Merkintä tehdään **ennen** ajoa eikä sen jälkeen: epäonnistunut yritys on
+ * juuri se tapaus jota ei saa toistaa heti uudelleen.
+ */
+const viimeisinAutomaatti = new Map<string, number>()
+
 type CronTulos = {
   ok?: boolean
   error?: string
@@ -40,10 +61,16 @@ type Viesti = { sisalto: string; laji: 'virhe' | 'vanha' }
 export function PanelRefresh({
   job,
   state,
+  auto,
 }: {
   /** Cron-työn id, tai useampi jos paneelin sisältö syntyy monesta työstä */
   job: string | readonly string[]
   state: PanelFetchState
+  /**
+   * Minuutteina: tätä vanhempi data haetaan itsestään kun paneeli avataan tai
+   * välilehti palaa esiin. Pois päältä kun arvoa ei anneta.
+   */
+  auto?: number
 }) {
   const router = useRouter()
   const [ajossa, setAjossa] = useState(false)
@@ -144,6 +171,57 @@ export function PanelRefresh({
     // paneelin sisältö päivittyvät samalla kertaa.
     aloitaSiirtyma(() => router.refresh())
   }, [estetty, job, router])
+
+  // Ref eikä suora kutsu efektistä: `paivita` saa uuden identiteetin aina kun
+  // `estetty` muuttuu, ja riippuvuuslistaan otettuna efekti ajautuisi kesken
+  // oman ajonsa uudelleen.
+  const paivitaRef = useRef(paivita)
+  paivitaRef.current = paivita
+
+  const idt = typeof job === 'string' ? job : job.join(',')
+
+  /**
+   * Automaattinen haku: vanha data haetaan itsestään kun paneeli avataan.
+   *
+   * **Miksi tämä on olemassa.** Hubin luvut tulevat välimuistista jonka cron
+   * pitää lämpimänä neljästi vuorokaudessa, eli näytetty luku voi olla neljä
+   * tuntia vanha (yön yli 12 h). Nappi ja aikaleima tekivät siitä näkyvää,
+   * mutta näkyvä ei ole sama kuin ratkaistu: napin olemassaolo pitää muistaa,
+   * eikä myyntiseurantaa taulukkoon kirjannut ihminen halua painaa nappia
+   * nähdäkseen juuri kirjaamansa luvun. Nappi jää käsiohjaukseksi.
+   *
+   * **Ikäraja on sekä ehto että jäähy.** Sama luku ratkaisee molemmat
+   * kysymykset — kannattaako hakea, ja milloin saa yrittää uudelleen — joten
+   * kaatunut lähde ei jää silmukkaan eikä `router.refresh` laukaise toista
+   * ajoa. Ilman jäähyä epäonnistunut haku jättäisi `fetchedAt`in vanhaksi ja
+   * seuraava renderöinti yrittäisi heti uudelleen.
+   *
+   * **Vain esillä oleva välilehti hakee.** `visibilitychange` on mukana siksi
+   * että puhelimen kotiruudulta avattu PWA jää auki päiviksi: ilman sitä
+   * "automaattinen" tarkoittaisi vain ensimmäistä avausta.
+   */
+  useEffect(() => {
+    if (!auto) return
+
+    const yrita = () => {
+      const nyt = Date.now()
+      const saa = saakoAjaaAutomaattisesti({
+        nyt,
+        ikarajaMin: auto,
+        fetchedAt: state.fetchedAt,
+        edellinenAutomaatti: viimeisinAutomaatti.get(idt) ?? null,
+        nakyvissa: document.visibilityState === 'visible',
+      })
+      if (!saa) return
+
+      viimeisinAutomaatti.set(idt, nyt)
+      void paivitaRef.current()
+    }
+
+    yrita()
+    document.addEventListener('visibilitychange', yrita)
+    return () => document.removeEventListener('visibilitychange', yrita)
+  }, [auto, idt, state.fetchedAt])
 
   const aika = state.fetchedAt !== null ? fetchLabel(state.fetchedAt) : null
   const yritys = state.attemptedAt !== null ? fetchLabel(state.attemptedAt) : null
