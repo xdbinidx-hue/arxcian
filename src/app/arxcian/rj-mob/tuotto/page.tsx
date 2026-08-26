@@ -1,6 +1,10 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { SellerResult, getTuntipalkka, LAPIMENO, TEHO_HEIKKO, tehoTaso } from '@/lib/rjmob'
+import { SellerResult, getTuntipalkka, LAPIMENO, TEHO_HEIKKO, tehoTaso, SIVU_KERROIN } from '@/lib/rjmob'
+import {
+  ansaintakuukausi, bonusmalliVoimassa, laskeKuukaudenBonukset, toteumatMyymalataulukosta,
+} from '@/lib/rjmobBonus'
+import { tavoitteetKuukaudelle } from '@/lib/rjmobBonusTavoitteet'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 interface DashData {
@@ -67,6 +71,27 @@ function parsePrefix(name: string): number {
   return year * 100 + month
 }
 
+const KUUKAUDET = ['tammikuu','helmikuu','maaliskuu','huhtikuu','toukokuu','kesäkuu','heinäkuu','elokuu','syyskuu','lokakuu','marraskuu','joulukuu']
+
+function kuukausiNimi(order: number): string {
+  return `${KUUKAUDET[(order % 100) - 1] ?? '?'} ${Math.floor(order / 100)}`
+}
+
+/**
+ * Maksukuukaudelle kirjattava päällikköbonus.
+ *
+ * `tila` erottaa kolme eri asiaa jotka näyttäisivät muuten samalta nollalta:
+ * bonus on laskettu, ansaintakuukauden myyntiseuranta puuttuu Drivestä, tai
+ * kuukaudelle ei ole lukittuja tavoitteita. Vain ensimmäinen on luku johon voi
+ * luottaa — kaksi muuta ovat puuttuvaa tietoa, ei nollaa bonusta.
+ */
+type BonusKulu = {
+  ansaintaOrder: number
+  maksettava: number
+  kulu: number
+  tila: 'laskettu' | 'lahde-puuttuu' | 'tavoitteet-puuttuu'
+}
+
 function monthNumOf(name: string): number {
   const m = name.match(/(\d{1,3})\./)
   return m ? Number(m[1]) : 0
@@ -125,6 +150,7 @@ export default function TuottoPage() {
   const [loading, setLoading] = useState(false)
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
+  const [bonusKulu, setBonusKulu] = useState<BonusKulu | null>(null)
 
   const [mode, setMode] = useState<'arvio'|'todellinen'>('arvio')
   const [receiptFiles, setReceiptFiles] = useState<DriveFile[]>([])
@@ -157,6 +183,47 @@ export default function TuottoPage() {
   }, [selectedFile])
 
   useEffect(() => { if (selectedFile) loadData() }, [selectedFile, loadData])
+
+  /**
+   * Päällikköbonus kirjataan **maksukuukaudelle, ei ansaintakuukaudelle**:
+   * syyskuun bonus maksetaan lokakuun palkassa ja on siten lokakuun kulu.
+   * Valitun kuukauden bonuskulu lasketaan siis edellisen kuukauden
+   * myyntiseurannasta — sitä ei voi lukea tämän kuukauden tiedostosta.
+   *
+   * Tämä on tietoinen valinta joka vastaa pankkitiliä ja kirjanpitoa. Seuraus:
+   * hyvä myyntikuukausi näyttää vähän liian hyvältä ja sitä seuraava vähän
+   * liian raskaalta. **Älä "korjaa" tätä ansaintakuukaudeksi.**
+   */
+  useEffect(() => {
+    setBonusKulu(null)
+    const valittu = files.find(f => f.id === selectedFile)
+    if (!valittu) return
+    const ansainta = ansaintakuukausi(parsePrefix(valittu.name))
+    if (!bonusmalliVoimassa(ansainta)) return
+
+    const tavoitteet = tavoitteetKuukaudelle(ansainta)
+    if (!tavoitteet) {
+      setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'tavoitteet-puuttuu' })
+      return
+    }
+
+    const lahde = files.find(f => parsePrefix(f.name) === ansainta)
+    if (!lahde) {
+      setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' })
+      return
+    }
+
+    let peruttu = false
+    fetch(`/api/sheets?fileId=${lahde.id}`).then(r => r.json()).then(d => {
+      if (peruttu) return
+      if (d.error || !d.stores) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' }); return }
+      const kk = laskeKuukaudenBonukset(ansainta, tavoitteet, toteumatMyymalataulukosta(d.stores))
+      setBonusKulu({ ansaintaOrder: ansainta, maksettava: kk.maksettavaYhteensa, kulu: kk.kuluYhteensa, tila: 'laskettu' })
+    }).catch(() => {
+      if (!peruttu) setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' })
+    })
+    return () => { peruttu = true }
+  }, [selectedFile, files])
 
   // Todellinen-näkymä: koko vuoden maksukuitit summattuna per myyjä. Kassakate haetaan
   // samalta kuukaudelta myyntiseurannasta (100% läpimeno, ei maksukuitissa myyjäkohtaisesti).
@@ -297,15 +364,26 @@ export default function TuottoPage() {
         {data && !loading && (<>
 
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginBottom:12}}>
-            {[
+            {([
               {l:'Nettotulos (tiimi)',v:`${fmt(data.totals.netto)} €`},
               {l:'Norin suoratulo',v:`${fmt(data.sellers.find(s=>s.tyyppi==='owner'&&s.nimi.includes('Arbnor'))?.netto??0)} €`,c:'#185FA5'},
               {l:'Albinin suoratulo',v:`${fmt(data.sellers.find(s=>s.tyyppi==='owner'&&s.nimi.includes('Albin'))?.netto??0)} €`,c:'#185FA5'},
               {l:'Liittymät',v:`${fmt(data.totals.liittKpl)} kpl`,s:`${fmt(data.totals.liittEur)} €`},
               {l:'F-Secure',v:`${fmt(data.totals.fsecKpl)} kpl`,c:'#0F6E56',s:`Kk-passiivitulo: ${fmt(data.totals.fsecKpl*1.5,2)} € · FV 12kk: ${fmt(data.totals.fsecFV)} €`},
               {l:'RJ-Mob bruttotulo',v:`${fmt(data.totals.rjmobTulo)} €`},
-              {l:'Työkulu (tiimi)',v:`${fmt(data.totals.tyokulu)} €`,s:'sis. sivukulut ×1,25'},
-            ].map((k,i)=>(
+              {l:'Työkulu (tiimi)',v:`${fmt(data.totals.tyokulu)} €`,s:`sis. sivukulut ×${fmt(SIVU_KERROIN,2)}`},
+            ] as {l:string;v:string;c?:string;s?:string}[]).concat(
+              bonusKulu ? [{
+                l: 'Päällikköbonus',
+                v: bonusKulu.tila === 'laskettu' ? `${fmt(bonusKulu.kulu)} €` : '—',
+                c: '#854F0B',
+                s: bonusKulu.tila === 'laskettu'
+                  ? `${kuukausiNimi(bonusKulu.ansaintaOrder)}n bonus · ${fmt(bonusKulu.maksettava)} € + sivukulut`
+                  : bonusKulu.tila === 'lahde-puuttuu'
+                    ? `${kuukausiNimi(bonusKulu.ansaintaOrder)}n myyntiseuranta puuttuu`
+                    : `${kuukausiNimi(bonusKulu.ansaintaOrder)}lle ei lukittuja tavoitteita`,
+              }] : [],
+            ).map((k,i)=>(
               <div key={i} style={{background:'#f1f0ee',borderRadius:10,padding:'11px 13px'}}>
                 <div style={{fontSize:11,color:'#888',marginBottom:3}}>{k.l}</div>
                 <div style={{fontSize:20,fontWeight:500,color:k.c??'#111'}}>{k.v}</div>
