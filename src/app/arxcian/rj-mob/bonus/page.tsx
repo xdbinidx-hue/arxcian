@@ -1,0 +1,322 @@
+'use client'
+import { useEffect, useState } from 'react'
+import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import {
+  MYYMALAT, MITTARIT, MITTARI_NIMI, MITTARI_YKSIKKO, PORRAS_SATA, PORRAS_SATAKAKSI,
+  bonusmalliVoimassa, laskeKuukaudenBonukset, toteumatMyymalataulukosta, tasonMaksimi,
+  BONUSMALLI_ALKAA,
+  type Mittari, type MittariTulos, type Myymala, type MyymalaToteuma,
+} from '@/lib/rjmobBonus'
+import {
+  tavoitteetKuukaudelle, tavoiteIlmanTapahtumaa, muutoksetKuukaudelle, onLukittu,
+} from '@/lib/rjmobBonusTavoitteet'
+
+/**
+ * Myymäläpäällikköbonus.
+ *
+ * Sivu näyttää **mistä bonus syntyy**, ei vain lopputulosta: kunkin mittarin
+ * toteuma, tavoite, prosentti ja porras erikseen. Yksi euroluku ilman
+ * prosentteja ei kertoisi päällikölle mitä pitäisi tehdä toisin, eikä Albin
+ * näkisi kumpi mittari jäi rajan alle.
+ *
+ * Sama tiedostovalitsin kuin muilla RJ-Mobin sivuilla: bonus lasketaan siitä
+ * myyntiseurantatiedostosta joka on valittuna, ja kuukausi tunnistetaan sen
+ * nimestä samalla `vuosi × 100 + kuukausi` -säännöllä.
+ */
+
+interface DriveFile { id: string; name: string; mimeType: string }
+type StoreRow = { liittKpl: number; fsecKpl: number; kassa: number }
+interface DashData { kuukausi: string; stores?: Record<string, StoreRow>; error?: string }
+
+function fmt(n: number, dec = 0) {
+  return n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+}
+
+function parsePrefix(name: string): number {
+  const yearMatch = name.match(/(\d{4})/)
+  const numMatch = name.match(/(\d{1,3})\./)
+  const year = yearMatch ? Number(yearMatch[1]) : 0
+  const month = numMatch ? Number(numMatch[1]) : 0
+  return year * 100 + month
+}
+
+const KUUKAUDET = ['tammikuu','helmikuu','maaliskuu','huhtikuu','toukokuu','kesäkuu','heinäkuu','elokuu','syyskuu','lokakuu','marraskuu','joulukuu']
+
+function kuukausiNimi(order: number): string {
+  const kk = order % 100
+  const nimi = KUUKAUDET[kk - 1] ?? '?'
+  return `${nimi} ${Math.floor(order / 100)}`
+}
+
+function arvo(n: number, mittari: Mittari) {
+  return MITTARI_YKSIKKO[mittari] === '€' ? `${fmt(n)} €` : fmt(n)
+}
+
+const VARIT = {
+  ei: { teksti: '#A32D2D', tausta: '#fee2e2' },
+  sata: { teksti: '#854F0B', tausta: '#fef9c3' },
+  satakaksi: { teksti: '#3B6D11', tausta: '#dcfce7' },
+} as const
+
+const th = { padding: '8px 10px', fontSize: 11, fontWeight: 500, color: '#888', textAlign: 'center' as const, borderBottom: '0.5px solid #eee', whiteSpace: 'nowrap' as const, background: '#f8f8f8' }
+const thL = { ...th, textAlign: 'left' as const }
+const td = { padding: '8px 10px', fontSize: 13, textAlign: 'center' as const, borderBottom: '0.5px solid #f5f5f5' }
+const tdL = { ...td, textAlign: 'left' as const, fontWeight: 500 }
+const kortti = { background: 'white', border: '0.5px solid #eee', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }
+const korttiOtsikko = { padding: '12px 16px', borderBottom: '0.5px solid #eee' }
+
+/**
+ * Yhden mittarin solu: toteuma/tavoite, prosentti ja bonus. Väri tulee
+ * portaasta eikä prosentista, jotta solun sävy ja maksettu euro kertovat
+ * saman asian.
+ */
+function MittariSolu({ m, edellinen }: { m: MittariTulos; edellinen: number | undefined }) {
+  if (m.porras === null) {
+    return (
+      <td style={{ ...td, background: '#fafafa', color: '#A32D2D', fontSize: 12 }}>
+        <div>{arvo(m.toteuma, m.mittari)}</div>
+        <div style={{ fontSize: 11, marginTop: 2 }}>tavoite puuttuu</div>
+      </td>
+    )
+  }
+  const v = VARIT[m.porras]
+  return (
+    <td style={{ ...td, background: v.tausta }}>
+      <div style={{ fontSize: 12 }}>
+        {arvo(m.toteuma, m.mittari)} <span style={{ color: '#999' }}>/ {arvo(m.tavoite ?? 0, m.mittari)}</span>
+      </div>
+      <div style={{ fontSize: 12, color: v.teksti, fontWeight: 600, marginTop: 2 }}>
+        {fmt(m.pct ?? 0, 1)} % · {fmt(m.bonus)} €
+      </div>
+      {edellinen !== undefined && (
+        <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>ed. kk {arvo(edellinen, m.mittari)}</div>
+      )}
+    </td>
+  )
+}
+
+export default function BonusPage() {
+  const [files, setFiles] = useState<DriveFile[]>([])
+  const [selectedFile, setSelectedFile] = useState('')
+  const [stores, setStores] = useState<Record<string, StoreRow>>({})
+  const [edelliset, setEdelliset] = useState<Partial<Record<Myymala, MyymalaToteuma>>>({})
+  const [kuukausi, setKuukausi] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/files').then(r => r.json()).then(d => {
+      const sheets = ((d.files ?? []).filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.spreadsheet'))
+        .sort((a: DriveFile, b: DriveFile) => parsePrefix(b.name) - parsePrefix(a.name))
+      setFiles(sheets)
+      if (sheets.length > 0) setSelectedFile(sheets[0].id)
+    }).catch(() => setError('Tiedostolistan haku epäonnistui'))
+  }, [])
+
+  useEffect(() => {
+    if (!selectedFile) return
+    setLoading(true); setError(''); setEdelliset({})
+
+    fetch(`/api/sheets?fileId=${selectedFile}`)
+      .then(r => r.json())
+      .then((d: DashData) => {
+        if (d.error) { setError(d.error); setStores({}); return }
+        setStores(d.stores ?? {})
+        setKuukausi(d.kuukausi ?? '')
+      })
+      .catch(() => setError('Myyntiseurannan haku epäonnistui'))
+      .finally(() => setLoading(false))
+
+    // Edellisen kuun toteuma on vertailuluku, ei laskennan syöte: epäonnistunut
+    // haku jättää sen näyttämättä eikä kaada sivua.
+    const idx = files.findIndex(f => f.id === selectedFile)
+    const edellinen = idx >= 0 ? files[idx + 1] : undefined
+    if (edellinen) {
+      fetch(`/api/sheets?fileId=${edellinen.id}`)
+        .then(r => r.json())
+        .then((d: DashData) => { if (!d.error && d.stores) setEdelliset(toteumatMyymalataulukosta(d.stores)) })
+        .catch(() => {})
+    }
+  }, [selectedFile, files])
+
+  const valittu = files.find(f => f.id === selectedFile)
+  const order = valittu ? parsePrefix(valittu.name) : 0
+  const voimassa = bonusmalliVoimassa(order || null)
+  const tavoitteet = tavoitteetKuukaudelle(order)
+  const toteumat = toteumatMyymalataulukosta(stores)
+  const kk = laskeKuukaudenBonukset(order, tavoitteet, toteumat)
+  const muutokset = muutoksetKuukaudelle(order)
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px 40px' }}>
+      <RjMobNav />
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '16px 0' }}>
+        <select
+          value={selectedFile}
+          onChange={e => setSelectedFile(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '0.5px solid #ddd', fontSize: 13, background: 'white' }}
+        >
+          {files.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        {loading && <span style={{ fontSize: 12, color: '#888' }}>Ladataan…</span>}
+        {kuukausi && !loading && <span style={{ fontSize: 12, color: '#888' }}>{kuukausi}</span>}
+      </div>
+
+      {error && (
+        <div style={{ ...kortti, padding: 16, color: '#A32D2D', fontSize: 13 }}>{error}</div>
+      )}
+
+      {!voimassa && order > 0 && (
+        <div style={{ ...kortti, padding: 16, fontSize: 13, color: '#854F0B', background: '#fef9c3' }}>
+          <strong>{kuukausiNimi(order)}</strong> lasketaan vanhalla päällikkömallilla — uusi
+          myymäläpäällikköbonus on voimassa {kuukausiNimi(BONUSMALLI_ALKAA)}sta alkaen.
+          Vanhoja kuukausia ei lasketa uudelleen tällä mallilla.
+        </div>
+      )}
+
+      {!tavoitteet && voimassa && (
+        <div style={{ ...kortti, padding: 16, fontSize: 13, color: '#A32D2D', background: '#fee2e2' }}>
+          Kuukaudelle <strong>{kuukausiNimi(order)}</strong> ei ole lukittuja tavoitteita.
+          Jokaisen mittarin bonus on 0 € — tavoitetta ei arvata eikä edellisen kuun
+          lukua käytetä.
+        </div>
+      )}
+
+      {voimassa && (
+        <>
+          <div style={kortti}>
+            <div style={korttiOtsikko}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Myymäläpäällikköbonus · {kuukausiNimi(order)}</div>
+              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                Kolme mittaria maksavat itsenäisesti. Alle {PORRAS_SATA} % ei maksa mitään,
+                {' '}{PORRAS_SATA}–{PORRAS_SATAKAKSI - 0.1} % pienen summan ja {PORRAS_SATAKAKSI} % tai yli ison —
+                yli {PORRAS_SATAKAKSI} % ei maksa enempää.
+                {tavoitteet && ` Tavoitteet ${onLukittu(order) ? 'lukittu' : 'ei vielä lukittu'}.`}
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={thL}>Myymälä</th>
+                    <th style={th}>Taso</th>
+                    <th style={thL}>Päällikkö</th>
+                    {MITTARIT.map(m => <th key={m} style={th}>{MITTARI_NIMI[m]}</th>)}
+                    <th style={th}>Yhteensä</th>
+                    <th style={th}>Maksetaan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kk.myymalat.map(b => {
+                    const ed = edelliset[b.myymala]
+                    return (
+                      <tr key={b.myymala}>
+                        <td style={tdL}>{b.myymala}</td>
+                        <td style={{ ...td, color: '#888', fontSize: 12 }}>{b.taso}</td>
+                        <td style={{ ...tdL, fontWeight: 400, fontSize: 12 }}>{b.paallikko}</td>
+                        {b.mittarit.map(m => (
+                          <MittariSolu
+                            key={m.mittari}
+                            m={m}
+                            edellinen={ed ? ed[m.mittari] : undefined}
+                          />
+                        ))}
+                        <td style={{ ...td, fontWeight: 600 }}>
+                          {fmt(b.teoreettinen)} €
+                          <div style={{ fontSize: 10, color: '#aaa', fontWeight: 400, marginTop: 2 }}>
+                            max {fmt(tasonMaksimi(b.taso))} €
+                          </div>
+                        </td>
+                        <td style={{ ...td, fontWeight: 600, color: b.maksetaan ? '#111' : '#aaa' }}>
+                          {b.maksetaan ? `${fmt(b.maksettava)} €` : '—'}
+                          {!b.maksetaan && (
+                            <div style={{ fontSize: 10, color: '#aaa', fontWeight: 400, marginTop: 2 }}>omistaja</div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  <tr style={{ background: '#fafafa' }}>
+                    <td style={{ ...tdL, fontWeight: 600 }} colSpan={3}>Yhteensä</td>
+                    {MITTARIT.map(m => (
+                      <td key={m} style={{ ...td, color: '#888', fontSize: 12 }}>
+                        {fmt(kk.myymalat.filter(b => b.maksetaan).reduce((s, b) => s + (b.mittarit.find(x => x.mittari === m)?.bonus ?? 0), 0))} €
+                      </td>
+                    ))}
+                    <td style={td} />
+                    <td style={{ ...td, fontWeight: 700 }}>{fmt(kk.maksettavaYhteensa)} €</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <div style={{ ...kortti, marginBottom: 0, padding: 16 }}>
+              <div style={{ fontSize: 11, color: '#888' }}>Maksettava yhteensä</div>
+              <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4 }}>{fmt(kk.maksettavaYhteensa)} €</div>
+              <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                {fmt(kk.maksimi > 0 ? (kk.maksettavaYhteensa / kk.maksimi) * 100 : 0)} % maksimista ({fmt(kk.maksimi)} €)
+              </div>
+            </div>
+            <div style={{ ...kortti, marginBottom: 0, padding: 16 }}>
+              <div style={{ fontSize: 11, color: '#888' }}>Kulu sivukuluineen</div>
+              <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4 }}>{fmt(kk.kuluYhteensa, 2)} €</div>
+              <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>kerroin 1,35</div>
+            </div>
+            <div style={{ ...kortti, marginBottom: 0, padding: 16 }}>
+              <div style={{ fontSize: 11, color: '#888' }}>Kirjautuu kuluksi</div>
+              <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4 }}>{kuukausiNimi(kk.maksuOrder)}</div>
+              <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                maksukuukaudelle, ei ansaintakuukaudelle
+              </div>
+            </div>
+          </div>
+
+          {tavoitteet && MYYMALAT.some(m => (tavoitteet[m.myymala]?.tapahtumaLiittymat ?? 0) > 0) && (
+            <div style={kortti}>
+              <div style={korttiOtsikko}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Tapahtumat</div>
+                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                  Bonus lasketaan aina koko lukitusta tavoitetta vasten — normalisoitu luku
+                  kertoo vain mistä iso liittymämäärä tulee, jottei tapahtumakuukautta
+                  verrata arkikuukauteen suoraan.
+                </div>
+              </div>
+              <div style={{ padding: '12px 16px', fontSize: 13 }}>
+                {MYYMALAT.filter(m => (tavoitteet[m.myymala]?.tapahtumaLiittymat ?? 0) > 0).map(m => {
+                  const t = tavoitteet[m.myymala]
+                  return (
+                    <div key={m.myymala} style={{ marginBottom: 6 }}>
+                      <strong>{m.myymala}</strong>: tavoite {fmt(t.liittymat ?? 0)} kpl, josta
+                      {' '}{fmt(t.tapahtumaLiittymat ?? 0)} kpl tapahtumasta →
+                      normaali myymälämyynti {fmt(tavoiteIlmanTapahtumaa(t) ?? 0)} kpl
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {muutokset.length > 0 && (
+            <div style={kortti}>
+              <div style={korttiOtsikko}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Tavoitteen muutokset lukituksen jälkeen</div>
+              </div>
+              <div style={{ padding: '12px 16px', fontSize: 13 }}>
+                {muutokset.map((m, i) => (
+                  <div key={i} style={{ marginBottom: 6 }}>
+                    {m.milloin} · {m.kuka} · {m.myymala} {MITTARI_NIMI[m.mittari]}:
+                    {' '}{m.vanha ?? '—'} → {m.uusi ?? '—'} ({m.syy})
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

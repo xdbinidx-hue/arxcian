@@ -72,6 +72,7 @@ export const RJMOB_PAGES: readonly RjMobPage[] = [
   { id: 'kassamyynti', label: 'Kassamyynti', href: '/arxcian/rj-mob/kassamyynti' },
   { id: 'myyntiseuranta', label: 'Myyntiseuranta', href: '/arxcian/rj-mob/etela' },
   { id: 'tavoitteet', label: 'Tavoitteet ja Run Rate', href: '/arxcian/rj-mob/tavoitteet' },
+  { id: 'bonus', label: 'Päällikköbonus', href: '/arxcian/rj-mob/bonus' },
   { id: 'laskuri', label: 'Laskuri', href: '/arxcian/rj-mob/laskuri' },
   { id: 'tyovuorot', label: 'Työvuorot', href: '/arxcian/rj-mob/tyovuorot' },
 ]
