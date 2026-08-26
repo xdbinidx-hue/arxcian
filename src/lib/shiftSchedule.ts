@@ -37,8 +37,14 @@ export const STORE_MANAGERS: Record<StoreName, string> = {
 
 export const MANAGER_NAMES = [STORE_MANAGERS.Malmi, STORE_MANAGERS.Easton, STORE_MANAGERS.Kivistö]
 
+/**
+ * Vladimirilla on kova aikarajoite, ks. `sopiiVuoro`. Nimi on omana vakionaan
+ * koska siihen viitataan neljästä kohdasta.
+ */
+export const VLADIMIR = 'Vladimir Kogan'
+
 export const FULL_TIME_SELLERS = [
-  'Krenar Bajqinovci', 'Kasperi Kemppainen', 'Vladimir Kogan', 'Hamza Hanif', 'Lauri Ukkonen',
+  'Krenar Bajqinovci', 'Kasperi Kemppainen', VLADIMIR, 'Hamza Hanif', 'Lauri Ukkonen',
 ]
 
 export const ANTTI = 'Antti Kiljala'
@@ -81,6 +87,12 @@ export const ANTTI_MAX_SHIFTS_PER_WEEK = 3
  * oikeasti toimi. Jos tätä lasketaan, syyskuun golden-testi ei enää täsmää.
  */
 export const RAMIN_MAX_SHIFTS_PER_WEEK = 4
+/**
+ * Vladimirin viikkokatto. Neljä on hänen oma rajoitteensa eikä tuntitasausta:
+ * hänen mahdollisia päiviään on viikossa tasan neljä (ti, to, pe, la), joten
+ * katto ja käytettävissä olevat päivät osuvat yksiin. Ks. `sopiiVuoro`.
+ */
+export const VLADIMIR_MAX_SHIFTS_PER_WEEK = 4
 /** Montako toisen myymälän paikkausvuoroa päällikkö voi ottaa viikossa. */
 export const MANAGER_CROSS_CAP = 2
 
@@ -216,12 +228,50 @@ const OP_SATURDAY_SHIFT: ShiftTemplate = { label: 'OP', start: '10:00', end: '17
  */
 const ANTTI_STORE: StoreName = 'Kivistö'
 
+// ===================== Myyjäkohtaiset aikarajoitteet =====================
+//
+// Vahvistettu Albinilta 26.8.2026. Nämä ovat sääntöjä, eivät toiveita:
+// generaattori EI saa sijoittaa Vladimiria aamuvuoroon edes silloin kun päivä
+// jäisi muuten vajaaksi. **Vaje on hyväksyttävämpi kuin sääntörikko** — vaje
+// näkyy käyttöliittymässä varoituksena, sääntörikko ei näy kenellekään ennen
+// kuin Vladimir soittaa.
+
+/** Vladimirin päivät: 2=ti, 4=to, 5=pe, 6=la. Ma ja ke eivät ole hänen. */
+const VLADIMIR_DAYS = [2, 4, 5, 6]
+/** Arkena vain klo 12 tai myöhemmin alkavat vuorot. Lauantaina 10–16 käy. */
+const VLADIMIR_EARLIEST_WEEKDAY_START = '12:00'
+
+/**
+ * Kelpaako tämä vuoro tälle myyjälle.
+ *
+ * Tarkistus tarvitsee **vuoron alkuajan**, ei pelkkää päivää ja myyjää —
+ * siksi `fallbackFor` saa vuoropohjan parametrina eikä valitse myyjää ennen
+ * kuin kellonaika on tiedossa.
+ *
+ * Vertailu tehdään merkkijonona: nollatäytetty 'HH:MM' on merkkijonoina
+ * samassa järjestyksessä kuin ajallisesti (sama päättely kuin
+ * [time.ts](src/lib/arxcian/time.ts):n ISO-paikallisajoilla).
+ */
+export function sopiiVuoro(seller: string, weekday: number, start: string): boolean {
+  if (seller !== VLADIMIR) return true
+  if (!VLADIMIR_DAYS.includes(weekday)) return false
+  if (weekday === 6) return true
+  return start >= VLADIMIR_EARLIEST_WEEKDAY_START
+}
+
 // ===================== Viikkoankkurit =====================
 //
-// Jokainen kokoaikainen saa kiertävän osoittimen mukaan yhden myymälän ja
-// yhden vuorotyypin koko viikoksi, jottei sama henkilö vaihda paikkaa ja
-// aikaa päivittäin. Viides jää viikon "swingiksi" eli joustavaksi paikkaajaksi.
+// Jokainen ankkuroitava kokoaikainen saa yhden myymälän ja yhden vuorotyypin
+// koko viikoksi, jottei sama henkilö vaihda paikkaa ja aikaa päivittäin.
+// Ylimääräiset jäävät viikon "swingiksi" eli joustavaksi paikkaajaksi.
 // Kuka saa minkäkin ankkurin, ratkeaa Malmi-kertymästä (ks. WeekPlan).
+//
+// ⚠️ **Jokainen ankkuripaikka on aamuvuoro** (aikaisin alku 10:00, myöhäisin
+// Malmi idx 1 ma/pe klo 12:00). Vladimir ei siis voi olla ankkuri: hänen
+// ankkuripaikkansa jäisi tyhjäksi joka viikko ja hän itse jäisi melkein
+// kokonaan listalta. Siksi `WeekPlan` jakaa ankkurit vain `ANCHORABLE`-
+// listalle. Tämä ei ole ilmeinen koodia lukemalla ja rikkoutuu ensimmäisenä
+// kun ankkurilogiikkaa "yksinkertaistetaan".
 type AnchorSlot = { store: StoreName; templateIndex: number }
 const ANCHOR_SLOTS: AnchorSlot[] = [
   { store: 'Malmi', templateIndex: 0 },
@@ -229,6 +279,16 @@ const ANCHOR_SLOTS: AnchorSlot[] = [
   { store: 'Easton', templateIndex: 0 },
   { store: 'Kivistö', templateIndex: 0 },
 ]
+
+/**
+ * Ketkä voivat saada viikkoankkurin. Vladimir on rajattu ulos yllä kuvatusta
+ * syystä — hän toimii vapaana täydentäjänä `sopiiVuoro`-tarkistuksen kautta.
+ *
+ * Neljä ankkuroitavaa ja neljä ankkuripaikkaa tarkoittaa ettei erillistä
+ * swing-myyjää synny. Mekanismia ei silti poisteta: se herää itsestään jos
+ * kokoaikaisia joskus on kuusi.
+ */
+const ANCHORABLE = FULL_TIME_SELLERS.filter(s => s !== VLADIMIR)
 
 // ===================== Apurit =====================
 
@@ -327,10 +387,10 @@ class WeekPlan {
     //
     // Viikkoankkuri itsessään säilyy: sama henkilö pysyy samassa myymälässä ja
     // vuorossa koko viikon, eikä pompi paikasta toiseen päivittäin.
-    const jarjestys = [...FULL_TIME_SELLERS].sort((a, b) =>
+    const jarjestys = [...ANCHORABLE].sort((a, b) =>
       (this.malmi[a] ?? 0) - (this.malmi[b] ?? 0)
       || (this.ledger[a] ?? 0) - (this.ledger[b] ?? 0)
-      || FULL_TIME_SELLERS.indexOf(a) - FULL_TIME_SELLERS.indexOf(b))
+      || ANCHORABLE.indexOf(a) - ANCHORABLE.indexOf(b))
 
     jarjestys.forEach((seller, i) => {
       if (i < ANCHOR_SLOTS.length) this.anchors[seller] = ANCHOR_SLOTS[i]
@@ -345,6 +405,7 @@ class WeekPlan {
   private capFor(seller: string): number {
     if (seller === ANTTI) return ANTTI_MAX_SHIFTS_PER_WEEK
     if (seller === RAMIN) return RAMIN_MAX_SHIFTS_PER_WEEK
+    if (seller === VLADIMIR) return VLADIMIR_MAX_SHIFTS_PER_WEEK
     return MAX_SHIFTS_PER_WEEK
   }
 
@@ -384,6 +445,20 @@ class WeekPlan {
    * kuukaudeksi Kivistöön. Tunnit ovat tässä toissijainen peruste, jotta
    * kahden yhtä monta Malmia tehneen välillä valinta ei ole mielivaltainen.
    */
+  /**
+   * Onko tällä myyjällä vähiten Malmi-vuoroja kaikista kokoaikaisista.
+   *
+   * Käytetään Vladimirin etuoikeuden rajaamiseen: kerroksittainen täyttö käy
+   * myymälät indeksijärjestyksessä, jolloin Eastonin ilta (idx 1) tarjotaan
+   * aina ennen Malmin iltaa (idx 2). Ilman tätä Vladimir tarttuu joka päivä
+   * Eastoniin eikä koskaan ehdi Malmille — mitattu: 3 Malmi-vuoroa muiden
+   * yhdentoista rinnalla, eli Malmin tasajako hajoaa.
+   */
+  malmiVahiten(seller: string): boolean {
+    const oma = this.malmi[seller] ?? 0
+    return FULL_TIME_SELLERS.every(s => s === seller || (this.malmi[s] ?? 0) > oma)
+  }
+
   byMalmi(sellers: string[]): string[] {
     return [...sellers].sort((a, b) =>
       (this.malmi[a] ?? 0) - (this.malmi[b] ?? 0)
@@ -513,13 +588,26 @@ function buildDay(
       for (const store of openStores) {
         const templates = SATURDAY_SHIFTS[store]
         if (idx >= templates.length) continue
+        const tmpl = templates[idx]
         const pool = store === 'Malmi'
           ? plan.byMalmi(FULL_TIME_SELLERS)
           : plan.byHours(FULL_TIME_SELLERS)
-        const direct = pool.find(s => !today.has(s) && plan.canWork(s, date))
-        const pick = direct ?? fallbackFor(date, today, plan, store)?.seller
+        // Vladimir on töissä JOKAISENA lauantaina — se on sääntö, ei
+        // tuntitasauksen sivutuote, joten etuoikeus kirjoitetaan auki.
+        // Lauantai käsitellään viikon sisällä ensin (WEEK_ORDER), joten hänen
+        // viikkokiintiönsä on tässä aina vapaa ja ainoa este on poissaolo.
+        //
+        // Etuoikeus annetaan muualla kuin Malmilla: Malmin lauantaipaikat
+        // jaetaan `byMalmi`lla omana tavoitteenaan, ja Easton/Kivistö 10–16 on
+        // 6 h siinä missä Malmin lauantaivuorot ovat 4 h.
+        const jono = store !== 'Malmi' && !today.has(VLADIMIR)
+          ? [VLADIMIR, ...pool.filter(s => s !== VLADIMIR)]
+          : pool
+        const direct = jono.find(s =>
+          !today.has(s) && plan.canWork(s, date) && sopiiVuoro(s, weekday, tmpl.start))
+        const pick = direct ?? fallbackFor(date, weekday, today, plan, store, tmpl)?.seller
         if (!pick) continue
-        assign(store, pick, templates[idx])
+        assign(store, pick, tmpl)
       }
     }
     return { date, weekday, closed: false, note, soloStores, absences, shifts }
@@ -567,12 +655,16 @@ function buildDay(
       }
 
       const anchor = plan.anchorFor(store, idx)
-      if (anchor && !today.has(anchor) && plan.canWork(anchor, date)) {
+      // Kelpoisuus tarkistetaan myös ankkurilta. Vladimir ei voi olla ankkuri
+      // (ks. ANCHORABLE), joten ehto ei nykyisellään koskaan hylkää mitään —
+      // se on tässä siltä varalta että ankkuripaikkoja joskus muutetaan.
+      if (anchor && !today.has(anchor) && plan.canWork(anchor, date)
+          && sopiiVuoro(anchor, weekday, tmpl.start)) {
         assign(store, anchor, tmpl)
         continue
       }
 
-      const fb = fallbackFor(date, today, plan, store)
+      const fb = fallbackFor(date, weekday, today, plan, store, tmpl)
       if (fb) assign(store, fb.seller, tmpl, false, fb.cross)
     }
   }
@@ -623,7 +715,12 @@ function managerPlacements(
  * Varajärjestys tyhjälle paikalle. Vajeen paikkausjärjestys on
  * **Ramin → Antti → Albin**, ja kokoaikaiset ennen niitä:
  *
- *  1. Viikon swing — hän on jo se joustava rooli.
+ *  1. Viikon swing — hän on jo se joustava rooli. Nykyisellä myyjälistalla
+ *     tätä ei synny: ankkuroitavia on neljä ja ankkuripaikkoja neljä.
+ *
+ * Jokainen haara suodatetaan `sopiiVuoro`lla, joten Vladimir tulee valituksi
+ * vain vuoroihin jotka kelpaavat hänelle — hän kulkee kohdan 3 kautta, jossa
+ * matalat tunnit nostavat hänet luonnostaan kärkeen.
  *  2. Ramin, jos hänellä on alle kaksi vuoroa viikossa. Hän on osa-aikainen
  *     eikä hätävara: ilman tätä hän jää 60–80 h tavoitteen alle.
  *  3. Muu kokoaikainen, vähiten tunteja tehnyt ensin.
@@ -633,13 +730,39 @@ function managerPlacements(
  *  7. Albin viimeisenä keinona — häntä ei rajoita viikkokiintiö, vain poissaolo.
  */
 function fallbackFor(
-  date: string, today: Set<string>, plan: WeekPlan, store: StoreName,
+  date: string, weekday: number, today: Set<string>, plan: WeekPlan,
+  store: StoreName, tmpl: ShiftTemplate,
 ): { seller: string; cross: boolean } | null {
-  if (plan.swing && !today.has(plan.swing) && plan.canWork(plan.swing, date)) {
+  // Kelpaako ehdokas tähän nimenomaiseen vuoroon. Vuoropohja on parametrina
+  // juuri tämän takia: myyjää ei voi valita ennen kuin alkuaika on tiedossa.
+  const kelpaa = (seller: string) => sopiiVuoro(seller, weekday, tmpl.start)
+
+  if (plan.swing && !today.has(plan.swing) && plan.canWork(plan.swing, date)
+      && kelpaa(plan.swing)) {
     return { seller: plan.swing, cross: false }
   }
 
-  if (!today.has(RAMIN) && plan.used(RAMIN) < 2 && plan.canWork(RAMIN, date)) {
+  // Rajoitetuin ensin: Vladimir kelpaa vain neljänä päivänä ja vain klo 12
+  // jälkeen alkaviin vuoroihin, kun taas Ramin ja Antti käyvät mihin tahansa
+  // aikaan. Jos joustavat ehtivät ensin, Vladimirin kelvolliset vuorot on jo
+  // jaettu eikä hänelle jää mitään — mitattu: ilman tätä hän jää 86 tuntiin ja
+  // Antti nousee 105:een, eli osa-aikainen tekee enemmän kuin kokoaikainen.
+  //
+  // Hän myös peri viikon swing-roolin: ankkurit menevät neljälle muulle, joten
+  // hän ON se joustava paikkaaja — omalla aikaikkunallaan.
+  //
+  // Etuoikeutta ei kuitenkaan käytetä muualla kuin Malmilla silloin kun hän on
+  // Malmi-kertymässä viimeisenä: Malmin tasajako on oma tavoitteensa, ja
+  // ilman tätä rajausta hän jää Eastonin illaksi koko kuukaudeksi. Väistäessään
+  // hän ei jää tyhjäksi vaan tulee valituksi alempaa kokoaikaisten joukosta —
+  // tyypillisesti juuri saman päivän Malmin iltavuoroon.
+  if (!today.has(VLADIMIR) && plan.canWork(VLADIMIR, date) && kelpaa(VLADIMIR)
+      && (store === 'Malmi' || !plan.malmiVahiten(VLADIMIR))) {
+    return { seller: VLADIMIR, cross: false }
+  }
+
+  if (!today.has(RAMIN) && plan.used(RAMIN) < 2 && plan.canWork(RAMIN, date)
+      && kelpaa(RAMIN)) {
     return { seller: RAMIN, cross: false }
   }
 
@@ -649,7 +772,7 @@ function fallbackFor(
   // hänen kohdalleen — varsinkin sen jälkeen kun lauantai kevennettiin
   // neljään vuoroon eikä kapasiteetti enää lopu kesken.
   if (store === ANTTI_STORE && !today.has(ANTTI)
-      && plan.canWork(ANTTI, date)) {
+      && plan.canWork(ANTTI, date) && kelpaa(ANTTI)) {
     return { seller: ANTTI, cross: false }
   }
 
@@ -659,21 +782,25 @@ function fallbackFor(
   const jarjestys = store === 'Malmi'
     ? plan.byMalmi(FULL_TIME_SELLERS)
     : plan.byHours(FULL_TIME_SELLERS)
-  const fullTimer = jarjestys.find(s => !today.has(s) && plan.canWork(s, date))
+  const fullTimer = jarjestys.find(s =>
+    !today.has(s) && plan.canWork(s, date) && kelpaa(s))
   if (fullTimer) return { seller: fullTimer, cross: false }
 
-  if (!today.has(RAMIN) && plan.canWork(RAMIN, date)) return { seller: RAMIN, cross: false }
+  if (!today.has(RAMIN) && plan.canWork(RAMIN, date) && kelpaa(RAMIN)) {
+    return { seller: RAMIN, cross: false }
+  }
 
   for (const home of STORES) {
     const mgr = STORE_MANAGERS[home]
     if (home === store || today.has(mgr)) continue
-    if (!plan.canWork(mgr, date)) continue
+    if (!plan.canWork(mgr, date) || !kelpaa(mgr)) continue
     if (plan.crossUsed(mgr) >= MANAGER_CROSS_CAP) continue
     return { seller: mgr, cross: true }
   }
 
   for (const cand of [ANTTI, ALBIN]) {
     if (today.has(cand) || plan.isAbsent(cand, date)) continue
+    if (!kelpaa(cand)) continue
     // Antti tekee vain Kivistöä — Malmin tai Eastonin vaje ei ole hänen
     // paikattavissaan, vaikka hänellä olisi viikkokiintiötä jäljellä.
     if (cand === ANTTI && store !== ANTTI_STORE) continue

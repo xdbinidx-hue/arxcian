@@ -886,6 +886,82 @@ syyskuun tiedostosta, jossa on 30 päivää. Päivärivit johdetaan kuukauden
 pituudesta. Ennen ensimmäistä 31 päivän kuukautta on tarkistettava ulottuuko
 `SUM(C4:C33)` riville 34 — se korjataan taulukossa, ei koodissa.
 
+### Myyjäkohtaiset aikarajoitteet — ja miksi Vladimir ei voi olla ankkuri
+
+Vahvistettu Albinilta 26.8.2026. Nämä ovat **sääntöjä, eivät toiveita**, ja ne
+elävät koodissa ([shiftSchedule.ts](src/lib/shiftSchedule.ts):n `sopiiVuoro`)
+eivät Drive-taulukossa — Excel-lukija tuo tapahtumat, onnenpäivät ja
+poissaolot, ei rajoitteita.
+
+| Myyjä | Rajoite |
+|---|---|
+| **Vladimir** | vain ti, to, pe ja **jokainen** lauantai · arkena vain klo 12 tai myöhemmin alkavat vuorot · lauantaina 10–16 käy · enintään 4 vuoroa/vko |
+| **Antti** | vain Kivistö · 2–3 vuoroa/vko |
+| **Ramin** | enintään 4 vuoroa/vko, kaksi ensimmäistä ennen kokoaikaisia |
+| **Albin** | vasta viimeisenä keinona, paikkausjärjestys Ramin → Antti → Albin |
+
+**Rajoite voittaa miehityksen.** Generaattori ei sijoita Vladimiria
+aamuvuoroon edes silloin kun päivä jäisi muuten vajaaksi. Vaje näkyy
+käyttöliittymässä varoituksena, sääntörikko ei näy kenellekään ennen kuin
+Vladimir soittaa.
+
+**Vladimir ei voi olla viikkoankkuri.** Tämä ei ole ilmeinen koodia lukemalla
+ja rikkoutuu ensimmäisenä kun ankkurilogiikkaa "yksinkertaistetaan":
+`ANCHOR_SLOTS`in neljä paikkaa ovat **kaikki aamuvuoroja** (Malmi 10–16,
+Malmi 11–18 / ma-pe 12–18, Easton 10–17, Kivistö 10–17). Jos hän jää
+ankkurikiertoon, hänen ankkuripaikkansa jää tyhjäksi joka viikko ja hän itse
+jää melkein kokonaan listalta. Siksi ankkurit jaetaan `ANCHORABLE`-listalle
+(kokoaikaiset ilman Vladimiria) ja hän toimii vapaana täydentäjänä.
+Ankkuroitavia on nyt neljä ja ankkuripaikkoja neljä, joten **swing-myyjää ei
+synny** — mekanismia ei silti poisteta, se herää itsestään jos kokoaikaisia
+joskus on kuusi.
+
+**Kelpoisuus tarvitsee vuoron alkuajan, ei vain päivää ja myyjää.** Siksi
+`fallbackFor` saa vuoropohjan parametrina eikä valitse myyjää ennen kuin
+kellonaika on tiedossa. Jos tuo parametri joskus "siivotaan" pois, rajoite
+lakkaa toimimasta hiljaa.
+
+**Rajoitetuin valitaan ensin.** Vladimirilla on etusija varajärjestyksessä
+ennen Raminia ja Anttia, koska he kelpaavat mihin tahansa aikaan ja hän ei:
+jos joustavat ehtivät ensin, hänen kelvolliset vuoronsa on jo jaettu. Mitattu
+27.8.2026 — ilman etusijaa hän jää 86 tuntiin ja Antti nousee 105:een, eli
+osa-aikainen tekee enemmän kuin kokoaikainen.
+
+**Etusijaa ei kuitenkaan käytetä muualla kuin Malmilla silloin kun hän on
+Malmi-kertymässä viimeisenä** (`WeekPlan.malmiVahiten`). Kerroksittainen
+täyttö käy myymälät indeksijärjestyksessä, jolloin Eastonin ilta (idx 1)
+tarjotaan aina ennen Malmin iltaa (idx 2) — ilman rajausta Vladimir tarttuu
+joka päivä Eastoniin ja Malmin tasajako hajoaa (mitattu: 3 Malmi-vuoroa
+muiden yhdentoista rinnalla). Väistäessään hän ei jää tyhjäksi vaan tulee
+valituksi alempaa kokoaikaisten joukosta.
+
+Malmin sallittu hajonta nousi samalla kahdesta kolmeen. **Se ei ole
+löysennys vaan rajoitteen rakenteellinen seuraus**: Malmin aamu ja ti/to-väli
+eivät kelpaa hänelle lainkaan ja perjantain 12–18 on ankkuripaikka, joten
+hänen Malmi-mahdollisuutensa ovat kapeammat kuin muiden. Kiristäminen
+takaisin kahteen onnistuu vain sijoittamalla hänet aamuvuoroon.
+
+**Antti ja Vladimir ajetaan kumpikin viikkokattoonsa** (Albinin linjaus
+27.8.2026): syyskuussa Vladimir 17 vuoroa eli teoreettinen maksimi, Antti 14.
+`shiftSchedule.test.mts` vartioi molempia — lasku alaspäin on oire siitä että
+joku muu on ottanut heidän vuoronsa.
+
+**Coworkin Python-referenssiä ei voi verrata riviltä riville.** Se päätyi
+26.8.2026 lukuun 1 189 h, tämä generaattori 1 115 h. Ero ei ole
+valintajärjestyksessä vaan **vuoropohjissa**: referenssi miehittää enemmän
+paikkoja kuin nykyiset `SATURDAY_SHIFTS` ym. tuottavat (lauantain keventäminen
+7 → 4 vuoroa on suurin yksittäinen erä). Päälliköiden luvut täsmäävät tasan,
+koska heidän sijoittelunsa on sääntöohjattua. Vertailukelpoinen on sama päivä:
+**pe 18.9. on ainoa vajepäivä molemmissa.**
+
+**Miehitys ei enää riitä Nizza-viikolla.** Viikko 14.–20.9. on tarpeeltaan 43
+vuoroa ja nimellliseltä kapasiteetiltaan 43 — nollaslack, ja Arbnor on poissa.
+Koska Vladimirin neljä vuoroa kelpaavat vain iltoihin, aamujen tosiasiallinen
+kapasiteetti on nimellistä pienempi. Seuraus: pe 18.9. Malmi jää 3/4 ja Albin
+joutuu tekemään kaksi vuoroa tuolla viikolla. **Yksi arkiaamuihin kykenevä
+myyjä lisää poistaisi sekä vajeen että Albinin vuorot.** Muina viikkoina
+slackia on 5–12 vuoroa, joten kyse on nimenomaan poissaoloviikosta.
+
 ### Säännöt tulevat referenssilistasta, eivät koodista taaksepäin
 
 Syyskuun 2026 lista tehtiin Coworkissa käsin, ja generaattori portattiin
