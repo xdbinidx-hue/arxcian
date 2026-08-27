@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import ExcelJS from 'exceljs'
 import { RJ_MOB_SELLERS, getTuntipalkka } from '@/lib/rjmob'
+import { monthOrder } from '@/lib/rjmobDrive'
 import { cachedJson } from '@/lib/apiCache'
 
 // Maksukuitin tiedostonimi kertoo MAKSUKUUKAUDEN, ei myyntikuukauden — esim. "Maksukuitti
@@ -429,7 +430,8 @@ function parseReceiptRows(rows: string[][], fileName: string): ReceiptsResult {
 
     return {
       nimi,
-      tuntipalkka: emp ? getTuntipalkka(nimi) : 0,
+      // Kuukausi mukaan, jottei palkankorotus vuoda taaksepäin vanhoihin kuitteihin.
+      tuntipalkka: emp ? getTuntipalkka(nimi, monthOrder(fileName)) : 0,
       provisio,
       liittymat: liittymatBySeller[nimi] ?? 0,
       fsecEur: fsecureBySeller[nimi] ?? 0,

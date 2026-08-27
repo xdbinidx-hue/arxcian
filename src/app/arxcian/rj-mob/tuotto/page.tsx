@@ -151,6 +151,7 @@ export default function TuottoPage() {
   const [filesLoading, setFilesLoading] = useState(true)
   const [error, setError] = useState('')
   const [bonusKulu, setBonusKulu] = useState<BonusKulu | null>(null)
+  const [palkkaVaroitukset, setPalkkaVaroitukset] = useState<string[]>([])
 
   const [mode, setMode] = useState<'arvio'|'todellinen'>('arvio')
   const [receiptFiles, setReceiptFiles] = useState<DriveFile[]>([])
@@ -183,6 +184,24 @@ export default function TuottoPage() {
   }, [selectedFile])
 
   useEffect(() => { if (selectedFile) loadData() }, [selectedFile, loadData])
+
+  /**
+   * Tuntipalkat tarkistetaan Driven `myyjat.md`:tä vasten samalle
+   * kuukaudelle. Laskenta käyttää yhä koodin taulukkoa — tämä vain kertoo jos
+   * ne ovat erkaantuneet, koska kumpikaan pää ei kerro siitä itse ja väärä
+   * palkka menee suoraan työkuluun.
+   */
+  useEffect(() => {
+    setPalkkaVaroitukset([])
+    const valittu = files.find(f => f.id === selectedFile)
+    if (!valittu) return
+    let peruttu = false
+    fetch(`/api/myyjat?kuukausi=${parsePrefix(valittu.name)}`)
+      .then(r => r.json())
+      .then(d => { if (!peruttu && Array.isArray(d.varoitukset)) setPalkkaVaroitukset(d.varoitukset) })
+      .catch(() => {})
+    return () => { peruttu = true }
+  }, [selectedFile, files])
 
   /**
    * Päällikköbonus kirjataan **maksukuukaudelle, ei ansaintakuukaudelle**:
@@ -395,6 +414,7 @@ export default function TuottoPage() {
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:500,color:'#888',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:8}}>Huomioita</div>
             {alerts.map((a,i)=><Alert key={i} type={a.type}>{a.text}</Alert>)}
+            {palkkaVaroitukset.map((v,i)=><Alert key={`palkka-${i}`} type="amber">{v}</Alert>)}
           </div>
 
           <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
@@ -424,7 +444,9 @@ export default function TuottoPage() {
                 <tbody>
                   {activeRanked.map((r,i)=>{
                     const isOwner = r.tyyppi === 'owner'
-                    const tuntipalkka = getTuntipalkka(r.nimi)
+                    // Kuukausi tiedostonimestä: päälliköiden palkka nousi 9/2026,
+                    // eikä korotus saa näkyä elokuun rivillä.
+                    const tuntipalkka = getTuntipalkka(r.nimi, parsePrefix(data.kuukausi))
                     const pohjapalkka = r.palkkaTunnit * tuntipalkka
                     const provisioMyyja = r.provisioYhteensa
                     const rjmobProvisio = r.rjmobTulo

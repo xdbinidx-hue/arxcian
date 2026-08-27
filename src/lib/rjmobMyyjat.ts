@@ -1,160 +1,234 @@
 /**
- * `myyjat.md` — myyjät, nimikorjausaliakset ja tuntipalkat yhtenä listana.
+ * `myyjat.md` — myyjät, nimikorjaukset ja tuntipalkat yhtenä listana.
  *
  * Tiedosto on Drivessä (`Arxcian / Infopaketti / myyjat.md`) ja se on
  * **Google Docs -dokumentti**, ei oikea tiedosto: sisältö luetaan
  * `drive.files.export`illa tekstiksi ja jäsennetään täällä. Jäsennys on
- * tarkoituksella erotettu Drive-yhteydestä, jotta se on testattavissa ilman
- * verkkoa — sama jako kuin työvuorojen `tyovuoroExcel`/`tyovuoroDrive`.
+ * erotettu Drive-yhteydestä, jotta se on testattavissa ilman verkkoa — sama
+ * jako kuin työvuorojen `tyovuoroExcel`/`tyovuoroDrive`.
  *
- * Muoto on putkierotettu eikä sarkainsisennetty juuri siksi, että
- * `rj-mob_myyjät` opetti mitä käsin muotoillusta sisennyksestä seuraa: parien
- * tunnistus rivijärjestyksen varassa ei kestä ihmisen tekemää muotoilua.
+ * Rivimuoto (26.8.2026 alkaen):
  *
- * **Tämä ei ole vielä koodin lukema palkkalähde.** `TUNTIPALKAT`
- * ([rjmob.ts](src/lib/rjmob.ts)) on yhä se jota laskenta käyttää, koska
- * tiedoston myyjäriveiltä puuttuvat tuntipalkat (todettu 26.8.2026 — vain
- * päälliköiden 14 €/h on täytetty). Kun ne on täytetty, tämä moduuli on se
- * josta lähde vaihdetaan; siihen asti puuttuva palkka on varoitus eikä nolla.
+ *     Tunnus | Koko nimi | alue | tuntipalkka €/h | tila
+ *     Tunnus | vanha → uusi | voimaan KK/VV        (Palkkamuutokset-osio)
+ *
+ * **Osioiden otsikoihin ei luoteta.** Docsin tekstivienti pudottaa
+ * otsikkotason pois, jolloin "Lahti" ja "PK-seutu" ovat paljaita rivejä eikä
+ * niitä voi erottaa tavallisesta tekstistä ilman arvailua. Rivit tunnistetaan
+ * siksi muodostaan: myyjärivillä on viisi kenttää ja palkkamuutosrivin
+ * keskikentässä on nuoli. Muotokuvauksen mallirivit rajataan pois nimeltä.
  */
 
-export type Rooli = 'päällikkö' | 'myyjä' | 'muu'
+/** Kuukausi `vuosi × 100 + kuukausi`, sama sääntö kuin muualla. */
+function kkOrder(kk: string, vv: string): number {
+  const vuosi = Number(vv) + 2000
+  return vuosi * 100 + Number(kk)
+}
 
 export type MyyjaRivi = {
+  /** Miten nimi kirjoitetaan Winposissa tai kassalla — tämä korjataan. */
+  tunnus: string
+  /** Se muoto jota käytetään raporteissa. */
   nimi: string
-  /** Miten Winpos tai kassa kirjoittaa nimen. Tyhjä = nimi tulee aina oikein. */
-  aliakset: string[]
-  rooli: Rooli
-  myymala: string | null
-  /** `null` = ei täytetty. **Ei sama kuin 0**, joka tarkoittaa "ei tuntipalkkaa". */
+  /** Lahti | PK-seutu | molemmat. **Ei myymälä** — myyjät kiertävät. */
+  alue: string | null
+  /**
+   * `null` = ei täytetty, `0` = ei tuntipalkkaa (omistajat, Krenar).
+   * Näiden sekoittaminen laskisi täyttämättömän myyjän palkaksi nollan.
+   */
   tuntipalkka: number | null
-  /** Sulkeissa annettu syy, esim. "omistaja, ei tuntipalkkaa eikä bonusta". */
-  palkkaHuomio: string | null
+  eiTuntipalkkaa: boolean
+  paallikko: boolean
+  /** Vain päälliköillä — tavallisen myyjän myymälä tulee työvuoroista. */
+  myymala: string | null
   poistunut: boolean
-  paattyi: string | null
+  /** Lopettamiskuukausi järjestyslukuna, esim. "08/26" -> 202608. */
+  paattyiOrder: number | null
+  /** Tila-kentän sulkeissa oleva teksti sellaisenaan (esim. avoin kysymys). */
+  huomio: string | null
+}
+
+export type MyyjatPalkkamuutos = {
+  tunnus: string
+  vanha: number
+  uusi: number
+  voimaanOrder: number
 }
 
 export type MyyjatTiedosto = {
   rivit: MyyjaRivi[]
-  /** Puuttuvat palkat ja muut korjattavat kohdat. Tyhjä lista = tiedosto on täytetty. */
+  palkkamuutokset: MyyjatPalkkamuutos[]
   varoitukset: string[]
 }
 
-/**
- * Mallirivit joita ei lueta dataksi. `## Muoto`-osion ja `## Poistuneet`
- * -osion otsikkorivit näyttävät oikeilta riveiltä mutta kuvaavat muotoa —
- * ilman tätä listaa "Koko nimi" päätyisi myyjäksi jolla ei ole palkkaa, eli
- * varoitukseksi jota kukaan ei voi korjata.
- */
-const MALLIRIVIT = ['koko nimi']
+/** Muotokuvauksen mallirivit — näyttävät dataa mutta kuvaavat muotoa. */
+const MALLIRIVIT = ['tunnus', 'koko nimi']
 
-const OSIOT: Record<string, { rooli: Rooli | null; poistunut: boolean } | undefined> = {
-  päälliköt: { rooli: 'päällikkö', poistunut: false },
-  paallikot: { rooli: 'päällikkö', poistunut: false },
-  myyjät: { rooli: 'myyjä', poistunut: false },
-  myyjat: { rooli: 'myyjä', poistunut: false },
-  poistuneet: { rooli: null, poistunut: true },
-}
-
-function roolista(raw: string): Rooli {
-  const r = raw.toLowerCase()
-  if (r.includes('päällik') || r.includes('paallik')) return 'päällikkö'
-  if (r.includes('myyjä') || r.includes('myyja')) return 'myyjä'
-  return 'muu'
-}
-
-/**
- * Tuntipalkka ja sen mahdollinen sulkeissa oleva syy.
- *
- * Tyhjä kenttä on `null` eikä 0: "ei täytetty" ja "ei tuntipalkkaa" ovat eri
- * asioita, ja niiden sekoittaminen laskisi täyttämättömän myyjän palkaksi
- * nollan sen sijaan että kertoisi tiedon puuttuvan.
- */
-function palkasta(raw: string): { tuntipalkka: number | null; palkkaHuomio: string | null } {
-  const huomioM = raw.match(/\(([^)]*)\)/)
-  const palkkaHuomio = huomioM ? huomioM[1].trim() : null
-  const luku = raw.replace(/\([^)]*\)/g, '').replace(',', '.').replace(/[^0-9.]/g, '').trim()
-  if (luku === '') return { tuntipalkka: null, palkkaHuomio }
-  const n = Number(luku)
-  return { tuntipalkka: Number.isFinite(n) ? n : null, palkkaHuomio }
-}
-
-/** Rivi on luettelokohta jos se alkaa viivalla, mahdollisen sisennyksen ja `\`-escapen jälkeen. */
-function luettelorivi(rivi: string): string | null {
+function kohta(rivi: string): string | null {
   const m = rivi.match(/^\s*\\?[-•*]\s+(.*)$/)
   return m ? m[1].trim() : null
 }
 
-function osionNimi(rivi: string): string | null {
-  const m = rivi.match(/^\s*#{1,6}\s+(.*)$/)
-  return m ? m[1].trim().toLowerCase() : null
+function palkasta(raw: string): { tuntipalkka: number | null; eiTuntipalkkaa: boolean } {
+  if (/ei\s+tuntipalkkaa/i.test(raw)) return { tuntipalkka: 0, eiTuntipalkkaa: true }
+  const puhdas = raw.replace(/\s| /g, '').replace(',', '.').replace(/[^0-9.]/g, '')
+  if (puhdas === '') return { tuntipalkka: null, eiTuntipalkkaa: false }
+  const n = Number(puhdas)
+  return { tuntipalkka: Number.isFinite(n) ? n : null, eiTuntipalkkaa: false }
 }
 
 export function parseMyyjat(teksti: string): MyyjatTiedosto {
   const rivit: MyyjaRivi[] = []
+  const palkkamuutokset: MyyjatPalkkamuutos[] = []
   const varoitukset: string[] = []
-  let osio: { rooli: Rooli | null; poistunut: boolean } | null = null
 
-  for (const raakarivi of teksti.split(/\r?\n/)) {
-    const otsikko = osionNimi(raakarivi)
-    if (otsikko !== null) {
-      osio = OSIOT[otsikko.replace(/[^a-zäöå]/gi, '')] ?? null
+  for (const raaka of teksti.replace(/^﻿/, '').split(/\r?\n/)) {
+    const k = kohta(raaka)
+    if (k === null || !k.includes('|')) continue
+
+    const kentat = k.split('|').map(x => x.trim())
+    if (MALLIRIVIT.includes((kentat[0] ?? '').toLowerCase())) continue
+
+    // Palkkamuutosrivi: keskikentässä nuoli. Tunnistetaan muodosta eikä
+    // osiosta, koska osion otsikko katoaa Docsin tekstiviennissä.
+    if (/[→]|->/.test(kentat[1] ?? '')) {
+      const luvut = (kentat[1] ?? '').split(/→|->/).map(x => palkasta(x).tuntipalkka)
+      const aika = (kentat[2] ?? '').match(/(\d{1,2})\s*\/\s*(\d{2})/)
+      if (luvut[0] === null || luvut[1] === null || !aika) {
+        varoitukset.push(`Palkkamuutosriviä ei ymmärretty: ${k}`)
+        continue
+      }
+      palkkamuutokset.push({
+        tunnus: kentat[0],
+        vanha: luvut[0],
+        uusi: luvut[1],
+        voimaanOrder: kkOrder(aika[1], aika[2]),
+      })
       continue
     }
-    if (!osio) continue
 
-    const kohta = luettelorivi(raakarivi)
-    if (kohta === null || !kohta.includes('|')) continue
+    if (kentat.length < 4 || !kentat[0] || !kentat[1]) continue
 
-    const kentat = kohta.split('|').map(k => k.trim())
-    const nimi = kentat[0] ?? ''
-    if (!nimi || MALLIRIVIT.includes(nimi.toLowerCase())) continue
+    const tila = kentat[4] ?? ''
+    const lopetus = tila.match(/lopettanut\s*(\d{1,2})\s*\/\s*(\d{2})/i)
+    const sulut = tila.match(/\(([^)]*)\)/)
+    const sisus = sulut ? sulut[1] : ''
+    const paallikko = /päällik|paallik/i.test(sisus)
+    const myymalaM = paallikko ? sisus.split(',')[1] : undefined
 
-    const { tuntipalkka, palkkaHuomio } = palkasta(kentat[4] ?? '')
-    const paattyiRaw = kentat[5] ?? ''
-    const paattyi = paattyiRaw.replace(/^päättyi\s*/i, '').trim() || null
+    const { tuntipalkka, eiTuntipalkkaa } = palkasta(kentat[3] ?? '')
 
     rivit.push({
-      nimi,
-      aliakset: (kentat[1] ?? '').split(',').map(a => a.trim()).filter(Boolean),
-      rooli: osio.rooli ?? roolista(kentat[2] ?? ''),
-      myymala: (kentat[3] ?? '').trim() || null,
+      tunnus: kentat[0],
+      nimi: kentat[1],
+      alue: kentat[2] || null,
       tuntipalkka,
-      palkkaHuomio,
-      poistunut: osio.poistunut,
-      paattyi,
+      eiTuntipalkkaa,
+      paallikko,
+      myymala: myymalaM ? myymalaM.trim() : null,
+      poistunut: lopetus !== null,
+      paattyiOrder: lopetus ? kkOrder(lopetus[1], lopetus[2]) : null,
+      huomio: sisus || null,
     })
   }
 
   if (rivit.length === 0) {
-    // Tyhjä lista on virhe eikä tulos — sama päättely kuin watchin lähdelistalla.
-    // Muuten väärin nimetty osio näyttäisi siltä ettei myyjiä ole.
-    varoitukset.push('myyjat.md: yhtään myyjäriviä ei löytynyt — onko osioiden otsikot ennallaan?')
+    // Tyhjä lista on virhe eikä tulos — muuten muuttunut tiedostomuoto
+    // näyttäisi siltä ettei myyjiä ole, ja palkat putoaisivat oletukseen
+    // ilman että kukaan huomaa.
+    varoitukset.push('myyjat.md: yhtään myyjäriviä ei tunnistettu — onko rivimuoto muuttunut?')
   }
   for (const r of rivit) {
-    if (r.poistunut) continue
+    if (r.poistunut || r.eiTuntipalkkaa) continue
     if (r.tuntipalkka === null) varoitukset.push(`${r.nimi}: tuntipalkka puuttuu myyjat.md:stä`)
-    if (!r.myymala) varoitukset.push(`${r.nimi}: myymälä puuttuu myyjat.md:stä`)
   }
 
-  return { rivit, varoitukset }
+  return { rivit, palkkamuutokset, varoitukset }
 }
 
+/**
+ * Voimassa olevat tuntipalkat sekä tunnuksella että koko nimellä.
+ *
+ * Täyttämätöntä palkkaa ei kirjata lainkaan, jottei se peitä koodin
+ * oletuspalkkaa nollalla. `ei tuntipalkkaa` sen sijaan kirjataan nollana:
+ * se on päätös, ei puute.
+ */
 export function tuntipalkatTiedostosta(t: MyyjatTiedosto): Record<string, number> {
   const out: Record<string, number> = {}
   for (const r of t.rivit) {
     if (r.tuntipalkka === null) continue
     out[r.nimi] = r.tuntipalkka
-    for (const a of r.aliakset) out[a] = r.tuntipalkka
+    if (r.tunnus) out[r.tunnus] = r.tuntipalkka
   }
   return out
+}
+
+/**
+ * Tuntipalkka kuukaudelle tiedoston omien palkkamuutosten mukaan.
+ *
+ * Listattu palkka on **nykyinen**; ennen voimaantulokuukautta palautetaan
+ * muutoksen vanha luku. Vanha kuukausi ei siis muutu takautuvasti kun palkka
+ * nousee.
+ */
+export function tuntipalkkaKuukaudelle(
+  t: MyyjatTiedosto,
+  nimiTaiTunnus: string,
+  kuukausiOrder: number | null,
+): number | null {
+  const norm = (s: string) => s.trim().toLowerCase()
+  const rivi = t.rivit.find(r => norm(r.nimi) === norm(nimiTaiTunnus) || norm(r.tunnus) === norm(nimiTaiTunnus))
+  if (!rivi || rivi.tuntipalkka === null) return null
+  if (kuukausiOrder === null) return rivi.tuntipalkka
+
+  for (const m of t.palkkamuutokset) {
+    if (norm(m.tunnus) !== norm(rivi.tunnus)) continue
+    if (kuukausiOrder < m.voimaanOrder) return m.vanha
+  }
+  return rivi.tuntipalkka
+}
+
+/**
+ * Vertaa tiedoston palkkoja koodin taulukkoon.
+ *
+ * **Ei korjaa kumpaakaan** vaan kertoo mikä eroaa. Koodi on laskennan lähde ja
+ * Drive-tiedosto se jota Albin ylläpitää; jos ne erkanevat, palkkakulu on
+ * väärin jossain päin eikä kumpikaan pää kerro siitä itse.
+ */
+export function vertaaTuntipalkkoihin(
+  t: MyyjatTiedosto,
+  /**
+   * Koodin oma palkka samalle kuukaudelle — käytännössä `getTuntipalkka`.
+   * Funktio eikä taulukko, jotta vertailu tehdään **samalla kuukaudella
+   * molemmilla puolilla**: pelkkä nykyarvojen taulukko väittäisi elokuun
+   * eroavan aina kun palkka on sittemmin noussut.
+   */
+  koodiPalkka: (nimi: string, kuukausiOrder: number | null) => number,
+  kuukausiOrder: number | null = null,
+): string[] {
+  const varoitukset: string[] = []
+
+  for (const r of t.rivit) {
+    // Omistajat ja Krenar eivät kulje tuntipalkan läpi lainkaan
+    // (`laskeMyyja`n owner-/krenar-haarat), joten nollarivistä ei valiteta.
+    if (r.eiTuntipalkkaa) continue
+
+    const driveArvo = tuntipalkkaKuukaudelle(t, r.nimi, kuukausiOrder)
+    if (driveArvo === null) continue
+
+    const koodiArvo = koodiPalkka(r.nimi, kuukausiOrder)
+    if (koodiArvo !== driveArvo) {
+      varoitukset.push(`${r.nimi}: myyjat.md ${driveArvo} €/h, koodissa ${koodiArvo} €/h`)
+    }
+  }
+
+  return varoitukset
 }
 
 /** Yksi rivi myyntiseurannan Kassamyynti-välilehden nimikorjaustaulusta (J → K). */
 export type NimikorjausPari = { alias: string; nimi: string }
 
 /**
- * Vertaa `myyjat.md`:n aliaksia Excelin nimikorjaustauluun.
+ * Vertaa `myyjat.md`:n tunnuksia Excelin nimikorjaustauluun.
  *
  * **Ei korjaa kumpaakaan automaattisesti**, vaan kertoo mikä nimi puuttuu
  * kummasta. Kaksi listaa erkanee ajan myötä, ja hiljainen automaattikorjaus
@@ -166,12 +240,12 @@ export function vertaaNimikorjauksiin(t: MyyjatTiedosto, excel: NimikorjausPari[
   const varoitukset: string[] = []
   const norm = (s: string) => s.trim().toLowerCase()
 
-  const mdAliakset = new Map<string, string>()
-  for (const r of t.rivit) for (const a of r.aliakset) mdAliakset.set(norm(a), r.nimi)
+  const mdTunnukset = new Map<string, string>()
+  for (const r of t.rivit) if (r.tunnus) mdTunnukset.set(norm(r.tunnus), r.nimi)
   const mdNimet = new Set(t.rivit.map(r => norm(r.nimi)))
 
   for (const p of excel) {
-    const md = mdAliakset.get(norm(p.alias))
+    const md = mdTunnukset.get(norm(p.alias))
     if (md === undefined) {
       varoitukset.push(`Excelin nimikorjaus "${p.alias}" → "${p.nimi}" puuttuu myyjat.md:stä`)
     } else if (norm(md) !== norm(p.nimi)) {
@@ -179,12 +253,10 @@ export function vertaaNimikorjauksiin(t: MyyjatTiedosto, excel: NimikorjausPari[
     }
   }
 
-  const excelAliakset = new Set(excel.map(p => norm(p.alias)))
+  const excelTunnukset = new Set(excel.map(p => norm(p.alias)))
   for (const r of t.rivit) {
-    for (const a of r.aliakset) {
-      if (!excelAliakset.has(norm(a))) {
-        varoitukset.push(`myyjat.md:n alias "${a}" (${r.nimi}) puuttuu Excelin nimikorjaustaulusta`)
-      }
+    if (r.tunnus && !excelTunnukset.has(norm(r.tunnus))) {
+      varoitukset.push(`myyjat.md:n tunnus "${r.tunnus}" (${r.nimi}) puuttuu Excelin nimikorjaustaulusta`)
     }
   }
 

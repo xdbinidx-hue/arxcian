@@ -67,6 +67,15 @@ export function dnaBonus(kpl: number): number {
   return 0
 }
 
+/**
+ * Voimassa olevat tuntipalkat. Lähde on Albinin `myyjat.md`
+ * (`Arxcian / Infopaketti`), josta nämä on tarkistettu 27.8.2026.
+ *
+ * **Nämä ovat nykyiset palkat, eivät kaikkien kuukausien palkat.** Palkka voi
+ * muuttua kesken vuoden, ja vanha kuukausi lasketaan sillä palkalla joka oli
+ * silloin voimassa — muutokset ovat `PALKKAMUUTOKSET`issa eikä vanhaa lukua
+ * pyyhitä pois.
+ */
 export const TUNTIPALKAT: Record<string, number> = {
   'Basri Salihi': 15,
   'Salihi Basri': 15,
@@ -78,11 +87,53 @@ export const TUNTIPALKAT: Record<string, number> = {
   'Kadiri Ramin': 10,
   'Daniel Miettinen': 10,
   'Miettinen Daniel': 10,
+  // Myymäläpäälliköt. Palkka nousi 13 -> 14 €/h samalla kun uusi bonusmalli
+  // alkoi 9/2026; elokuu ja vanhemmat lasketaan yhä 13:lla (PALKKAMUUTOKSET).
+  // Arbnor on omistaja eikä hänellä ole tuntipalkkaa lainkaan — omistajat
+  // eivät kulje `getTuntipalkka`n läpi (`laskeMyyja`n owner-haara).
+  'Joni Viljamaa': 14,
+  'Viljamaa Joni': 14,
+  'Leo Rossi': 14,
+  'Rossi Leo': 14,
+  'Alec Fambro': 14,
+  'Fambro Alec': 14,
+  'Joona Huttunen': 14,
+  'Huttunen Joona': 14,
   // Ei enää töissä, mutta esiintyvät vanhemmissa (2025) myyntiseuranta-/maksukuittitiedostoissa
   // pelkkinä etuniminä — Petri/Markus/Vili käyttävät oletuspalkkaa (13 €/h), Kasper poikkeaa siitä.
+  //
+  // ⚠️ **Kasper (Kasper Hiltunen) ja Kasperi K. (Kasperi Kemppainen) ovat eri
+  // ihmisiä** (myyjat.md:n oma varoitus). Koko nimi on tässä pelkän etunimen
+  // rinnalla, koska 2025-tiedostoissa esiintyy kumpaakin muotoa ja pelkkä
+  // etunimiavain antoi koko nimelle oletuspalkan 13 €/h.
   'Kasper': 10,
+  'Kasper Hiltunen': 10,
+  'Hiltunen Kasper': 10,
   default: 13,
 }
+
+/**
+ * Tuntipalkan muutokset. Kukin rivi kertoo mikä palkka oli **ennen**
+ * voimaantulokuukautta; nykyinen palkka on `TUNTIPALKAT`issa.
+ *
+ * Tämä on olemassa siksi ettei vanha kuukausi muutu takautuvasti kun palkka
+ * nousee: elokuun 2026 tuottoseuranta on laskettu 13 €:lla, ja se on oikein
+ * myös ensi vuonna katsottuna.
+ */
+export type Palkkamuutos = { nimet: readonly string[]; vanha: number; voimaanOrder: number }
+
+export const PALKKAMUUTOKSET: readonly Palkkamuutos[] = [
+  {
+    nimet: [
+      'Joni Viljamaa', 'Viljamaa Joni',
+      'Leo Rossi', 'Rossi Leo',
+      'Alec Fambro', 'Fambro Alec',
+      'Joona Huttunen', 'Huttunen Joona',
+    ],
+    vanha: 13,
+    voimaanOrder: 202609,
+  },
+]
 
 export const REF_SELLERS: string[] = []
 export const OWNER_SELLERS = ['Arbnor Rashica', 'Rashica Arbnor', 'Albin Rashica', 'Rashica Albin']
@@ -126,8 +177,23 @@ export function isRJMobSellerForMonth(nimi: string, monthNum: number | null): bo
   if (monthNum !== null && isPetri && PETRI_ACTIVE_MONTHS.includes(monthNum)) return true
   return false
 }
-export function getTuntipalkka(nimi: string): number {
-  return TUNTIPALKAT[nimi] ?? TUNTIPALKAT.default
+/**
+ * Tuntipalkka kuukaudelle.
+ *
+ * `kuukausiOrder` on `vuosi × 100 + kuukausi`. Ilman sitä palauttaa nykyisen
+ * palkan — **kutsujan on annettava kuukausi aina kun laskettava kuukausi on
+ * tiedossa**, muuten palkankorotus vuotaa taaksepäin ja vanhan kuukauden
+ * työkulu kasvaa jälkikäteen.
+ */
+export function getTuntipalkka(nimi: string, kuukausiOrder: number | null = null): number {
+  const nykyinen = TUNTIPALKAT[nimi] ?? TUNTIPALKAT.default
+  if (kuukausiOrder === null) return nykyinen
+
+  for (const m of PALKKAMUUTOKSET) {
+    if (kuukausiOrder >= m.voimaanOrder) continue
+    if (m.nimet.some(n => n.toLowerCase() === nimi.toLowerCase())) return m.vanha
+  }
+  return nykyinen
 }
 export function isRefSeller(nimi: string): boolean {
   return REF_SELLERS.some(r => r.toLowerCase() === nimi.toLowerCase())
@@ -427,7 +493,7 @@ export function laskeMyyja(raw: SellerRaw, kuukausiOrder: number | null = null):
     netto = rjmobTulo - tyokulu
     roi = tyokulu > 0 ? (netto / tyokulu) * 100 : 0
   } else {
-    const tp = getTuntipalkka(nimi)
+    const tp = getTuntipalkka(nimi, kuukausiOrder)
     // Palkka lasketaan kokonaistunneista
     const pohja = palkkaTunnit * tp
     palkkaBrutto = pohja + provisioYhteensa
