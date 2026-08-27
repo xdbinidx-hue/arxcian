@@ -6,7 +6,10 @@ import {
   myymalaAvaimesta, tasonMaksimi, BONUSMALLI_ALKAA,
   type MyymalaTavoite, type MyymalaToteuma,
 } from './rjmobBonus.ts'
-import { tavoitteetKuukaudelle, tavoiteYhteensa, tavoiteIlmanTapahtumaa } from './rjmobBonusTavoitteet.ts'
+import {
+  tavoitteetKuukaudelle, tavoiteYhteensa, tavoiteIlmanTapahtumaa,
+  parseTavoiteTaulukko, valitseTavoitteet,
+} from './rjmobBonusTavoitteet.ts'
 
 
 /**
@@ -176,4 +179,94 @@ test('tapahtumamyynti ei nosta tavoitetta jälkikäteen', () => {
   const b = laskeMyymalanBonus('Malmi', t.Malmi, { liittymat: 900, fsecure: 80, kassakate: 4000 })
   // 900/900 = 100 %, ei 900/300 = 300 %.
   assert.equal(b.mittarit.find(m => m.mittari === 'liittymat')!.pct, 100)
+})
+
+// ---------------------------------------------------------------------------
+// Tavoitetaulukon jäsennys ja lähteen valinta
+// ---------------------------------------------------------------------------
+
+const TAULUKKO = [
+  ['Tavoitteet syyskuu 2026', '', '', '', ''],
+  ['', '', '', '', ''],
+  ['Myymälä', 'Taso', 'Liittymät kpl', 'F-Secure kpl', 'Kassakate € (ALV 0)', 'Tapahtuma kpl'],
+  ['Holma', '1', '300', '53', '3 000', ''],
+  ['Syke', '2', '230', '40', '2 200', ''],
+  ['Malmi', '1', '900', '80', '4 000', '600'],
+  ['Easton', '3', '190', '40', '3 300', ''],
+  ['Kivistö', '3', '180', '40', '3 000', ''],
+  ['Yhteensä', '', '1 800', '253', '15 500', ''],
+]
+
+test('tavoitetaulukko jäsentyy kun otsikkorivi ei ole ensimmäinen', () => {
+  const t = parseTavoiteTaulukko(TAULUKKO)
+  assert.equal(t.tavoitteet.Holma!.liittymat, 300)
+  assert.equal(t.tavoitteet.Malmi!.kassakate, 4000)
+  assert.equal(t.tavoitteet.Malmi!.tapahtumaLiittymat, 600)
+  assert.equal(t.tavoitteet.Kivistö!.fsecure, 40)
+  assert.deepEqual(t.varoitukset, [])
+})
+
+test('välilyönnilliset tuhaterottimet luetaan oikein', () => {
+  const t = parseTavoiteTaulukko(TAULUKKO)
+  assert.equal(t.tavoitteet.Syke!.kassakate, 2200)
+})
+
+test('tuntematon myymälärivi ohitetaan eikä Yhteensä-rivi päädy myymäläksi', () => {
+  const t = parseTavoiteTaulukko(TAULUKKO)
+  assert.equal(Object.keys(t.tavoitteet).length, 5)
+})
+
+test('tyhjä tulos on virhe eikä nollatavoitteita', () => {
+  // Nollatavoitteista bonus laukeaisi automaattisesti kaikilla — hiljainen
+  // tyhjä lista on siksi vaarallisempi kuin näkyvä virhe.
+  const t = parseTavoiteTaulukko([['Myymälä', 'Liittymät', 'Kassakate'], ['Tampere', '10', '20']])
+  assert.ok(t.varoitukset.some(v => v.includes('ei tunnistettu yhtään myymälää')))
+  assert.equal(Object.keys(t.tavoitteet).length, 0)
+})
+
+test('puuttuva otsikkorivi kerrotaan omana virheenään', () => {
+  const t = parseTavoiteTaulukko([['Malmi', '900', '80']])
+  assert.ok(t.varoitukset.some(v => v.includes('otsikkoriviä')))
+})
+
+test('puuttuva myymälärivi raportoidaan nimeltä', () => {
+  const ilmanSykea = TAULUKKO.filter(r => r[0] !== 'Syke')
+  const t = parseTavoiteTaulukko(ilmanSykea)
+  assert.ok(t.varoitukset.some(v => v.startsWith('Syke:')))
+})
+
+test('lukittua kuukautta ei muuteta Drivestä mutta ero raportoidaan', () => {
+  const koodi = tavoitteetKuukaudelle(202609)!
+  const drive = { ...koodi, Easton: { liittymat: 100, fsecure: 40, kassakate: 3300 } }
+  const v = valitseTavoitteet(202609, drive, koodi, new Date('2026-09-15T12:00:00Z'))
+  assert.equal(v.lahde, 'koodi')
+  assert.equal((v.tavoitteet as typeof koodi).Easton.liittymat, 190)
+  assert.ok(v.varoitukset.some(x => x.includes('Easton') && x.includes('käytetään lukittua')))
+})
+
+test('lukitsematon tuleva kuukausi saa muuttua Driven mukaan', () => {
+  const koodi = tavoitteetKuukaudelle(202609)!
+  const drive = { ...koodi, Easton: { liittymat: 100, fsecure: 40, kassakate: 3300 } }
+  const v = valitseTavoitteet(202609, drive, koodi, new Date('2026-08-15T12:00:00Z'))
+  assert.equal(v.lahde, 'drive')
+  assert.equal(v.tavoitteet!.Easton!.liittymat, 100)
+})
+
+test('ilman Drive-taulukkoa käytetään lukittua koodikopiota', () => {
+  const v = valitseTavoitteet(202609, null, tavoitteetKuukaudelle(202609), new Date('2026-09-15T12:00:00Z'))
+  assert.equal(v.lahde, 'koodi')
+  assert.deepEqual(v.varoitukset, [])
+})
+
+test('alkanut kuukausi ilman lukittua kopiota varoittaa', () => {
+  const drive = { Easton: { liittymat: 190, fsecure: 40, kassakate: 3300 } }
+  const v = valitseTavoitteet(202610, drive, null, new Date('2026-10-15T12:00:00Z'))
+  assert.equal(v.lahde, 'drive')
+  assert.ok(v.varoitukset.some(x => x.includes('lukittua kopiota')))
+})
+
+test('kumpaakaan lähdettä ei ole -> tavoitteet puuttuu', () => {
+  const v = valitseTavoitteet(202611, null, null, new Date('2026-11-15T12:00:00Z'))
+  assert.equal(v.lahde, 'puuttuu')
+  assert.equal(v.tavoitteet, null)
 })

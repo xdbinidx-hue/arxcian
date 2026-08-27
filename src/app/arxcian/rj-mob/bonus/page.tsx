@@ -5,10 +5,11 @@ import {
   MYYMALAT, MITTARIT, MITTARI_NIMI, MITTARI_YKSIKKO, PORRAS_SATA, PORRAS_SATAKAKSI,
   bonusmalliVoimassa, laskeKuukaudenBonukset, toteumatMyymalataulukosta, tasonMaksimi,
   BONUSMALLI_ALKAA,
-  type Mittari, type MittariTulos, type Myymala, type MyymalaToteuma,
+  type Mittari, type MittariTulos, type Myymala, type MyymalaTavoite, type MyymalaToteuma,
 } from '@/lib/rjmobBonus'
 import {
   tavoitteetKuukaudelle, tavoiteIlmanTapahtumaa, muutoksetKuukaudelle, onLukittu,
+  type TavoiteLahde,
 } from '@/lib/rjmobBonusTavoitteet'
 
 /**
@@ -27,6 +28,18 @@ import {
 interface DriveFile { id: string; name: string; mimeType: string }
 type StoreRow = { liittKpl: number; fsecKpl: number; kassa: number }
 interface DashData { kuukausi: string; stores?: Record<string, StoreRow>; error?: string }
+interface TavoiteHaku {
+  tavoitteet: Partial<Record<Myymala, MyymalaTavoite>> | null
+  lahde: TavoiteLahde
+  varoitukset: string[]
+  tiedosto: string | null
+}
+
+const LAHDE_TEKSTI: Record<TavoiteLahde, string> = {
+  drive: 'Tavoitteet luettu Drive-taulukosta',
+  koodi: 'Tavoitteet lukitusta kopiosta',
+  puuttuu: 'Tavoitteita ei ole',
+}
 
 function fmt(n: number, dec = 0) {
   return n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -101,6 +114,7 @@ export default function BonusPage() {
   const [stores, setStores] = useState<Record<string, StoreRow>>({})
   const [edelliset, setEdelliset] = useState<Partial<Record<Myymala, MyymalaToteuma>>>({})
   const [kuukausi, setKuukausi] = useState('')
+  const [tavoiteHaku, setTavoiteHaku] = useState<TavoiteHaku | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -142,7 +156,29 @@ export default function BonusPage() {
   const valittu = files.find(f => f.id === selectedFile)
   const order = valittu ? parsePrefix(valittu.name) : 0
   const voimassa = bonusmalliVoimassa(order || null)
-  const tavoitteet = tavoitteetKuukaudelle(order)
+  // Lukittu koodikopio on varalähde siihen asti kun reitin vastaus saapuu, jotta
+  // luvut eivät välähdä tyhjinä jokaisella kuukauden vaihdolla.
+  const tavoitteet = tavoiteHaku?.tavoitteet ?? tavoitteetKuukaudelle(order)
+
+  /**
+   * Tavoitteet reitin kautta, koska Drive-taulukko on palvelinpuolen lähde.
+   * Epäonnistunut haku ei tyhjennä näkymää — reitti pudottaa lähteeksi lukitun
+   * kopion ja kertoo virheestä varoituksena.
+   */
+  useEffect(() => {
+    setTavoiteHaku(null)
+    if (!order || !bonusmalliVoimassa(order)) return
+    let peruttu = false
+    fetch(`/api/bonus-tavoitteet?kuukausi=${order}`)
+      .then(r => r.json())
+      .then((d: TavoiteHaku & { error?: string }) => {
+        if (peruttu || d.error) return
+        setTavoiteHaku(d)
+      })
+      .catch(() => {})
+    return () => { peruttu = true }
+  }, [order])
+
   const toteumat = toteumatMyymalataulukosta(stores)
   const kk = laskeKuukaudenBonukset(order, tavoitteet, toteumat)
   const muutokset = muutoksetKuukaudelle(order)
@@ -193,6 +229,7 @@ export default function BonusPage() {
                 {' '}{PORRAS_SATA}–{PORRAS_SATAKAKSI - 0.1} % pienen summan ja {PORRAS_SATAKAKSI} % tai yli ison —
                 yli {PORRAS_SATAKAKSI} % ei maksa enempää.
                 {tavoitteet && ` Tavoitteet ${onLukittu(order) ? 'lukittu' : 'ei vielä lukittu'}.`}
+                {tavoiteHaku && ` ${LAHDE_TEKSTI[tavoiteHaku.lahde]}${tavoiteHaku.tiedosto ? ` (${tavoiteHaku.tiedosto})` : ''}.`}
               </div>
             </div>
 
@@ -253,6 +290,13 @@ export default function BonusPage() {
             </div>
           </div>
 
+          {tavoiteHaku && tavoiteHaku.varoitukset.length > 0 && (
+            <div style={{ ...kortti, padding: '12px 16px', fontSize: 13, color: '#854F0B', background: '#fef9c3' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Tavoitteista huomautettavaa</div>
+              {tavoiteHaku.varoitukset.map((v, i) => <div key={i} style={{ marginBottom: 3 }}>· {v}</div>)}
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
             <div style={{ ...kortti, marginBottom: 0, padding: 16 }}>
               <div style={{ fontSize: 11, color: '#888' }}>Maksettava yhteensä</div>
@@ -287,7 +331,7 @@ export default function BonusPage() {
               </div>
               <div style={{ padding: '12px 16px', fontSize: 13 }}>
                 {MYYMALAT.filter(m => (tavoitteet[m.myymala]?.tapahtumaLiittymat ?? 0) > 0).map(m => {
-                  const t = tavoitteet[m.myymala]
+                  const t = tavoitteet[m.myymala]!
                   return (
                     <div key={m.myymala} style={{ marginBottom: 6 }}>
                       <strong>{m.myymala}</strong>: tavoite {fmt(t.liittymat ?? 0)} kpl, josta

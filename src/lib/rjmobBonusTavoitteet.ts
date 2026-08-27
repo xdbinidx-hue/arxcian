@@ -3,7 +3,7 @@
 // ".ts"-pääte importeissa on tahallinen: moduuli on yksikkötestattu ja Noden
 // ESM-resolveri ei osaa extensiotonta muotoa.
 import type { Myymala, MyymalaTavoite } from './rjmobBonus.ts'
-import { MYYMALAT } from './rjmobBonus.ts'
+import { MYYMALAT, MITTARIT, MITTARI_NIMI, myymalaAvaimesta } from './rjmobBonus.ts'
 
 /**
  * Lukitut tavoitteet kuukausittain, avaimena `vuosi × 100 + kuukausi`.
@@ -102,4 +102,154 @@ export function tavoiteYhteensa(tavoitteet: Record<Myymala, MyymalaTavoite>) {
     kassakate += t.kassakate ?? 0
   }
   return { liittymat, fsecure, kassakate }
+}
+
+// ---------------------------------------------------------------------------
+// Tavoitetaulukon jäsennys ja lähteen valinta
+// ---------------------------------------------------------------------------
+
+/**
+ * Yhden kuukauden tavoitetaulukko Drivestä (`Arxcian / RJ-Mob / Tavoitteet
+ * (kopio)`), jäsennettynä soluista.
+ *
+ * Otsikkorivi etsitään sisällöstä eikä oleteta ensimmäiseksi riviksi, ja
+ * sarakkeet osajonolla — samaan tapaan kuin myyntiseurannassa, koska taulukko
+ * on ihmisen ylläpitämä ja rivien yläpuolella on tyypillisesti otsikko tai
+ * tyhjiä rivejä.
+ *
+ * **Tyhjä tulos on virhe eikä tulos.** Jos taulukko on olemassa mutta siitä ei
+ * tunnisteta yhtään myymälää, palautetaan varoitus eikä tyhjää tavoitelistaa:
+ * muuten väärin nimetty sarake näyttäisi siltä että jokaisen myymälän tavoite
+ * on 0 € eli bonus laukeaisi automaattisesti kaikilla.
+ */
+export type TavoiteTaulukko = {
+  tavoitteet: Partial<Record<Myymala, MyymalaTavoite>>
+  varoitukset: string[]
+}
+
+function osuu(otsikko: string, ...osat: string[]): boolean {
+  const h = otsikko.toLowerCase()
+  return osat.some(o => h.includes(o))
+}
+
+function luku(raw: string | undefined): number | null {
+  if (raw === undefined) return null
+  const puhdas = String(raw).replace(/\s|\u00a0/g, '').replace(',', '.').replace(/[^0-9.-]/g, '')
+  if (puhdas === '') return null
+  const n = Number(puhdas)
+  return Number.isFinite(n) ? n : null
+}
+
+export function parseTavoiteTaulukko(rows: string[][]): TavoiteTaulukko {
+  const varoitukset: string[] = []
+
+  let otsikkoIdx = -1
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const onLiitt = r.some(c => osuu(c, 'liittym'))
+    const onKassa = r.some(c => osuu(c, 'kassakate', 'kassa'))
+    if (onLiitt && onKassa) { otsikkoIdx = i; break }
+  }
+  if (otsikkoIdx < 0) {
+    return { tavoitteet: {}, varoitukset: ['Tavoitetaulukosta ei löytynyt otsikkoriviä (liittymät + kassakate)'] }
+  }
+
+  const otsikot = rows[otsikkoIdx]
+  const idx = {
+    liittymat: otsikot.findIndex(c => osuu(c, 'liittym')),
+    fsecure: otsikot.findIndex(c => osuu(c, 'f-secure', 'fsecure', 'f secure')),
+    kassakate: otsikot.findIndex(c => osuu(c, 'kassakate', 'kassa')),
+    tapahtuma: otsikot.findIndex(c => osuu(c, 'tapahtuma')),
+  }
+  for (const m of MITTARIT) {
+    if (idx[m] < 0) varoitukset.push(`Tavoitetaulukosta puuttuu sarake: ${MITTARI_NIMI[m]}`)
+  }
+
+  const tavoitteet: Partial<Record<Myymala, MyymalaTavoite>> = {}
+  for (let i = otsikkoIdx + 1; i < rows.length; i++) {
+    const r = rows[i]
+    // Myymälä voi olla missä tahansa sarakkeessa ennen lukuja — taulukossa on
+    // usein tason tai järjestysnumeron sarake ensimmäisenä.
+    let myymala: Myymala | null = null
+    for (const solu of r) {
+      const osuma = solu.trim() ? myymalaAvaimesta(solu) : null
+      if (osuma) { myymala = osuma; break }
+    }
+    if (!myymala || tavoitteet[myymala]) continue
+
+    const tapahtuma = idx.tapahtuma >= 0 ? luku(r[idx.tapahtuma]) : null
+    tavoitteet[myymala] = {
+      liittymat: idx.liittymat >= 0 ? luku(r[idx.liittymat]) : null,
+      fsecure: idx.fsecure >= 0 ? luku(r[idx.fsecure]) : null,
+      kassakate: idx.kassakate >= 0 ? luku(r[idx.kassakate]) : null,
+      ...(tapahtuma !== null && tapahtuma > 0 ? { tapahtumaLiittymat: tapahtuma } : {}),
+    }
+  }
+
+  if (Object.keys(tavoitteet).length === 0) {
+    varoitukset.push('Tavoitetaulukosta ei tunnistettu yhtään myymälää — onko myymälöiden nimet omassa sarakkeessaan?')
+  }
+  for (const { myymala } of MYYMALAT) {
+    if (!tavoitteet[myymala]) varoitukset.push(`${myymala}: tavoiterivi puuttuu tavoitetaulukosta`)
+  }
+
+  return { tavoitteet, varoitukset }
+}
+
+export type TavoiteLahde = 'koodi' | 'drive' | 'puuttuu'
+
+export type ValitutTavoitteet = {
+  tavoitteet: Record<Myymala, MyymalaTavoite> | Partial<Record<Myymala, MyymalaTavoite>> | null
+  lahde: TavoiteLahde
+  varoitukset: string[]
+}
+
+/**
+ * Kumpi lähde voittaa: lukittu koodivakio vai Drive-taulukko.
+ *
+ * **Lukittua kuukautta ei muuteta Drivestä.** Bonus on sidottu prosenttiin
+ * eikä euroon, joten hiljainen tavoitteen lasku kesken kuun olisi sama kuin
+ * bonuksen jakaminen ilmaiseksi. Ero ei silti jää piiloon: se raportoidaan
+ * varoituksena, jotta muutos näkyy (mitä, mistä mihin) sen sijaan että
+ * katoaisi.
+ *
+ * Tuleva kuukausi saa muuttua vapaasti — sitä ei ole vielä lukittu.
+ */
+export function valitseTavoitteet(
+  kuukausiOrder: number,
+  drive: Partial<Record<Myymala, MyymalaTavoite>> | null,
+  koodi: Record<Myymala, MyymalaTavoite> | null = tavoitteetKuukaudelle(kuukausiOrder),
+  nyt = new Date(),
+): ValitutTavoitteet {
+  const lukittu = onLukittu(kuukausiOrder, nyt)
+  const varoitukset: string[] = []
+
+  if (!koodi && !drive) return { tavoitteet: null, lahde: 'puuttuu', varoitukset }
+
+  if (koodi && drive) {
+    for (const { myymala } of MYYMALAT) {
+      const k = koodi[myymala]
+      const d = drive[myymala]
+      if (!k || !d) continue
+      for (const m of MITTARIT) {
+        if (k[m] !== d[m]) {
+          varoitukset.push(
+            lukittu
+              ? `${myymala} ${MITTARI_NIMI[m]}: lukittu ${k[m] ?? '—'}, Drivessä ${d[m] ?? '—'} — käytetään lukittua`
+              : `${myymala} ${MITTARI_NIMI[m]}: Drive ${d[m] ?? '—'} korvaa aiemman ${k[m] ?? '—'}`,
+          )
+        }
+      }
+    }
+    return lukittu
+      ? { tavoitteet: koodi, lahde: 'koodi', varoitukset }
+      : { tavoitteet: drive, lahde: 'drive', varoitukset }
+  }
+
+  if (koodi) return { tavoitteet: koodi, lahde: 'koodi', varoitukset }
+
+  if (lukittu) {
+    varoitukset.push('Kuukausi on jo alkanut eikä tavoitteista ole lukittua kopiota — Drive-taulukon muutos muuttaisi bonusta kesken kuun')
+  }
+  return { tavoitteet: drive, lahde: 'drive', varoitukset }
 }

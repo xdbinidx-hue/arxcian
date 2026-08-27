@@ -201,12 +201,6 @@ export default function TuottoPage() {
     const ansainta = ansaintakuukausi(parsePrefix(valittu.name))
     if (!bonusmalliVoimassa(ansainta)) return
 
-    const tavoitteet = tavoitteetKuukaudelle(ansainta)
-    if (!tavoitteet) {
-      setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'tavoitteet-puuttuu' })
-      return
-    }
-
     const lahde = files.find(f => parsePrefix(f.name) === ansainta)
     if (!lahde) {
       setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' })
@@ -214,13 +208,19 @@ export default function TuottoPage() {
     }
 
     let peruttu = false
-    fetch(`/api/sheets?fileId=${lahde.id}`).then(r => r.json()).then(d => {
+    // Tavoitteet haetaan samasta reitistä kuin bonusnäkymässä. Jos sivut
+    // lukisivat eri lähteestä, sama bonus voisi näyttää eri summalta kahdella
+    // sivulla eikä kumpikaan kertoisi kummasta.
+    Promise.all([
+      fetch(`/api/bonus-tavoitteet?kuukausi=${ansainta}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/sheets?fileId=${lahde.id}`).then(r => r.json()).catch(() => null),
+    ]).then(([t, d]) => {
       if (peruttu) return
-      if (d.error || !d.stores) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' }); return }
+      const tavoitteet = t && !t.error ? t.tavoitteet : tavoitteetKuukaudelle(ansainta)
+      if (!tavoitteet) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'tavoitteet-puuttuu' }); return }
+      if (!d || d.error || !d.stores) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' }); return }
       const kk = laskeKuukaudenBonukset(ansainta, tavoitteet, toteumatMyymalataulukosta(d.stores))
       setBonusKulu({ ansaintaOrder: ansainta, maksettava: kk.maksettavaYhteensa, kulu: kk.kuluYhteensa, tila: 'laskettu' })
-    }).catch(() => {
-      if (!peruttu) setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' })
     })
     return () => { peruttu = true }
   }, [selectedFile, files])
