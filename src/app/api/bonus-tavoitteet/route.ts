@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cachedJson } from '@/lib/apiCache'
 import { haeBonusTavoitteet } from '@/lib/rjmobBonusTavoitteetDrive'
 import { valitseTavoitteet } from '@/lib/rjmobBonusTavoitteet'
 
@@ -20,7 +19,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    return cachedJson(await haeBonusTavoitteet(kuukausiOrder))
+    // Ei `cachedJson`ia: tavoitetaulukkoa muokkaa ihminen joka haluaa nähdä
+    // muutoksen heti perään, eikä viiden minuutin CDN-välimuisti erottuisi
+    // rikkinäisestä lukijasta. Haku on kaksi Drive-kutsua kahdelle käyttäjälle.
+    return NextResponse.json(await haeBonusTavoitteet(kuukausiOrder), {
+      headers: { 'Cache-Control': 'no-store' },
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     const varakopio = valitseTavoitteet(kuukausiOrder, null)

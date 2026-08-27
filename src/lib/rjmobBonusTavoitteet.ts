@@ -226,30 +226,63 @@ export function valitseTavoitteet(
 
   if (!koodi && !drive) return { tavoitteet: null, lahde: 'puuttuu', varoitukset }
 
-  if (koodi && drive) {
-    for (const { myymala } of MYYMALAT) {
-      const k = koodi[myymala]
-      const d = drive[myymala]
-      if (!k || !d) continue
-      for (const m of MITTARIT) {
-        if (k[m] !== d[m]) {
-          varoitukset.push(
-            lukittu
-              ? `${myymala} ${MITTARI_NIMI[m]}: lukittu ${k[m] ?? '—'}, Drivessä ${d[m] ?? '—'} — käytetään lukittua`
-              : `${myymala} ${MITTARI_NIMI[m]}: Drive ${d[m] ?? '—'} korvaa aiemman ${k[m] ?? '—'}`,
-          )
+  // Lukittu kuukausi: koodikopio voittaa kokonaan, ja Driven eroavat arvot
+  // luetellaan mutta ei oteta käyttöön.
+  if (lukittu && koodi) {
+    if (drive) {
+      for (const { myymala } of MYYMALAT) {
+        const k = koodi[myymala]
+        const d = drive[myymala]
+        if (!k || !d) continue
+        for (const m of MITTARIT) {
+          if (d[m] !== null && k[m] !== d[m]) {
+            varoitukset.push(`${myymala} ${MITTARI_NIMI[m]}: lukittu ${k[m] ?? '—'}, Drivessä ${d[m]} — käytetään lukittua`)
+          }
         }
       }
     }
-    return lukittu
-      ? { tavoitteet: koodi, lahde: 'koodi', varoitukset }
-      : { tavoitteet: drive, lahde: 'drive', varoitukset }
+    return { tavoitteet: koodi, lahde: 'koodi', varoitukset }
   }
 
-  if (koodi) return { tavoitteet: koodi, lahde: 'koodi', varoitukset }
+  if (!drive) return { tavoitteet: koodi, lahde: 'koodi', varoitukset }
 
   if (lukittu) {
     varoitukset.push('Kuukausi on jo alkanut eikä tavoitteista ole lukittua kopiota — Drive-taulukon muutos muuttaisi bonusta kesken kuun')
+    return { tavoitteet: drive, lahde: 'drive', varoitukset }
   }
-  return { tavoitteet: drive, lahde: 'drive', varoitukset }
+
+  // Lukitsematon kuukausi: Drive on lähde, mutta **puuttuva rivi tai kenttä ei
+  // pyyhi aiempaa tavoitetta**. Keskeneräinen taulukko on tavallinen tila —
+  // Albin täyttää myymälät sitä mukaa kun luvut valmistuvat — ja ilman tätä
+  // yksikin puuttuva rivi pudottaisi sen myymälän bonuksen nollaan ilman että
+  // kukaan on päättänyt niin. Perintä kerrotaan aina varoituksena, jottei
+  // vanha luku jää näyttämään uudelta.
+  const yhdistetty: Partial<Record<Myymala, MyymalaTavoite>> = {}
+  for (const { myymala } of MYYMALAT) {
+    const d = drive[myymala]
+    const k = koodi?.[myymala]
+
+    if (!d) {
+      if (k) {
+        yhdistetty[myymala] = k
+        varoitukset.push(`${myymala}: rivi puuttuu Drive-taulukosta — käytetään aiempaa tavoitetta`)
+      }
+      continue
+    }
+
+    const rivi: MyymalaTavoite = { liittymat: null, fsecure: null, kassakate: null }
+    for (const m of MITTARIT) {
+      if (d[m] !== null) { rivi[m] = d[m]; continue }
+      if (k && k[m] !== null) {
+        rivi[m] = k[m]
+        varoitukset.push(`${myymala} ${MITTARI_NIMI[m]}: puuttuu Drive-taulukosta — käytetään aiempaa arvoa ${k[m]}`)
+      }
+    }
+    const tapahtuma = d.tapahtumaLiittymat ?? k?.tapahtumaLiittymat
+    if (tapahtuma !== undefined && tapahtuma > 0) rivi.tapahtumaLiittymat = tapahtuma
+
+    yhdistetty[myymala] = rivi
+  }
+
+  return { tavoitteet: yhdistetty, lahde: 'drive', varoitukset }
 }

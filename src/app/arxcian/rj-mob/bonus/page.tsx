@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import { saakoAjaaAutomaattisesti } from '@/lib/arxcian/autoRefresh'
 import {
   MYYMALAT, MITTARIT, MITTARI_NIMI, MITTARI_YKSIKKO, PORRAS_SATA, PORRAS_SATAKAKSI,
   bonusmalliVoimassa, laskeKuukaudenBonukset, toteumatMyymalataulukosta, tasonMaksimi,
@@ -71,6 +72,17 @@ const VARIT = {
   satakaksi: { teksti: '#3B6D11', tausta: '#dcfce7' },
 } as const
 
+/**
+ * Automaattisen uudelleenhaun ikäraja ja jäähy, minuutteina.
+ *
+ * Puoli minuuttia on lyhyt tarkoituksella: tämän sivun lähde on taulukko jota
+ * **ihminen juuri muokkasi ja jonka tuloksen hän haluaa nähdä heti perään** —
+ * sama kriteeri jolla RJ-Mobin hubipaneeli sai oman automaattihakunsa. Jäähy
+ * estää silti silmukan, jos Drive-haku kaatuu ja välilehti vilkkuu esiin ja
+ * pois.
+ */
+const AUTO_IKARAJA_MIN = 0.5
+
 const th = { padding: '8px 10px', fontSize: 11, fontWeight: 500, color: '#888', textAlign: 'center' as const, borderBottom: '0.5px solid #eee', whiteSpace: 'nowrap' as const, background: '#f8f8f8' }
 const thL = { ...th, textAlign: 'left' as const }
 const td = { padding: '8px 10px', fontSize: 13, textAlign: 'center' as const, borderBottom: '0.5px solid #f5f5f5' }
@@ -115,6 +127,10 @@ export default function BonusPage() {
   const [edelliset, setEdelliset] = useState<Partial<Record<Myymala, MyymalaToteuma>>>({})
   const [kuukausi, setKuukausi] = useState('')
   const [tavoiteHaku, setTavoiteHaku] = useState<TavoiteHaku | null>(null)
+  // Kasvava leima joka pakottaa haun uusiksi ja ohittaa reittien CDN-välimuistin.
+  const [paivitys, setPaivitys] = useState(0)
+  const viimeHaku = useRef<number | null>(null)
+  const viimeAutomaatti = useRef<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -131,7 +147,11 @@ export default function BonusPage() {
     if (!selectedFile) return
     setLoading(true); setError(''); setEdelliset({})
 
-    fetch(`/api/sheets?fileId=${selectedFile}`)
+    // `t`-parametri ohittaa reitin `s-maxage`-välimuistin kun haku on pyydetty
+    // uudelleen: muuten juuri tallennettu taulukkomuutos ei näkyisi viiteen
+    // minuuttiin, eikä nappi tekisi mitään näkyvää.
+    const tuore = paivitys > 0 ? `&t=${paivitys}` : ''
+    fetch(`/api/sheets?fileId=${selectedFile}${tuore}`)
       .then(r => r.json())
       .then((d: DashData) => {
         if (d.error) { setError(d.error); setStores({}); return }
@@ -139,19 +159,19 @@ export default function BonusPage() {
         setKuukausi(d.kuukausi ?? '')
       })
       .catch(() => setError('Myyntiseurannan haku epäonnistui'))
-      .finally(() => setLoading(false))
+      .finally(() => { setLoading(false); viimeHaku.current = Date.now() })
 
     // Edellisen kuun toteuma on vertailuluku, ei laskennan syöte: epäonnistunut
     // haku jättää sen näyttämättä eikä kaada sivua.
     const idx = files.findIndex(f => f.id === selectedFile)
     const edellinen = idx >= 0 ? files[idx + 1] : undefined
     if (edellinen) {
-      fetch(`/api/sheets?fileId=${edellinen.id}`)
+      fetch(`/api/sheets?fileId=${edellinen.id}${tuore}`)
         .then(r => r.json())
         .then((d: DashData) => { if (!d.error && d.stores) setEdelliset(toteumatMyymalataulukosta(d.stores)) })
         .catch(() => {})
     }
-  }, [selectedFile, files])
+  }, [selectedFile, files, paivitys])
 
   const valittu = files.find(f => f.id === selectedFile)
   const order = valittu ? parsePrefix(valittu.name) : 0
@@ -169,7 +189,7 @@ export default function BonusPage() {
     setTavoiteHaku(null)
     if (!order || !bonusmalliVoimassa(order)) return
     let peruttu = false
-    fetch(`/api/bonus-tavoitteet?kuukausi=${order}`)
+    fetch(`/api/bonus-tavoitteet?kuukausi=${order}${paivitys > 0 ? `&t=${paivitys}` : ''}`)
       .then(r => r.json())
       .then((d: TavoiteHaku & { error?: string }) => {
         if (peruttu || d.error) return
@@ -177,7 +197,34 @@ export default function BonusPage() {
       })
       .catch(() => {})
     return () => { peruttu = true }
-  }, [order])
+  }, [order, paivitys])
+
+  /**
+   * Haku uusiksi kun välilehti palaa esiin. Taulukon muokkaus tapahtuu toisessa
+   * välilehdessä, joten paluu tähän on juuri se hetki jolloin uusi luku
+   * halutaan nähdä — ilman tätä sivu näyttäisi avaushetken lukuja niin kauan
+   * kuin se pysyy auki.
+   */
+  useEffect(() => {
+    const tarkista = () => {
+      const nyt = Date.now()
+      if (!saakoAjaaAutomaattisesti({
+        nyt,
+        ikarajaMin: AUTO_IKARAJA_MIN,
+        fetchedAt: viimeHaku.current,
+        edellinenAutomaatti: viimeAutomaatti.current,
+        nakyvissa: document.visibilityState === 'visible',
+      })) return
+      viimeAutomaatti.current = nyt
+      setPaivitys(nyt)
+    }
+    document.addEventListener('visibilitychange', tarkista)
+    window.addEventListener('focus', tarkista)
+    return () => {
+      document.removeEventListener('visibilitychange', tarkista)
+      window.removeEventListener('focus', tarkista)
+    }
+  }, [])
 
   const toteumat = toteumatMyymalataulukosta(stores)
   const kk = laskeKuukaudenBonukset(order, tavoitteet, toteumat)
@@ -195,6 +242,16 @@ export default function BonusPage() {
         >
           {files.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
+        <button
+          onClick={() => setPaivitys(Date.now())}
+          disabled={loading}
+          style={{
+            padding: '8px 14px', borderRadius: 8, border: '0.5px solid #ddd', fontSize: 13,
+            background: 'white', color: '#555', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.5 : 1,
+          }}
+        >
+          Päivitä
+        </button>
         {loading && <span style={{ fontSize: 12, color: '#888' }}>Ladataan…</span>}
         {kuukausi && !loading && <span style={{ fontSize: 12, color: '#888' }}>{kuukausi}</span>}
       </div>

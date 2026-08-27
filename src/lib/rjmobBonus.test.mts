@@ -270,3 +270,31 @@ test('kumpaakaan lähdettä ei ole -> tavoitteet puuttuu', () => {
   assert.equal(v.lahde, 'puuttuu')
   assert.equal(v.tavoitteet, null)
 })
+
+test('keskeneräinen Drive-taulukko ei pyyhi puuttuvan myymälän tavoitetta', () => {
+  // Albin täyttää myymälät sitä mukaa kun luvut valmistuvat. Ilman perintää
+  // yksikin puuttuva rivi pudottaisi sen myymälän bonuksen nollaan ilman
+  // että kukaan on päättänyt niin.
+  const koodi = tavoitteetKuukaudelle(202609)!
+  const drive = { ...koodi } as Partial<typeof koodi>
+  delete drive.Kivistö
+  const v = valitseTavoitteet(202609, drive, koodi, new Date('2026-08-27T12:00:00Z'))
+  assert.equal(v.lahde, 'drive')
+  assert.equal(v.tavoitteet!.Kivistö!.liittymat, 180)
+  assert.ok(v.varoitukset.some(x => x.includes('Kivistö') && x.includes('rivi puuttuu')))
+})
+
+test('puuttuva yksittäinen kenttä peritään ja kerrotaan', () => {
+  const koodi = tavoitteetKuukaudelle(202609)!
+  const drive = { ...koodi, Easton: { liittymat: 200, fsecure: null, kassakate: 3300 } }
+  const v = valitseTavoitteet(202609, drive, koodi, new Date('2026-08-27T12:00:00Z'))
+  assert.equal(v.tavoitteet!.Easton!.liittymat, 200)
+  assert.equal(v.tavoitteet!.Easton!.fsecure, 40)
+  assert.ok(v.varoitukset.some(x => x.includes('Easton') && x.includes('käytetään aiempaa arvoa 40')))
+})
+
+test('uusi myymälärivi ilman aiempaa tavoitetta jää puuttuvaksi eikä peri mitään', () => {
+  const drive = { Easton: { liittymat: 190, fsecure: null, kassakate: 3300 } }
+  const v = valitseTavoitteet(202610, drive, null, new Date('2026-08-27T12:00:00Z'))
+  assert.equal(v.tavoitteet!.Easton!.fsecure, null)
+})
