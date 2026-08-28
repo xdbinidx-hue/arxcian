@@ -1,7 +1,8 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  DayInfo, Shift, StoreName, STORES, STORE_COLORS, STORE_SOLO_COLORS,
+  DayInfo, Shift, StoreName, ShiftPlace, STORES, STORE_COLORS, STORE_SOLO_COLORS,
+  EVENT_PLACE, EVENT_COLOR, PLACE_LETTER, onTapahtuma,
   ROSTER_COLUMNS, MANAGER_NAMES, hoursBetween, laskeVajeet, laskeTunnit,
 } from '@/lib/shiftSchedule'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
@@ -57,6 +58,7 @@ const lastTd = { ...td, borderRight: '1px solid #eee' }
 
 /** Solun taustaväri: soolovuoro kirkkaalla, muuten myymälän oma sävy. */
 function shiftColor(shift: Shift): string {
+  if (onTapahtuma(shift.store)) return EVENT_COLOR
   return shift.solo ? STORE_SOLO_COLORS[shift.store] : STORE_COLORS[shift.store]
 }
 
@@ -111,7 +113,7 @@ function ShiftCells({
         {fmtTime(shift.start)}–{fmtTime(shift.end)}
       </td>
       <td style={solu}>{shift.hours}</td>
-      <td style={{ ...solu, ...lastTd }}>{shift.store.charAt(0).toLowerCase()}</td>
+      <td style={{ ...solu, ...lastTd }}>{PLACE_LETTER[shift.store]}</td>
     </>
   )
 }
@@ -182,7 +184,7 @@ export default function TyovuorotPage() {
     }
   }
 
-  const muokkaaSolu = (date: string, seller: string, aika: string, store: StoreName | '') => {
+  const muokkaaSolu = (date: string, seller: string, aika: string, store: ShiftPlace | '') => {
     const uudet = draft.map(day => {
       if (day.date !== date) return day
       const muut = day.shifts.filter(s => s.seller !== seller)
@@ -194,7 +196,9 @@ export default function TyovuorotPage() {
         store, seller, start: parsittu.start, end: parsittu.end,
         hours: hoursBetween(parsittu.start, parsittu.end),
         label: vanha?.label ?? 'käsin',
-        ...(day.soloStores.includes(store) ? { solo: true } : {}),
+        // Soolo on onnenpäivän myymäläkohtainen merkintä — tapahtumavuoro ei
+        // voi olla soolo, ja `soloStores` sisältää vain myymälöitä.
+        ...(!onTapahtuma(store) && day.soloStores.includes(store) ? { solo: true } : {}),
       }
       return { ...day, shifts: [...muut, shift] }
     })
@@ -359,6 +363,10 @@ export default function TyovuorotPage() {
             </div>
           ))}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: EVENT_COLOR, display: 'inline-block', border: '0.5px solid #ccc' }}></span>
+            x — tapahtuma
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: '#f3f4f6', display: 'inline-block', border: '0.5px solid #ddd' }}></span>
             vapaa / loma
           </div>
@@ -435,12 +443,12 @@ function SoluMuokkain({
   day, seller, onSave, onCancel,
 }: {
   day: DayInfo; seller: string
-  onSave: (aika: string, store: StoreName | '') => void
+  onSave: (aika: string, store: ShiftPlace | '') => void
   onCancel: () => void
 }) {
   const nykyinen = day.shifts.find(s => s.seller === seller)
   const [aika, setAika] = useState(nykyinen ? `${fmtTime(nykyinen.start)}-${fmtTime(nykyinen.end)}` : '')
-  const [store, setStore] = useState<StoreName | ''>(nykyinen?.store ?? '')
+  const [store, setStore] = useState<ShiftPlace | ''>(nykyinen?.store ?? '')
 
   return (
     <td colSpan={3} style={{ ...lastTd, padding: 3, background: '#EEF5FC' }}>
@@ -452,10 +460,13 @@ function SoluMuokkain({
           }}
           placeholder="10-16"
           style={{ width: 52, fontSize: 10, padding: '2px 3px', border: '0.5px solid #bbb', borderRadius: 3 }} />
-        <select value={store} onChange={e => setStore(e.target.value as StoreName | '')}
+        <select value={store} onChange={e => setStore(e.target.value as ShiftPlace | '')}
           style={{ fontSize: 10, padding: '2px', border: '0.5px solid #bbb', borderRadius: 3 }}>
           <option value="">—</option>
-          {STORES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()}</option>)}
+          {STORES.map(s => <option key={s} value={s}>{PLACE_LETTER[s].toUpperCase()}</option>)}
+          {/* Tapahtuma: myyjä on töissä muttei miehitä myymälää, joten
+              hänen jälkeensä jäävä paikka näkyy vajeena. */}
+          <option value={EVENT_PLACE}>X — tapahtuma</option>
         </select>
         <button onClick={() => onSave(aika, store)} title="Tallenna"
           style={{ fontSize: 10, padding: '2px 5px', border: 'none', borderRadius: 3, background: '#185FA5', color: 'white', cursor: 'pointer' }}>✓</button>

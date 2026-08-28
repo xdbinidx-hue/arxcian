@@ -29,6 +29,36 @@ export const STORE_SOLO_COLORS: Record<StoreName, string> = {
   Kivistö: '#ffff00',
 }
 
+/**
+ * Tapahtumamerkintä: myyjä on töissä, mutta ei myymälässä vaan tapahtumassa
+ * (Iisalmi, Turku, Nokia). Merkitään **käsin** luonnokseen — generaattori ei
+ * tuota tätä koskaan, koska tapahtumien miehitys ei ole sen tiedossa.
+ *
+ * Kaksi seurausta jotka ovat tarkoitettuja:
+ *  - tunnit lasketaan myyjälle normaalisti, hän on töissä
+ *  - **ei kelpaa minkään myymälän miehitykseksi**, joten `laskeVajeet` näyttää
+ *    hänen jälkeensä jääneen paikan vajeena. Juuri niin pitääkin: tyhjä solu
+ *    jonka voi ohittaa vahingossa on vaarallisempi kuin näkyvä varoitus.
+ *
+ * Arvo on kuvaava sana eikä kirjain 'x', koska se tallentuu KV:hen ja luetaan
+ * myös vanhemmilla asiakkailla. Kirjain on esitystapa, ks. `PLACE_LETTER`.
+ */
+export const EVENT_PLACE = 'Tapahtuma'
+export type ShiftPlace = StoreName | typeof EVENT_PLACE
+
+/** Tapahtumavuoron väri — neutraali harmaa, ei minkään myymälän sävy. */
+export const EVENT_COLOR = '#e5e7eb'
+
+/** Myymäläsarakkeen kirjain — **aina pienellä**, kuten taulukossa ennestään. */
+export const PLACE_LETTER: Record<ShiftPlace, string> = {
+  Malmi: 'm', Easton: 'e', Kivistö: 'k', [EVENT_PLACE]: 'x',
+}
+
+/** Onko tämä tapahtumamerkintä eikä myymälä. Kaventaa tyypin kutsujalle. */
+export function onTapahtuma(place: ShiftPlace): place is typeof EVENT_PLACE {
+  return place === EVENT_PLACE
+}
+
 export const STORE_MANAGERS: Record<StoreName, string> = {
   Malmi: 'Arbnor Rashica',
   Easton: 'Alec Fambro',
@@ -97,7 +127,8 @@ export const VLADIMIR_MAX_SHIFTS_PER_WEEK = 4
 export const MANAGER_CROSS_CAP = 2
 
 export interface Shift {
-  store: StoreName
+  /** Myymälä tai `EVENT_PLACE` kun myyjä on tapahtumassa. */
+  store: ShiftPlace
   seller: string
   start: string // HH:MM
   end: string // HH:MM

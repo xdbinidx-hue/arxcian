@@ -5,6 +5,9 @@
 // voidaan testata oikeasti eikä vain lukemalla koodia. Kaikki taulukon tila
 // tulee sisään argumenttina.
 import type { DayInfo, StoreName } from '../shiftSchedule'
+// Ajonaikainen tuonti .ts-päätteellä: testi ajetaan `node --test`illä suoraan
+// TypeScriptiä vastaan eikä Noden ESM-resolveri osaa extensiotonta muotoa.
+import { PLACE_LETTER, onTapahtuma } from '../shiftSchedule.ts'
 // ".ts"-pääte on tahallinen: tämä moduuli on yksikkötestattu ja Noden
 // ESM-resolveri vaatii päätteen (ks. tsconfigin allowImportingTsExtensions).
 import { ENSIMMAINEN_PAIVARIVI, MYYJA_SARAKKEET, viimeinenPaivarivi, sarakeIndeksi } from './tyovuoroExcel.ts'
@@ -30,10 +33,11 @@ export const MYYMALA_SOLO_VARIT: Record<StoreName, string> = {
   Malmi: 'E06666', Easton: 'F6B26B', Kivistö: 'FFFF00',
 }
 
-/** Myymäläsarakkeen kirjain — **aina pienellä**, kuten taulukossa ennestään. */
-export const MYYMALA_KIRJAIN: Record<StoreName, string> = {
-  Malmi: 'm', Easton: 'e', Kivistö: 'k',
-}
+/**
+ * Tapahtumavuoron täyttöväri taulukossa. Neutraali harmaa erottaa sen
+ * myymäläsävyistä: tapahtumassa oleva myyjä ei miehitä mitään myymälää.
+ */
+export const TAPAHTUMA_VARI = 'E5E7EB'
 
 export interface Kirjoitussuunnitelma {
   /** Ensimmäinen kirjoitettava rivi (1-pohjainen). */
@@ -111,13 +115,17 @@ export function rakennaKirjoitussuunnitelma(
       if (shift) {
         arvot[r][cVuoro] = `${muotoileAika(shift.start)}-${muotoileAika(shift.end)}`
         arvot[r][cTunnit] = String(shift.hours)
-        arvot[r][cMyymala] = MYYMALA_KIRJAIN[shift.store]
+        arvot[r][cMyymala] = PLACE_LETTER[shift.store]
         // Väritetään VAIN myymäläsarake — vuoro- ja tuntisarake jäävät
         // valkoisiksi, jolloin taulukko pysyy luettavana eikä muutu
         // väriseinäksi.
-        varit[r][cMyymala] = shift.solo
-          ? MYYMALA_SOLO_VARIT[shift.store]
-          : MYYMALA_VARIT[shift.store]
+        // Soolo on aina myymäläkohtainen (onnenpäivä), joten tapahtuma
+        // tarkistetaan ensin — muuten indeksointi osuisi tyhjään.
+        varit[r][cMyymala] = onTapahtuma(shift.store)
+          ? TAPAHTUMA_VARI
+          : shift.solo
+            ? MYYMALA_SOLO_VARIT[shift.store]
+            : MYYMALA_VARIT[shift.store]
         vuoroja++
         continue
       }

@@ -877,6 +877,17 @@ viikkorutiini- ja onnenpäivälegenda, eli vapaata tekstiä jossa esiintyy
 myymälöiden nimiä ja sana "OP" — automaattinen luku tekisi siitä valheellisia
 onnenpäiviä.
 
+**Tapahtumamerkintä `x` on neljäs myymäläarvo, ei erillinen tila.**
+`EVENT_PLACE` ([shiftSchedule.ts](src/lib/shiftSchedule.ts)) tarkoittaa että
+myyjä on töissä muttei myymälässä. Merkitään **käsin** luonnokseen —
+generaattori ei tuota sitä, koska tapahtumien miehitys ei ole sen tiedossa.
+Kaksi seurausta ovat tarkoitettuja: tunnit lasketaan myyjälle normaalisti, ja
+vuoro **ei kelpaa minkään myymälän miehitykseksi**, joten `laskeVajeet`
+näyttää hänen jälkeensä jääneen paikan vajeena. Tallennettu arvo on kuvaava
+sana eikä kirjain, koska se menee KV:hen ja vanhoille asiakkaille; `x` on
+esitystapa (`PLACE_LETTER`). Taulukossa väri on neutraali harmaa, ei minkään
+myymälän sävy.
+
 **Poissaolomerkinnät kirjoitetaan takaisin.** Kirjoitusalue on täsmälleen sama
 jossa Albinin omat merkinnät ("Nizza", "loma") ovat, joten pelkkä tyhjennys söisi
 ne eikä seuraava generointi enää löytäisi poissaoloja lainkaan.

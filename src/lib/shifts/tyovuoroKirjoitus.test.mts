@@ -2,9 +2,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   rakennaKirjoitussuunnitelma, muotoileAika, EKA_SARAKE, VIKA_SARAKE,
-  MYYMALA_VARIT, MYYMALA_SOLO_VARIT,
+  MYYMALA_VARIT, MYYMALA_SOLO_VARIT, TAPAHTUMA_VARI,
 } from './tyovuoroKirjoitus.ts'
 import { MYYJA_SARAKKEET, TAPAHTUMAT_SARAKE, TOIVEET_SARAKE, sarakeIndeksi } from './tyovuoroExcel.ts'
+import { EVENT_PLACE } from '../shiftSchedule.ts'
 import type { DayInfo } from '../shiftSchedule.ts'
 
 function paiva(date: string, muut: Partial<DayInfo> = {}): DayInfo {
@@ -68,6 +69,34 @@ test('soolovuoro saa kirkkaan värin', () => {
     }),
   ], 2026, 9)
   assert.equal(s.varit[1][joona.myymala - EKA_SARAKE], MYYMALA_SOLO_VARIT.Kivistö)
+})
+
+test('tapahtumavuoro kirjoitetaan x:nä eikä myymälävärillä', () => {
+  // Tapahtumassa oleva myyjä on töissä muttei miehitä myymälää. Merkintä on
+  // käsin tehty; generaattori ei tuota sitä. Väri on neutraali harmaa, jotta
+  // se ei näytä miltään myymälältä taulukossa.
+  const lauri = MYYJA_SARAKKEET.find(s => s.seller === 'Lauri Ukkonen')!
+  const s = rakennaKirjoitussuunnitelma([
+    paiva('2026-09-04', {
+      shifts: [{ store: EVENT_PLACE, seller: 'Lauri Ukkonen', start: '10:00', end: '18:00', hours: 8, label: 'käsin' }],
+    }),
+  ], 2026, 9)
+  assert.equal(s.arvot[3][lauri.myymala - EKA_SARAKE], 'x')
+  assert.equal(s.varit[3][lauri.myymala - EKA_SARAKE], TAPAHTUMA_VARI)
+  assert.equal(s.arvot[3][lauri.tunnit - EKA_SARAKE], '8')
+})
+
+test('tapahtumavuoro ei ole soolo vaikka päivässä olisi onnenpäivä', () => {
+  // `solo` on onnenpäivän myymäläkohtainen merkintä. Ilman tapahtuman
+  // tarkistusta ensin väri-indeksointi osuisi tyhjään.
+  const lauri = MYYJA_SARAKKEET.find(s => s.seller === 'Lauri Ukkonen')!
+  const s = rakennaKirjoitussuunnitelma([
+    paiva('2026-09-09', {
+      soloStores: ['Easton', 'Kivistö'],
+      shifts: [{ store: EVENT_PLACE, seller: 'Lauri Ukkonen', start: '10:00', end: '18:00', hours: 8, label: 'käsin', solo: true }],
+    }),
+  ], 2026, 9)
+  assert.equal(s.varit[8][lauri.myymala - EKA_SARAKE], TAPAHTUMA_VARI)
 })
 
 test('poissaolomerkintä kirjoitetaan takaisin eikä katoa', () => {
