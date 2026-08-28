@@ -68,20 +68,27 @@ function ShiftCells({
   seller: string; day: DayInfo; muokattava: boolean
   onEdit: (date: string, seller: string) => void
 }) {
-  if (day.closed) {
+  const absence = day.absences[seller]
+  const shift = day.shifts.find(s => s.seller === seller)
+  const klikki = muokattava ? () => onEdit(day.date, seller) : undefined
+  const cursor = muokattava ? 'pointer' : 'default'
+
+  // Suljettu päivä (sunnuntai) on tyhjä muttei lukittu: tapahtuma tai
+  // erikoisaukiolo voi vaatia vuoron, ja sen pitää olla merkittävissä käsin.
+  // Generaattori ei koskaan sijoita sunnuntaille mitään, joten merkintä on
+  // aina tietoinen. Rivi pysyy punasävyisenä, jotta poikkeus erottuu
+  // normaalipäivästä — ja jos vuoro on merkitty, se näytetään kuten muutkin.
+  if (day.closed && !shift) {
     return (
       <>
-        <td style={{ ...td, background: '#fef2f2', color: '#e5b4b4' }}>—</td>
+        <td onClick={klikki}
+          title={muokattava ? 'Suljettu — klikkaa jos vuoro silti tarvitaan' : undefined}
+          style={{ ...td, background: '#fef2f2', color: '#e5b4b4', cursor }}>—</td>
         <td style={{ ...td, background: '#fef2f2' }}></td>
         <td style={{ ...lastTd, background: '#fef2f2' }}></td>
       </>
     )
   }
-
-  const absence = day.absences[seller]
-  const shift = day.shifts.find(s => s.seller === seller)
-  const klikki = muokattava ? () => onEdit(day.date, seller) : undefined
-  const cursor = muokattava ? 'pointer' : 'default'
 
   // Poissaolo näytetään vaikka vuoro olisi jostain syystä olemassa —
   // ristiriita on silloin näytettävä, ei piilotettava.
@@ -414,7 +421,7 @@ export default function TyovuorotPage() {
                               onCancel={() => setMuokkaus(null)} />
                           ) : (
                             <ShiftCells key={seller} seller={seller} day={day}
-                              muokattava={tila === 'draft' && !day.closed}
+                              muokattava={tila === 'draft'}
                               onEdit={(date, s) => setMuokkaus({ date, seller: s })} />
                           )
                         ))}

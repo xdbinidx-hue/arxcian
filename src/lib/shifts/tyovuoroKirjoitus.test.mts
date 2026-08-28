@@ -126,6 +126,23 @@ test('suunnitelman muoto vastaa aluetta', () => {
   assert.equal(s.varit[0].length, s.arvot[0].length)
 })
 
+test('kasin merkitty sunnuntaivuoro kirjoitetaan Driveen', () => {
+  // Generaattori ei sijoita sunnuntaille mitaan, mutta tapahtuma tai
+  // erikoisaukiolo voi vaatia vuoron ja sen saa merkita kasin. Kirjoitus ei
+  // saa suodattaa sita pois `closed`-lipun perusteella — merkinta joka ei
+  // paady taulukkoon olisi juuri se hiljainen no-op jota vastaan varotaan.
+  const hamza = MYYJA_SARAKKEET.find(s => s.seller === 'Hamza Hanif')!
+  const s = rakennaKirjoitussuunnitelma([
+    paiva('2026-09-06', {
+      weekday: 0, closed: true,
+      shifts: [{ store: 'Malmi', seller: 'Hamza Hanif', start: '12:00', end: '16:00', hours: 4, label: 'käsin' }],
+    }),
+  ], 2026, 9)
+  assert.equal(s.arvot[5][hamza.vuoro - EKA_SARAKE], '12-16')
+  assert.equal(s.arvot[5][hamza.myymala - EKA_SARAKE], 'm')
+  assert.equal(s.vuoroja, 1)
+})
+
 test('sunnuntai ei saa vuoroja mutta rivi on silti olemassa', () => {
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-06', { weekday: 0, closed: true }),

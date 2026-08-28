@@ -28,6 +28,7 @@ import {
   generateMonth, STORE_MANAGERS, FULL_TIME_SELLERS, MANAGER_NAMES,
   VLADIMIR, ANTTI, RAMIN, ALBIN, ANTTI_MAX_SHIFTS_PER_WEEK,
   RAMIN_MAX_SHIFTS_PER_WEEK, VLADIMIR_MAX_SHIFTS_PER_WEEK, sopiiVuoro,
+  laskeVajeet, laskeTunnit,
   type DayInfo, type KuukaudenSyote, type PaivanSyote, type StoreName,
 } from './shiftSchedule.ts'
 
@@ -311,6 +312,18 @@ test('päälliköiden tunnit ovat kokoaikaisten yläpuolella', () => {
     Math.min(...paallikot) > Math.max(...kokoaikaiset),
     `pienin päällikkö ${Math.min(...paallikot)} h ei ylitä suurinta kokoaikaista ${Math.max(...kokoaikaiset)} h`,
   )
+})
+
+test('sunnuntaivuoro lasketaan tunteihin muttei tuota vajetta', () => {
+  // Sunnuntai on suljettu, joten silla ei ole miehitystarvetta — kasin
+  // merkitty vuoro ei siis saa nayttaa vajetta muissa myymaloissa. Tunnit
+  // sen sijaan kuuluvat myyjalle: han oli toissa.
+  const su = tulos.days.find(d => d.weekday === 0)!
+  const muokattu = tulos.days.map(d => d.date === su.date
+    ? { ...d, shifts: [{ store: 'Malmi' as const, seller: ALBIN, start: '12:00', end: '16:00', hours: 4, label: 'käsin' }] }
+    : d)
+  assert.deepEqual(laskeVajeet(muokattu), tulos.vajeet, 'sunnuntai ei saa lisata vajeita')
+  assert.equal(laskeTunnit(muokattu).tunnit[ALBIN], tulos.tunnit[ALBIN] + 4)
 })
 
 test('sunnuntait ovat suljettuja eikä kukaan ole töissä', () => {
