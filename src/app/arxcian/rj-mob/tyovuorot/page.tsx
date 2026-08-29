@@ -5,6 +5,10 @@ import {
   EVENT_PLACE, EVENT_COLOR, PLACE_LETTER, onTapahtuma,
   ROSTER_COLUMNS, MANAGER_NAMES, hoursBetween, laskeVajeet, laskeTunnit,
 } from '@/lib/shiftSchedule'
+// Sama poissaolosääntö kuin Drive-lukijalla. Kirjoitus- ja lukupää eivät saa
+// erota: solu jonka arxcian tallentaa poissaoloksi on luettava takaisin
+// poissaolona seuraavassa generoinnissa.
+import { onPoissaolo } from '@/lib/shifts/tyovuoroExcel'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 const WEEKDAY_SHORT = ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la']
@@ -191,13 +195,46 @@ export default function TyovuorotPage() {
     }
   }
 
+  /**
+   * Solun tallennus. Aikakenttään kelpaa **joko kellonaikaväli tai poissaolo**
+   * ("vapaa", "loma", "saikku") — ne ovat saman solun kaksi mahdollista
+   * sisältöä sekä taulukossa että täällä, joten uusi arvo korvaa aina
+   * molemmat. Tyhjä kenttä tyhjentää solun.
+   *
+   * Kumpi on kyseessä, ratkaistaan `onPoissaolo`lla eli **täsmälleen samalla
+   * säännöllä jolla Drive-lukija lukee solun takaisin**. Jos päät erkanisivat,
+   * tänne kirjoitettu "loma" luettaisiin seuraavassa generoinnissa joksikin
+   * muuksi ja myyjä saisi vuoron poissaolostaan huolimatta.
+   */
   const muokkaaSolu = (date: string, seller: string, aika: string, store: ShiftPlace | '') => {
+    const teksti = aika.trim()
+    const virheet: string[] = []
+
     const uudet = draft.map(day => {
       if (day.date !== date) return day
       const muut = day.shifts.filter(s => s.seller !== seller)
-      if (!aika.trim() || !store) return { ...day, shifts: muut }
-      const parsittu = parsiAika(aika)
-      if (!parsittu) return day
+      const muutPoissa = Object.fromEntries(
+        Object.entries(day.absences).filter(([nimi]) => nimi !== seller))
+
+      if (!teksti) return { ...day, shifts: muut, absences: muutPoissa }
+
+      if (onPoissaolo(teksti)) {
+        return { ...day, shifts: muut, absences: { ...muutPoissa, [seller]: teksti } }
+      }
+
+      const parsittu = parsiAika(teksti)
+      if (!parsittu) {
+        // Esim. pelkkä "5" tai "10-": ei kellonaikaväli eikä poissaolo, koska
+        // kirjaimia ei ole. Hiljainen ohitus jättäisi käyttäjän luulemaan että
+        // merkintä meni perille.
+        virheet.push(`"${teksti}" ei kelpaa: kirjoita kellonaikaväli (10-16) tai poissaolo (vapaa, loma, saikku).`)
+        return day
+      }
+      if (!store) {
+        virheet.push('Valitse myymälä (M/E/K) tai X, tai tyhjennä kenttä poistaaksesi vuoron.')
+        return day
+      }
+
       const vanha = day.shifts.find(s => s.seller === seller)
       const shift: Shift = {
         store, seller, start: parsittu.start, end: parsittu.end,
@@ -207,8 +244,11 @@ export default function TyovuorotPage() {
         // voi olla soolo, ja `soloStores` sisältää vain myymälöitä.
         ...(!onTapahtuma(store) && day.soloStores.includes(store) ? { solo: true } : {}),
       }
-      return { ...day, shifts: [...muut, shift] }
+      return { ...day, shifts: [...muut, shift], absences: muutPoissa }
     })
+
+    if (virheet.length > 0) { setError(virheet[0]); return }
+    setError('')
     tallennaLuonnos(uudet)
     setMuokkaus(null)
   }
@@ -454,7 +494,11 @@ function SoluMuokkain({
   onCancel: () => void
 }) {
   const nykyinen = day.shifts.find(s => s.seller === seller)
-  const [aika, setAika] = useState(nykyinen ? `${fmtTime(nykyinen.start)}-${fmtTime(nykyinen.end)}` : '')
+  // Vuoro ja poissaolo ovat saman solun kaksi sisältöä, joten kenttään
+  // esitäytetään kumpi tahansa niistä joka solussa on.
+  const nykyinenPoissa = day.absences[seller]
+  const [aika, setAika] = useState(
+    nykyinen ? `${fmtTime(nykyinen.start)}-${fmtTime(nykyinen.end)}` : (nykyinenPoissa ?? ''))
   const [store, setStore] = useState<ShiftPlace | ''>(nykyinen?.store ?? '')
 
   return (
@@ -465,8 +509,9 @@ function SoluMuokkain({
             if (e.key === 'Enter') onSave(aika, store)
             if (e.key === 'Escape') onCancel()
           }}
-          placeholder="10-16"
-          style={{ width: 52, fontSize: 10, padding: '2px 3px', border: '0.5px solid #bbb', borderRadius: 3 }} />
+          placeholder="10-16 / vapaa"
+          title="Kellonaikaväli (10-16) tai poissaolo (vapaa, loma, saikku). Tyhjä poistaa merkinnän."
+          style={{ width: 74, fontSize: 10, padding: '2px 3px', border: '0.5px solid #bbb', borderRadius: 3 }} />
         <select value={store} onChange={e => setStore(e.target.value as ShiftPlace | '')}
           style={{ fontSize: 10, padding: '2px', border: '0.5px solid #bbb', borderRadius: 3 }}>
           <option value="">—</option>

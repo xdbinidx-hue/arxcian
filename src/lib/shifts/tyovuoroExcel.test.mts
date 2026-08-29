@@ -62,9 +62,13 @@ test('pelkkä myymälän nimi ilman OP:ta tai tapahtumaa ei riitä', () => {
 })
 
 test('poissaolo erottuu kellonajasta', () => {
+  // Nämä sanat lukevat työvuorosivun kentän ohjetekstissä, ja sama funktio
+  // ratkaisee siellä onko syöte vuoro vai poissaolo. Jos jokin niistä lakkaa
+  // kelpaamasta, käyttöliittymä lupaa jotain jota lukija ei ymmärrä.
   assert.equal(onPoissaolo('Nizza'), true)
   assert.equal(onPoissaolo('loma'), true)
   assert.equal(onPoissaolo('vapaa'), true)
+  assert.equal(onPoissaolo('saikku'), true)
   assert.equal(onPoissaolo('10-16'), false)
   assert.equal(onPoissaolo('10.00-16.00'), false)
   assert.equal(onPoissaolo('10:00 – 19:00'), false)
