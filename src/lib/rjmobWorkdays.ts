@@ -83,3 +83,66 @@ export function tyopaivaTilanne(now: Date = new Date()): TyopaivaTilanne {
     kulunutPct: tyopaiviaYhteensa > 0 ? (tyopaiviaKulunut / tyopaiviaYhteensa) * 100 : 0,
   }
 }
+
+/**
+ * Ennusteen työpäiväikkuna: montako työpäivää on **päättynyt** ja montako
+ * kuukaudessa on kaikkiaan.
+ *
+ * **Kuluvaa päivää ei lasketa päättyneeksi.** Se on kesken, ja Winpos-tuonti
+ * ajetaan vasta klo 8/12/16/20 — jos tämä päivä laskettaisiin täytenä
+ * työpäivänä, ennuste sukeltaisi joka aamu ja nousisi iltaa kohti. Elokuussa
+ * 2026 päättyneitä on 28. päivänä 23, ei 24.
+ *
+ * `tyopaivaTilanne`n `tyopaiviaKulunut` on eri luku tarkoituksella: se on
+ * "kuukaudesta kulunut" -infoa varten ja laskee kuluvan päivän mukaan.
+ * Ennuste ei saa käyttää sitä.
+ *
+ * Kuukausi valitaan kalenterista eikä oleteta kuluvaksi: sivun
+ * tiedostovalitsimesta voi valita menneen kuukauden, ja silloin jokainen
+ * työpäivä on päättynyt eikä ennuste ole ennuste vaan toteuma. Tuleva
+ * kuukausi on päinvastainen: nolla päättynyttä, ei ennustetta.
+ */
+export type TyopaivaIkkuna = {
+  paattyneet: number
+  kaikki: number
+  /** Onko kuukausi vielä kesken — tulevaa kuukautta ei projisoida lainkaan. */
+  kesken: boolean
+}
+
+export function tyopaivaIkkuna(vuosi: number, kuukausi: number, now: Date = new Date()): TyopaivaIkkuna {
+  const kaikki = laskeTyopaivat(vuosi, kuukausi)
+  const order = vuosi * 100 + kuukausi
+  const nykyinenOrder = now.getFullYear() * 100 + (now.getMonth() + 1)
+
+  if (order < nykyinenOrder) return { paattyneet: kaikki, kaikki, kesken: false }
+  if (order > nykyinenOrder) return { paattyneet: 0, kaikki, kesken: true }
+
+  // Kuluva kuukausi: eiliseen asti. Kuun 1. päivänä loppu on 0 eli
+  // `laskeTyopaivat` ei laske yhtään päivää — ennustetta ei silloin ole.
+  return { paattyneet: laskeTyopaivat(vuosi, kuukausi, now.getDate() - 1), kaikki, kesken: true }
+}
+
+/**
+ * Viimeinen päättynyt kalenteripäivä ISO-muodossa.
+ *
+ * Kuluvassa kuukaudessa eilinen; menneessä kuukaudessa sen viimeinen päivä,
+ * jolloin kaikki vuorot ovat päättyneitä; tulevassa kuukaudessa kuun alkua
+ * edeltävä päivä, jolloin yksikään ei ole.
+ *
+ * Rajaa verrataan vuorojen `date`-kenttään merkkijonona, joten se on itsekin
+ * palautettava ISO-muodossa.
+ */
+export function viimeinenPaattynytPaiva(order: number, now: Date): string {
+  const vuosi = Math.floor(order / 100)
+  const kuukausi = order % 100
+  const nykyinenOrder = now.getFullYear() * 100 + (now.getMonth() + 1)
+
+  // `Date`in kuukausi on 0-pohjainen, joten `new Date(v, kk, 0)` on kuukauden
+  // kk viimeinen päivä ja `new Date(v, kk - 1, 0)` sitä edeltävän kuukauden.
+  const raja = order < nykyinenOrder ? new Date(vuosi, kuukausi, 0)
+    : order > nykyinenOrder ? new Date(vuosi, kuukausi - 1, 0)
+    : new Date(vuosi, kuukausi - 1, now.getDate() - 1)
+
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${raja.getFullYear()}-${p(raja.getMonth() + 1)}-${p(raja.getDate())}`
+}

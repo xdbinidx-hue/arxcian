@@ -533,3 +533,71 @@ export function fmt(n: number, decimals = 0): string {
     maximumFractionDigits: decimals,
   })
 }
+
+// ===================== Run rate: ennuste ja % tavoitteesta =====================
+//
+// Vanha run rate oli `toteuma / kuukauden tavoite`, joka kertoo vain kuinka
+// iso osa tavoitteesta on jo tehty — ei sitä ehditäänkö maaliin. Uusi
+// (Albinin päätös 30.8.2026):
+//
+//   ennuste        = toteuma / päättyneet työpäivät × kuukauden kaikki työpäivät
+//   % tavoitteesta = ennuste / tavoite
+//
+// Työpäivien määritelmä on tason oma: myymälällä aukiolopäivät
+// ([rjmobWorkdays.ts](rjmobWorkdays.ts)), myyjällä hänen omat vuoronsa
+// työvuorolistasta. Molemmissa raja on **eilisessä** — kuluva päivä on kesken.
+
+/**
+ * Kuukauden loppuun projisoitu luku, tai `null` kun ennustetta ei voi tehdä.
+ *
+ * Nolla päättynyttä työpäivää on `null` eikä nolla: kuun 1. päivänä — tai kun
+ * myyjä ei ole vielä tehnyt yhtään vuoroa — ennustetta ei ole olemassa, ja
+ * nolla näyttäisi mitatulta tulokselta ja värittyisi punaiseksi.
+ */
+export function laskeEnnuste(toteuma: number, paattyneet: number, kaikki: number): number | null {
+  if (paattyneet <= 0 || kaikki <= 0) return null
+  return (toteuma / paattyneet) * kaikki
+}
+
+/**
+ * Ennusteen osuus tavoitteesta prosentteina, tai `null` kun jompikumpi
+ * puuttuu. Tavoite 0 on sama kuin puuttuva tavoite: nollalla jakaminen
+ * antaisi äärettömän, ja "0 kpl tavoite" ei ole tavoite vaan tyhjä solu.
+ */
+export function pctTavoitteesta(ennuste: number | null, tavoite: number | null): number | null {
+  if (ennuste === null || tavoite === null || tavoite <= 0) return null
+  return (ennuste / tavoite) * 100
+}
+
+/**
+ * Run raten väriportaikko. **Ei sama kuin tehon portaikko** (`tehoTaso`), eikä
+ * enää sidottu "kuukaudesta kulunut %" -vertailuun: ennuste huomioi ajan
+ * kulumisen jo itse, joten raja on kiinteä osuus tavoitteesta.
+ */
+export const RUNRATE_HYVA = 100
+export const RUNRATE_RAJALLA = 90
+
+export function runRateTaso(pct: number | null): 'hyva' | 'rajalla' | 'heikko' | 'tuntematon' {
+  if (pct === null) return 'tuntematon'
+  if (pct >= RUNRATE_HYVA) return 'hyva'
+  if (pct >= RUNRATE_RAJALLA) return 'rajalla'
+  return 'heikko'
+}
+
+/** Yhden mittarin run rate -rivi: tavoite, toteuma, ennuste, % tavoitteesta. */
+export type RunRateMittari = {
+  tavoite: number | null
+  toteuma: number
+  ennuste: number | null
+  pct: number | null
+}
+
+export function runRateMittari(
+  toteuma: number,
+  tavoite: number | null,
+  paattyneet: number,
+  kaikki: number,
+): RunRateMittari {
+  const ennuste = laskeEnnuste(toteuma, paattyneet, kaikki)
+  return { tavoite, toteuma, ennuste, pct: pctTavoitteesta(ennuste, tavoite) }
+}

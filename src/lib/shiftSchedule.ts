@@ -379,6 +379,36 @@ export function laskeTunnit(days: DayInfo[]): { tunnit: Record<string, number>; 
   return { tunnit, vuorot }
 }
 
+/**
+ * Myyjä → vuorot **päättyneisiin päiviin** asti ja koko kuukaudessa.
+ *
+ * Run rate -ennuste tarvitsee myyjätasolla saman kahden luvun parin kuin
+ * myymälätasolla saa työpäivistä: montako vuoroa on takana ja montako
+ * kuukaudessa on kaikkiaan. Raja on `viimeinenPaattynyt` eli **eilinen** —
+ * kuluva päivä on kesken eikä sitä lasketa täytenä vuorona.
+ *
+ * Päivä vertaillaan merkkijonona: ISO-muotoiset päivämäärät ovat
+ * merkkijonoina samassa järjestyksessä kuin ajallisesti, joten `Date`-oliota
+ * ja vyöhykkeitä ei tarvita.
+ */
+export function laskeVuoroIkkuna(
+  days: DayInfo[],
+  viimeinenPaattynyt: string,
+): Record<string, { paattyneet: number; kaikki: number }> {
+  const ikkuna: Record<string, { paattyneet: number; kaikki: number }> = {}
+  for (const day of days) {
+    const paattynyt = day.date <= viimeinenPaattynyt
+    for (const s of day.shifts) {
+      const prev = ikkuna[s.seller] ?? { paattyneet: 0, kaikki: 0 }
+      ikkuna[s.seller] = {
+        paattyneet: prev.paattyneet + (paattynyt ? 1 : 0),
+        kaikki: prev.kaikki + 1,
+      }
+    }
+  }
+  return ikkuna
+}
+
 function dateStr(vuosi: number, kuukausi: number, paiva: number): string {
   return `${vuosi}-${String(kuukausi).padStart(2, '0')}-${String(paiva).padStart(2, '0')}`
 }
