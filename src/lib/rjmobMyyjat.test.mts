@@ -179,7 +179,7 @@ test('nimikorjaustaulun ja myyjat.md:n ero raportoidaan molempiin suuntiin', () 
     { alias: 'Joni V', nimi: 'Joni Viljamaa' },
     { alias: 'Kasperi K.', nimi: 'Kasperi Kemppainen' },
     { alias: 'Jami', nimi: 'Jami Tonteri' },
-  ])
+  ], 202609)
   assert.ok(varoitukset.some(v => v.includes('"Jami"') && v.includes('puuttuu myyjat.md')))
   assert.ok(varoitukset.some(v => v.includes('"Steven"') && v.includes('puuttuu Excelin')))
   assert.equal(varoitukset.some(v => v.includes('"Joni V"') && v.includes('puuttuu myyjat.md')), false)
@@ -187,6 +187,40 @@ test('nimikorjaustaulun ja myyjat.md:n ero raportoidaan molempiin suuntiin', () 
 
 test('ristiriitainen kohde nimetään, ei korjata', () => {
   const t = parseMyyjat(TEKSTI)
-  const varoitukset = vertaaNimikorjauksiin(t, [{ alias: 'Leo', nimi: 'Leo Virtanen' }])
+  const varoitukset = vertaaNimikorjauksiin(t, [{ alias: 'Leo', nimi: 'Leo Virtanen' }], 202609)
   assert.ok(varoitukset.some(v => v.includes('Leo Virtanen') && v.includes('Leo Rossi')))
+})
+
+test('itseensä osoittava korjaus ei ole alias eikä vaadi tunnusta', () => {
+  // "Albin Rashica" -> "Albin Rashica" on varmistus siltä varalta että nimi
+  // tulee jo valmiiksi oikein, ei nimikorjaus. Ilman tätä omistajat tuottivat
+  // neljä varoitusta joka kuukausi eikä mikään niistä ollut vika.
+  const t = parseMyyjat('* Albin | Albin Rashica | molemmat | ei tuntipalkkaa | Kyllä\n')
+  assert.deepEqual(vertaaNimikorjauksiin(t, [{ alias: 'Albin Rashica', nimi: 'Albin Rashica' }], 202609), [])
+})
+
+test('poistunut on mukana lopettamiskuukautenaan muttei sen jälkeen', () => {
+  // Basri lopetti 08/26: elokuun laskenta tarvitsee hänet, syyskuun ei.
+  const t = parseMyyjat(TEKSTI)
+  const excel = [{ alias: 'Steven', nimi: 'Steven Sainio' }]
+  const elokuu = vertaaNimikorjauksiin(t, excel, 202608)
+  const syyskuu = vertaaNimikorjauksiin(t, excel, 202609)
+  assert.ok(elokuu.some(v => v.includes('Basri')))
+  assert.equal(syyskuu.some(v => v.includes('Basri')), false)
+  // Kauan sitten lopettanut ei valita kummassakaan.
+  assert.equal(elokuu.some(v => v.includes('Kasper Hiltunen')), false)
+})
+
+test('lopettaneen rivi Excelissä ei ole vika', () => {
+  // Korjaustaulusta ei ole syytä poistaa lopettanutta, ja siitä valittaminen
+  // joka kuukausi opettaisi ohittamaan koko varoituslistan.
+  const t = parseMyyjat(TEKSTI)
+  const varoitukset = vertaaNimikorjauksiin(t, [{ alias: 'Basri', nimi: 'Basri Salihi' }], 202609)
+  assert.equal(varoitukset.some(v => v.includes('Basri Salihi')), false)
+})
+
+test('Excelissä oleva tuntematon nimi on yhä vika', () => {
+  const t = parseMyyjat(TEKSTI)
+  const varoitukset = vertaaNimikorjauksiin(t, [{ alias: 'Uusi', nimi: 'Uusi Myyja' }], 202609)
+  assert.ok(varoitukset.some(v => v.includes('Uusi Myyja') || v.includes('"Uusi"')))
 })

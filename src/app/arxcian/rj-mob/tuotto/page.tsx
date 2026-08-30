@@ -5,6 +5,8 @@ import {
   ansaintakuukausi, bonusmalliVoimassa, laskeKuukaudenBonukset, toteumatMyymalataulukosta,
 } from '@/lib/rjmobBonus'
 import { tavoitteetKuukaudelle } from '@/lib/rjmobBonusTavoitteet'
+import { jaaPalkkakulut } from '@/lib/rjmobPalkkakulut'
+import type { Myymala } from '@/lib/rjmobBonus'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 
 interface DashData {
@@ -17,6 +19,7 @@ interface DashData {
   }
   standiInfo: { nimi: string; liittKpl: number; liittEur: number }[]
   stores: Record<string, { liittKpl: number; liittEur: number; fsecKpl: number; fsecEur: number; kassa: number; kassaRjmob: number; tunnit: number }>
+  storeHours?: Record<string, Record<string, number>>
 }
 
 interface DriveFile {
@@ -89,6 +92,8 @@ type BonusKulu = {
   ansaintaOrder: number
   maksettava: number
   kulu: number
+  /** Maksettava myymälöittäin — tuottoseurannan myymäläkohtainen kulurivi. */
+  myymaloittain: Partial<Record<Myymala, number>>
   tila: 'laskettu' | 'lahde-puuttuu' | 'tavoitteet-puuttuu'
 }
 
@@ -196,9 +201,18 @@ export default function TuottoPage() {
     const valittu = files.find(f => f.id === selectedFile)
     if (!valittu) return
     let peruttu = false
-    fetch(`/api/myyjat?kuukausi=${parsePrefix(valittu.name)}`)
+    fetch(`/api/myyjat?kuukausi=${parsePrefix(valittu.name)}&fileId=${valittu.id}`)
       .then(r => r.json())
-      .then(d => { if (!peruttu && Array.isArray(d.varoitukset)) setPalkkaVaroitukset(d.varoitukset) })
+      .then(d => {
+        if (peruttu) return
+        // Palkka- ja nimivaroitukset samaan listaan näytettäväksi, mutta ne
+        // tulevat eri vertailuista: toinen kertoo väärästä palkasta, toinen
+        // siitä että myyjä katoaa raportista kokonaan.
+        setPalkkaVaroitukset([
+          ...(Array.isArray(d.varoitukset) ? d.varoitukset : []),
+          ...(Array.isArray(d.nimivaroitukset) ? d.nimivaroitukset : []),
+        ])
+      })
       .catch(() => {})
     return () => { peruttu = true }
   }, [selectedFile, files])
@@ -222,7 +236,7 @@ export default function TuottoPage() {
 
     const lahde = files.find(f => parsePrefix(f.name) === ansainta)
     if (!lahde) {
-      setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' })
+      setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, myymaloittain: {}, tila: 'lahde-puuttuu' })
       return
     }
 
@@ -236,10 +250,12 @@ export default function TuottoPage() {
     ]).then(([t, d]) => {
       if (peruttu) return
       const tavoitteet = t && !t.error ? t.tavoitteet : tavoitteetKuukaudelle(ansainta)
-      if (!tavoitteet) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'tavoitteet-puuttuu' }); return }
-      if (!d || d.error || !d.stores) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, tila: 'lahde-puuttuu' }); return }
+      if (!tavoitteet) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, myymaloittain: {}, tila: 'tavoitteet-puuttuu' }); return }
+      if (!d || d.error || !d.stores) { setBonusKulu({ ansaintaOrder: ansainta, maksettava: 0, kulu: 0, myymaloittain: {}, tila: 'lahde-puuttuu' }); return }
       const kk = laskeKuukaudenBonukset(ansainta, tavoitteet, toteumatMyymalataulukosta(d.stores))
-      setBonusKulu({ ansaintaOrder: ansainta, maksettava: kk.maksettavaYhteensa, kulu: kk.kuluYhteensa, tila: 'laskettu' })
+      const myymaloittain: Partial<Record<Myymala, number>> = {}
+      for (const b of kk.myymalat) myymaloittain[b.myymala] = b.maksettava
+      setBonusKulu({ ansaintaOrder: ansainta, maksettava: kk.maksettavaYhteensa, kulu: kk.kuluYhteensa, myymaloittain, tila: 'laskettu' })
     })
     return () => { peruttu = true }
   }, [selectedFile, files])
@@ -353,6 +369,27 @@ export default function TuottoPage() {
   const displayLabel = todellinenView === 'vuosi' ? `koko vuosi ${selectedYear ?? ''} (${monthsForYear.length} kk)` : (selectedMonthEntry?.kuukausi ?? '')
 
   const alerts = data ? generateAlerts(data) : []
+
+  /**
+   * Palkkakulut myymälöittäin: tuntipalkat × tunnit + provisiot
+   * (F-Secure-leikkuri huomioiden) + päällikköbonus, kaikki sivukuluineen.
+   *
+   * Jako tehdään valmiista myyjäkohtaisesta työkulusta tuntien suhteessa eikä
+   * laskemalla myymälän riveistä uudelleen — leikkuri katsoo koko kuukauden
+   * F-Secure-määrää, joten myymälä kerrallaan se osuisi väärin.
+   */
+  const palkkakulut = data ? jaaPalkkakulut(
+    data.sellers
+      .filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
+      .map(r => ({
+        nimi: r.nimi,
+        pohjapalkka: r.palkkaBrutto - r.provisioYhteensa,
+        provisiot: r.provisioYhteensa,
+        tyokulu: r.tyokulu,
+      })),
+    data.storeHours ?? {},
+    bonusKulu?.tila === 'laskettu' ? bonusKulu.myymaloittain : {},
+  ) : null
   const th = {fontSize:10,fontWeight:500,color:'#888',textAlign:'left' as const,padding:'5px 7px',borderBottom:'0.5px solid #eee',whiteSpace:'nowrap' as const}
   const thR = {...th, textAlign:'right' as const}
   const td = {padding:'6px 7px',borderBottom:'0.5px solid #f5f5f5',fontSize:12,whiteSpace:'nowrap' as const}
@@ -416,6 +453,75 @@ export default function TuottoPage() {
             {alerts.map((a,i)=><Alert key={i} type={a.type}>{a.text}</Alert>)}
             {palkkaVaroitukset.map((v,i)=><Alert key={`palkka-${i}`} type="amber">{v}</Alert>)}
           </div>
+
+          {palkkakulut && (
+            <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
+              <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee'}}>
+                <span style={{fontWeight:500,fontSize:14}}>Palkkakulut myymälöittäin</span>
+                <div style={{fontSize:11,color:'#888',marginTop:2}}>
+                  Kohdistus tehdyistä tunneista, ei myyjän aluetiedosta — myyjät kiertävät.
+                  Sivukulut ×{fmt(SIVU_KERROIN,2)} mukana. Päällikköbonus on
+                  {bonusKulu?.tila === 'laskettu'
+                    ? ` ${kuukausiNimi(bonusKulu.ansaintaOrder)}n bonus, joka maksetaan tässä kuussa.`
+                    : ' pois, koska ansaintakuukauden lukuja ei saatu.'}
+                </div>
+              </div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>
+                    <th style={th}>Myymälä</th>
+                    <th style={thR}>Tunnit</th>
+                    <th style={thR}>Pohjapalkat</th>
+                    <th style={thR}>Provisiot</th>
+                    <th style={thR}>Palkkakulu</th>
+                    <th style={thR}>Bonus</th>
+                    <th style={thR}>Yhteensä</th>
+                  </tr></thead>
+                  <tbody>
+                    {palkkakulut.myymalat.map(m => (
+                      <tr key={m.myymala}>
+                        <td style={td}>{m.myymala}</td>
+                        <td style={tdR}>{fmt(m.tunnit)} h</td>
+                        <td style={tdR}>{fmt(m.pohjapalkka)} €</td>
+                        <td style={tdR}>{fmt(m.provisiot)} €</td>
+                        <td style={tdR}>{fmt(m.palkkakulu)} €</td>
+                        <td style={{...tdR,color:m.bonusKulu>0?'#854F0B':'#bbb'}}>
+                          {m.bonusKulu > 0 ? `${fmt(m.bonusKulu)} €` : '—'}
+                        </td>
+                        <td style={{...tdR,fontWeight:500}}>{fmt(m.yhteensa)} €</td>
+                      </tr>
+                    ))}
+                    {palkkakulut.kohdistamaton.map(k => (
+                      <tr key={`kohdistamaton-${k.nimi}`}>
+                        <td style={{...td,color:'#854F0B'}}>{k.nimi} — ei tunteja myymälöillä</td>
+                        <td style={tdR}>—</td>
+                        <td style={tdR}>—</td>
+                        <td style={tdR}>—</td>
+                        <td style={tdR}>{fmt(k.tyokulu)} €</td>
+                        <td style={tdR}>—</td>
+                        <td style={{...tdR,fontWeight:500}}>{fmt(k.tyokulu)} €</td>
+                      </tr>
+                    ))}
+                    <tr style={{background:'#fafafa'}}>
+                      <td style={{...td,fontWeight:600}}>Yhteensä</td>
+                      <td style={tdR}>{fmt(palkkakulut.myymalat.reduce((s,m)=>s+m.tunnit,0))} h</td>
+                      <td style={tdR}>{fmt(palkkakulut.myymalat.reduce((s,m)=>s+m.pohjapalkka,0))} €</td>
+                      <td style={tdR}>{fmt(palkkakulut.myymalat.reduce((s,m)=>s+m.provisiot,0))} €</td>
+                      <td style={tdR}>{fmt(palkkakulut.myymalat.reduce((s,m)=>s+m.palkkakulu,0))} €</td>
+                      <td style={tdR}>{fmt(palkkakulut.myymalat.reduce((s,m)=>s+m.bonusKulu,0))} €</td>
+                      <td style={{...tdR,fontWeight:700}}>{fmt(palkkakulut.yhteensa)} €</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {(data.storeHours === undefined || Object.keys(data.storeHours).length === 0) && (
+                <div style={{padding:'10px 14px',fontSize:12,color:'#854F0B',borderTop:'0.5px solid #eee'}}>
+                  Tämän kuukauden tiedostossa ei ole myyjäkohtaisia myymälärivejä, joten
+                  palkkakulua ei voi kohdistaa myymälöille. Luvut näkyvät kohdistamattomina.
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{background:'white',border:'0.5px solid #eee',borderRadius:12,overflow:'hidden',marginBottom:12}}>
             <div style={{padding:'10px 14px',borderBottom:'0.5px solid #eee'}}>

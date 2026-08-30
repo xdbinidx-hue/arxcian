@@ -236,15 +236,49 @@ export type NimikorjausPari = { alias: string; nimi: string }
  * kahdessa nimisarakkeessa, jossa yhden pään "korjaaminen" hävittäisi
  * kassaluvut kaikilta.
  */
-export function vertaaNimikorjauksiin(t: MyyjatTiedosto, excel: NimikorjausPari[]): string[] {
+export function vertaaNimikorjauksiin(
+  t: MyyjatTiedosto,
+  excel: NimikorjausPari[],
+  /**
+   * Laskettava kuukausi. Poistunut myyjä ei kuulu sitä myöhempien kuukausien
+   * korjaustauluun, joten hänestä ei valiteta — mutta lopettamiskuukautena hän
+   * on yhä mukana. Ilman kuukautta poistuneet ohitetaan kokonaan.
+   */
+  kuukausiOrder: number | null = null,
+): string[] {
   const varoitukset: string[] = []
   const norm = (s: string) => s.trim().toLowerCase()
 
+  // Poistunut on yhä mukana lopettamiskuukautenaan: Basri lopetti 08/26, eli
+  // hän kuuluu elokuun kuluihin muttei syyskuun.
+  const mukana = (r: MyyjaRivi) => {
+    if (!r.poistunut) return true
+    if (kuukausiOrder === null || r.paattyiOrder === null) return false
+    return kuukausiOrder <= r.paattyiOrder
+  }
+
+  const rivit = t.rivit.filter(mukana)
+
+  // Excelistä myyjat.md:hen katsotaan **koko listaa, poistuneet mukaan lukien**.
+  // Lopettaneen rivi jää korjaustauluun eikä sitä ole syytä poistaa — se toimii
+  // yhä, ja siitä valittaminen joka kuukausi opettaisi ohittamaan koko
+  // varoituslistan. Toiseen suuntaan rajaus on kuukausikohtainen: **töissä
+  // olevan** myyjän puuttuminen taulusta tarkoittaa että hänen myyntinsä
+  // katoaa raportista.
   const mdTunnukset = new Map<string, string>()
   for (const r of t.rivit) if (r.tunnus) mdTunnukset.set(norm(r.tunnus), r.nimi)
   const mdNimet = new Set(t.rivit.map(r => norm(r.nimi)))
 
   for (const p of excel) {
+    // Itseensä osoittava korjaus ("Albin Rashica" -> "Albin Rashica") ei ole
+    // alias vaan varmistus siltä varalta että nimi tulee jo valmiiksi oikein.
+    // Siitä riittää että nimi on listalla — tunnuksen ei tarvitse täsmätä.
+    if (norm(p.alias) === norm(p.nimi)) {
+      if (!mdNimet.has(norm(p.nimi))) {
+        varoitukset.push(`Excelin nimikorjauksen kohde "${p.nimi}" ei ole myyjat.md:n listalla`)
+      }
+      continue
+    }
     const md = mdTunnukset.get(norm(p.alias))
     if (md === undefined) {
       varoitukset.push(`Excelin nimikorjaus "${p.alias}" → "${p.nimi}" puuttuu myyjat.md:stä`)
@@ -254,13 +288,16 @@ export function vertaaNimikorjauksiin(t: MyyjatTiedosto, excel: NimikorjausPari[
   }
 
   const excelTunnukset = new Set(excel.map(p => norm(p.alias)))
-  for (const r of t.rivit) {
-    if (r.tunnus && !excelTunnukset.has(norm(r.tunnus))) {
-      varoitukset.push(`myyjat.md:n tunnus "${r.tunnus}" (${r.nimi}) puuttuu Excelin nimikorjaustaulusta`)
-    }
+  const excelNimet = new Set(excel.map(p => norm(p.nimi)))
+  for (const r of rivit) {
+    if (!r.tunnus) continue
+    // Nimi kelpaa myös sellaisenaan: taulussa voi olla itseensä osoittava rivi.
+    if (excelTunnukset.has(norm(r.tunnus)) || excelNimet.has(norm(r.nimi))) continue
+    varoitukset.push(`myyjat.md:n tunnus "${r.tunnus}" (${r.nimi}) puuttuu Excelin nimikorjaustaulusta`)
   }
 
   for (const p of excel) {
+    if (norm(p.alias) === norm(p.nimi)) continue
     if (!mdNimet.has(norm(p.nimi))) {
       varoitukset.push(`Excelin nimikorjauksen kohde "${p.nimi}" ei ole myyjat.md:n listalla`)
     }

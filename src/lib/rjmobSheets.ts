@@ -32,6 +32,14 @@ export type DashData = {
     netto: number
     fsecFV: number
   }
+  /**
+   * Myyjäkohtaiset tunnit myymälöittäin: myymälän avain -> myyjän nimi -> tunnit.
+   *
+   * Palkkakulun kohdistus myymälälle tehdään **tehdyistä tunneista**, ei
+   * myyjän aluetiedosta: myyjät kiertävät myymälöiden välillä, ja alue kertoo
+   * vain missä päin hän pääsääntöisesti on.
+   */
+  storeHours: Record<string, Record<string, number>>
   standiInfo: { nimi: string; liittKpl: number; liittEur: number }[]
   sheetNames: string[]
   /**
@@ -198,8 +206,9 @@ async function readStores(
   sheets: ReturnType<typeof google.sheets>,
   fileId: string,
   myymalaSheet: string,
-): Promise<DashData['stores']> {
+): Promise<{ stores: DashData['stores']; storeHours: DashData['storeHours'] }> {
   const storeResults: Record<string, { liittKpl: number, liittEur: number, fsecKpl: number, fsecEur: number, kassa: number, kassaRjmob: number, tunnit: number }> = {}
+  const storeHours: DashData['storeHours'] = {}
 
   if (myymalaSheet) {
     const myymalaRes = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myymalaSheet}'!A1:BZ300` })
@@ -323,10 +332,37 @@ async function readStores(
           }
         }
       }
+
+      // Myyjäkohtaiset tunnit myymälöittäin. Oma pass eikä osa yllä olevia
+      // silmukoita: ne haarautuvat sen mukaan onko myymälällä omaa
+      // yhteenvetoriviä, mutta myyjärivit ovat molemmissa tapauksissa samat.
+      // Ständimyyjät jätetään pois täälläkin — heidän tuntinsa on vähennetty
+      // myymälän summasta, joten mukana he vääristäisivät kohdistusosuudet.
+      if (mIdxTunnit >= 0) {
+        let currentStore = ''
+        for (let i = mHeaderIdx + 1; i < myymalaRows.length; i++) {
+          const row = myymalaRows[i]
+          const kusta = row[0]?.trim() ?? ''
+          const myyjä = row[1]?.trim() ?? ''
+          if (kusta) currentStore = kusta
+          if (!currentStore || !myyjä) continue
+          if (!RJ_STORES.some(st => currentStore.toLowerCase().includes(st))) continue
+
+          const nimi = cleanUnmatchedName(myyjä)
+          if (isStandi(nimi)) continue
+
+          const tunnit = parseNum(row[mIdxTunnit])
+          if (tunnit <= 0) continue
+
+          const key = normalizeStoreName(currentStore)
+          storeHours[key] = storeHours[key] ?? {}
+          storeHours[key][nimi] = (storeHours[key][nimi] ?? 0) + tunnit
+        }
+      }
     }
   }
 
-  return storeResults
+  return { stores: storeResults, storeHours }
 }
 
 async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: string, sheetNames: string[], fileName: string) {
@@ -397,7 +433,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
   }
 
-  const storeResults = await readStores(sheets, fileId, myymalaSheet)
+  const { stores: storeResults, storeHours } = await readStores(sheets, fileId, myymalaSheet)
 
   // Kuukausi tiedostonimestä: F-Secure-leikkuri on voimassa vasta elokuusta 2026.
   const kuukausiOrder = monthOrder(fileName)
@@ -423,7 +459,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     fsecFV: totalFsecKpl * FSEC_RECURRING * 12,
   }
 
-  return ({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' as const })
+  return ({ kuukausi: fileName, sellers: results, stores: storeResults, storeHours, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' as const })
 }
 
 /**
@@ -502,12 +538,15 @@ async function parseMyymaloittainFormat(
   const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
   const kassaSheet = sheetNames.find(n => n.toLowerCase().includes('kassamyynti') || n.toLowerCase().includes('kassakate')) ?? ''
 
-  const [hoursMap, kassaMap, storeResults, myymalaRes] = await Promise.all([
+  const [hoursMap, kassaMap, storeHaku, myymalaRes] = await Promise.all([
     readHoursMap(sheets, fileId, dataSheet),
     readKassamyyntiKate(sheets, fileId, kassaSheet),
     readStores(sheets, fileId, myymalaSheet),
     sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myymalaSheet}'!A1:BZ300` }),
   ])
+
+  const storeResults = storeHaku.stores
+  const storeHours = storeHaku.storeHours
 
   const rows = (myymalaRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => normalizeMinus(String(c ?? ''))))
 
@@ -609,7 +648,7 @@ async function parseMyymaloittainFormat(
   }
 
   return {
-    kuukausi: fileName, sellers: results, stores: storeResults, totals,
+    kuukausi: fileName, sellers: results, stores: storeResults, storeHours, totals,
     standiInfo: standiRaws.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })),
     sheetNames, format: 'myymaloittain' as const,
   }
@@ -724,5 +763,7 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     fsecFV: totalFsecKpl * FSEC_RECURRING * 12,
   }
 
-  return ({ kuukausi: fileName, sellers: results, stores: storeResults, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' as const })
+  // Vanhassa muodossa myymäläkohtaisia myyjärivejä ei ole, joten
+  // palkkakulun kohdistus jää tyhjäksi eikä sitä arvata aluetiedosta.
+  return ({ kuukausi: fileName, sellers: results, stores: storeResults, storeHours: {}, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' as const })
 }
