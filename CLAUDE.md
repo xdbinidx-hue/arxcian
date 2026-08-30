@@ -840,6 +840,129 @@ osuu. Korostus tulee taustasta, ei tekstin sävystä.
 
 **Maapallolle ei lisätä uutispisteitä.** RSS-artikkeleissa ei ole sijaintikenttää, joten punaiset tapahtumamerkit vaatisivat pääteltyä sijaintia. Sama päätös kuin Intel/Network/Travel-kerrosten kohdalla.
 
+## Run rate on ennuste, ei osuus tavoitteesta
+
+Päätös 30.8.2026. Vanha run rate oli `toteuma / kuukauden tavoite`, joka
+kertoo vain kuinka iso osa tavoitteesta on jo tehty — ei sitä ehditäänkö
+maaliin. Uusi:
+
+```
+ennuste        = toteuma / päättyneet työpäivät × kuukauden kaikki työpäivät
+% tavoitteesta = ennuste / tavoite
+```
+
+Laskenta on [rjmob.ts](src/lib/rjmob.ts):n `runRateMittari`ssa `laskeMyyja`n
+vieressä, työpäiväikkuna
+[rjmobWorkdays.ts](src/lib/rjmobWorkdays.ts):n `tyopaivaIkkuna`ssa ja
+esitys jaetussa
+[RunRateTaulukko](src/components/rjmob/RunRateTaulukko.tsx):ssa — sama
+komponentti Myyntiseurannassa ja Tavoitteet ja Run Rate -sivulla.
+`rjmobRunRate.test.mts` vartioi toimeksiannon tarkistuslaskelmaa (elokuu 2026,
+myymälätaso) rivi riviltä.
+
+**Kuluvaa päivää ei lasketa päättyneeksi.** Se on kesken, ja Winpos-tuonti
+ajetaan klo 8/12/16/20 — täytenä työpäivänä laskettuna ennuste sukeltaisi joka
+aamu ja nousisi iltaa kohti. Elokuussa 2026 päättyneitä on 28. päivänä **23,
+ei 24**. `tyopaivaTilanne`n `tyopaiviaKulunut` on eri luku ja jää infopalkkiin
+("kulunut % kuukaudesta"); **ennuste ei saa käyttää sitä.**
+
+**Nolla päättynyttä työpäivää on `–`, ei nolla.** Kuun 1. päivänä — tai kun
+myyjä ei ole tehnyt yhtään vuoroa — ennustetta ei ole olemassa, ja nolla
+näyttäisi mitatulta tulokselta ja värittyisi punaiseksi. Sama koskee puuttuvaa
+tavoitetta.
+
+**Väriraja on 100 / 90, eikä se ole enää sidottu kuukauden kulumiseen.**
+Ennuste huomioi ajan kulumisen jo itse, joten vanha "kuukaudesta kulunut %"
+-vertailu (80/60/50) poistui. Portaikko on `runRateTaso`ssa jaettuna, jotta
+sama prosentti näyttää samalta hubissa ja molemmilla sivuilla. **Ei sama kuin
+`tehoTaso`** — teho on €/h, tämä on osuus tavoitteesta.
+
+**Työpäivä tarkoittaa eri asiaa eri tasolla:**
+
+| Taso | Päättyneet | Kaikki |
+|---|---|---|
+| myymälä | aukiolopäivät kuun alusta eiliseen (ma–la, ei pyhiä) | kuun kaikki aukiolopäivät |
+| myyjä | omat vuorot eiliseen asti | omat vuorot koko kuussa |
+
+Myyjän luvut tulevat työvuorolistasta (`laskeVuoroIkkuna`,
+[shiftSchedule.ts](src/lib/shiftSchedule.ts)), joka kattaa **vain Malmin,
+Eastonin ja Kivistön**. Holman ja Sykkeen myyjille ei siis ole vuoroikkunaa
+eikä ennustetta, ja se näkyy viivana — ei nollana. Yhteensä-rivi käyttää
+myyjätaulukossakin myymälätason työpäiviä, koska vuorojen summa olisi
+henkilötyövuoroja eli eri suuretta kuin myymälärivin sama luku.
+
+**Tapahtumamyynti lasketaan mukaan sellaisenaan** (Albinin päätös 30.8.2026).
+Seuraus on tiedossa eikä bugi: Kivistön elokuun tavoite 760 kpl sisältää
+tapahtuman, joten sen % tavoitteesta on 17 %.
+
+### Tavoitteet luetaan Drivestä, ei myyntiseurantataulukosta
+
+Lähde on kansio **`ARXCIAN / RJ-Mob / Tavoitteet (kopio)`**
+(`1CPRQ0x_iObkzRbhAHRKxU70bYCnsJbil`), ei enää myyntiseurantataulukon
+`Tavoitteet`-välilehti. Lukija on
+[rjmobTavoiteDrive.ts](src/lib/rjmobTavoiteDrive.ts), jäsennys puhtaana ja
+testattuna [rjmobTavoiteTaulukko.ts](src/lib/rjmobTavoiteTaulukko.ts):ssä.
+
+**Kansiorakennetta ei saa olettaa.** Se muuttui kesken toteutuksen
+30.8.2026: aamulla `Myymälä/` ja `Myyjä/`, illalla `Elokuu 2026/` ja
+`Syyskuu 2026/`. Lukija käy siksi juuren ja **yhden** alikansiotason läpi ja
+poimii tiedoston **nimen** perusteella; kansion nimeen ei kosketa, koska se on
+ainoa asia joka on jo kertaalleen muuttunut.
+
+Kuukausitiedostoja on kaksi ja ne ovat eri muotoa — todettu, ei oletettu:
+
+| Tiedosto | Muoto | Sisältö |
+|---|---|---|
+| `Elokuu_2026_Tavoitteet.xlsx` | .xlsx-blob | kolmen aluejohtajan myymälätavoitteet |
+| `Myyjäkohtaiset Tavoitteet 8. Elokuu 2026` | natiivi Sheets | myyjätavoitteet |
+
+**.xlsx-blobia ei voi lukea `sheets.spreadsheets.values.get`illä lainkaan** —
+se ladataan `files.get({ alt: 'media' })`illä ja jäsennetään SheetJS:llä,
+kuten Winpos-raportit. Natiivi taulukko luetaan Sheets-API:lla. Lukija tukee
+molempia eikä valitse toista.
+
+**Kuukausi tunnistetaan tiedostonimestä, ei `monthOrder`illa.** Se lukee
+myyntiseurannan `N. Kuukausi VVVV` -etuliitteen, jota myymälätiedostossa ei
+ole; `kuukausiTiedostonimesta` tunnistaa kuukauden nimestä. Järjestysluku on
+sama `vuosi × 100 + kuukausi`. **Puuttuva kuukausitiedosto on varoitus, ei
+paluu edelliseen kuukauteen** — väärän kuun tavoitetta vasten laskettu
+prosentti näyttäisi oikealta eikä mikään kertoisi mistä se tuli.
+
+Myymälätaulukossa on kolme lohkoa (Magnus, Henri, Albin); luetaan **Albinin
+lohko**. Kaksi ansaa joita ei saa "yksinkertaistaa" pois:
+
+- **Tavoitesarake haetaan täsmäosumalla `"<Kuukausi>n tavoite"`.** Samassa
+  ryhmässä on myös `"Syyskuun tapahtuma"`, joka osuisi osajonovertailulla ja
+  antaisi tapahtumaosuuden koko tavoitteen paikalle (Malmi 600 eikä 900).
+- **Haku rajataan ryhmävälille** (LIITTYMÄT / F-SECURE / KASSAKATE). Sama
+  otsikko `"Elokuun tavoite"` esiintyy kolmesti, kerran kussakin ryhmässä;
+  ilman rajausta kassakate lukisi liittymäluvun. Ryhmävälin loppu johdetaan
+  **alaotsikkorivin** leveydestä, koska viimeisen ryhmän yläotsikko on
+  yhdistetyssä solussa ja ryhmärivi loppuu siihen.
+
+`#DIV/0!` ja `-` luetaan tyhjinä eikä nollina: nolla olisi tavoite jonka
+jokainen ylittää, ja rivi värittyisi vihreäksi tyhjästä.
+
+**Tavoitteita ei välimuistiteta.** Albinin vaatimus on että luvut päivittyvät
+heti kun taulukko Drivessä päivittyy, joten `/api/runrate` vastaa
+`Cache-Control: no-store`illa eikä `cachedJson`illa. Toteumat tulevat yhä
+`/api/sheets`istä ja `/api/targets`ista, jotka saavat cachettaa — tavoite on
+se joka muuttuu käsin.
+
+**Hub lukee saman lähteen** ([rjmobSummary.ts](src/lib/arxcian/rjmobSummary.ts)),
+muuten sama prosentti näyttäisi eri lukua hubissa ja Myyntiseurannassa.
+Kuukausiavaimen versio nousi `v3` → `v4`, koska sekä tavoitteen lähde että
+työpäivälaskuri muuttuivat. Hubin oma `MIN_WORKDAYS_FOR_PROJECTION` (6)
+säilyy: se on paneelin suoja alkukuun moninkertaisilta kertoimilta eikä
+laskennan sääntö.
+
+**Päällikköbonuksen lukija sivuuttaa myyjätaulukon nimen perusteella**
+([rjmobBonusTavoitteetDrive.ts](src/lib/rjmobBonusTavoitteetDrive.ts)). Se
+etsii samasta kansiosta ja myyjätiedoston nimessä on sama
+`N. Kuukausi VVVV` -osa, joten ilman rajausta bonus jäsentäisi myyjätaulukon
+myymälätavoitteiksi, ei tunnistaisi yhtään myymälää ja putoaisi
+koodikopioon.
+
 ## Työvuorolista
 
 Kuukauden kierto on: Albin täyttää tapahtumat Drive-taulukkoon → Generoi →

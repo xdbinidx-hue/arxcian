@@ -1,7 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
+import { RunRateTaulukko } from '@/components/rjmob/RunRateTaulukko'
 import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso } from '@/lib/rjmob'
+import { myymalaRivit, myyjaRivit, yhteensaRivi, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
+import type { RunRateData } from '@/lib/rjmobRunRate'
 
 interface SellerResult {
   nimi: string
@@ -41,6 +44,15 @@ interface DriveFile {
   modifiedTime?: string
 }
 
+/**
+ * Myyjän `kassa` on kassaprovisio, myymälän `kassa` valmiiksi kassakate.
+ * Run rate vertaa molempia samaan tavoitteeseen (kassakate, alv 0), joten
+ * myyjärivi kerrotaan takaisin. Sama luku kuin `KASSAKATE_JAKAJA`
+ * [rjmobSheets.ts](src/lib/rjmobSheets.ts):ssä, toiseen suuntaan — kertoimet
+ * menevät tarkoituksella eri suuntiin, ks. CLAUDE.md.
+ */
+const KASSAKATE_KERROIN = 10
+
 export default function EtelanHaratPage() {
   const [files, setFiles] = useState<DriveFile[]>([])
   const [selectedFile, setSelectedFile] = useState('')
@@ -48,6 +60,7 @@ export default function EtelanHaratPage() {
   const [stores, setStores] = useState<Record<string, StoreData>>({})
   const [kuukausi, setKuukausi] = useState('')
   const [loading, setLoading] = useState(false)
+  const [runrate, setRunrate] = useState<RunRateData | null>(null)
 
   useEffect(() => {
     fetch('/api/files')
@@ -86,6 +99,17 @@ export default function EtelanHaratPage() {
         }
         setLoading(false)
       })
+  }, [selectedFile])
+
+  // Tavoitteet ja työpäivät omasta reitistään: ne luetaan Drivestä ilman
+  // välimuistia, kun taas /api/sheets saa yhä cachettaa toteumat.
+  useEffect(() => {
+    if (!selectedFile) return
+    setRunrate(null)
+    fetch(`/api/runrate?fileId=${selectedFile}`)
+      .then(r => r.json())
+      .then(d => setRunrate(d.error ? null : d))
+      .catch(() => setRunrate(null))
   }, [selectedFile])
 
   const fmt = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2})
@@ -139,6 +163,19 @@ export default function EtelanHaratPage() {
     kassa: yhteisTeho(Object.values(stores), s => myymalanTehot(s).kassa, s => s.tunnit),
     total: yhteisTeho(Object.values(stores), s => myymalanTehot(s).total, s => s.tunnit),
   }
+
+  // --- Run rate: tavoite, toteuma, ennuste ja % tavoitteesta ---
+  //
+  // Toteumat ovat samat luvut kuin teho-taulukoissa yllä, vain eri
+  // yksikössä: myymälän `kassa` on jo kassakate, myyjän kassaprovisio.
+  const rrMyymalaTavoitteet = Object.fromEntries((runrate?.tavoitteet.myymalat ?? []).map(m => [m.storeKey, m]))
+  const rrMyyjaTavoitteet = Object.fromEntries((runrate?.tavoitteet.myyjat ?? []).map(m => [m.nimi, m]))
+  const rrMyymalaToteumat: RunRateToteuma[] = Object.entries(stores).map(([nimi, s]) => ({
+    nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa,
+  }))
+  const rrMyyjaToteumat: RunRateToteuma[] = sellers.map(s => ({
+    nimi: s.nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa * KASSAKATE_KERROIN,
+  }))
 
   const thStyle = {padding:'8px 10px', fontSize:11, fontWeight:500, color:'#888', textAlign:'right' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6'}
   const thLStyle = {...thStyle, textAlign:'left' as const}
@@ -218,6 +255,37 @@ Generoi viesti:`
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 
         {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
+
+        {!loading && runrate && (
+          <>
+            {runrate.varoitukset.length > 0 && (
+              <div style={{background:'#FEF6E7', border:'0.5px solid #F0C674', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12.5, color:'#854F0B'}}>
+                {runrate.varoitukset.map((v, i) => <div key={i}>⚠ {v}</div>)}
+              </div>
+            )}
+
+            <RunRateTaulukko
+              otsikko={`Myymälät — Run Rate ${runrate.kuukausi.replace('Myyntiseuranta ', '')}`}
+              sarakeOtsikko="Myymälä"
+              ikkuna={runrate.tyopaivat}
+              rivit={myymalaRivit(rrMyymalaToteumat, rrMyymalaTavoitteet, runrate.tyopaivat)}
+              yhteensa={yhteensaRivi(rrMyymalaToteumat, runrate.tavoitteet.yhteensa, runrate.tyopaivat)}
+            />
+
+            <RunRateTaulukko
+              otsikko="Myyjät — Run Rate"
+              sarakeOtsikko="Myyjä"
+              ikkuna={runrate.tyopaivat}
+              naytaIkkunaSarake
+              rivit={myyjaRivit(rrMyyjaToteumat, rrMyyjaTavoitteet, runrate.myyjaVuorot)}
+              yhteensa={yhteensaRivi(
+                rrMyyjaToteumat,
+                tavoiteSumma(Object.values(rrMyyjaTavoitteet)),
+                runrate.tyopaivat,
+              )}
+            />
+          </>
+        )}
 
         {!loading && sellers.length > 0 && (
           <>

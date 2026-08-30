@@ -1,7 +1,7 @@
 import { listSeurantaFiles, monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDrive'
 import { loadDashData, type DashData } from '@/lib/rjmobSheets'
-import { loadTargets, TavoitteetPuuttuu } from '@/lib/rjmobTargets'
-import { laskeTyopaivat } from '@/lib/rjmobWorkdays'
+import { haeTavoitteet } from '@/lib/rjmobTavoiteDrive'
+import { tyopaivaIkkuna } from '@/lib/rjmobWorkdays'
 import { readCached, writeCached, type Fetched } from './cache'
 import { todayISOHelsinki } from './time'
 
@@ -33,7 +33,7 @@ import { todayISOHelsinki } from './time'
  * | Avain | Sisältö |
  * |---|---|
  * | `rjmob:summary` | uusin kuukausi, TTL 6 h — kertymä kasvaa päivän mittaan |
- * | `rjmob:summary:v3:<YYYY-MM>` | valmis kuukausi, TTL vuosi — luvut eivät enää muutu |
+ * | `rjmob:summary:v4:<YYYY-MM>` | valmis kuukausi, TTL vuosi — luvut eivät enää muutu |
  * | `rjmob:summary:months` | saatavilla olevat kuukaudet, uusin ensin |
  *
  * Kuluva kuukausi pysyy tarkoituksella avaimessa `rjmob:summary`: hub lukee
@@ -126,11 +126,12 @@ export type RjMobSummaryData = {
 /**
  * Kuukauden tavoitteet yhtenä lukukolmikkona.
  *
- * Tavoitteet-välilehti on myyjäkohtainen, joten kuukauden tavoite on rivien
- * summa. Kassakatteen tavoite on **myyntiseurannan asteikolla** samoin kuin
- * `kassakateOf`: [rjmobTargets.ts](../../rjmobTargets.ts) lukee Kate-sarakkeen
- * jakamatta kymmenellä, toisin kuin rjmobSheets.ts:n myyjäluku. Ilman tätä
- * yhteensopivuutta prosentti olisi kymmenkertainen.
+ * Drive-tavoitetaulukko on **myymäläkohtainen**, joten kuukauden tavoite on
+ * viiden myymälän summa — sama rajaus kuin `kassakateOf`in ja `fsecKplOf`in
+ * myymälärajaus, eli osoittaja ja nimittäjä kattavat saman joukon.
+ * Kassakatteen tavoite on taulukossa alv 0 eli sama suure kuin
+ * myymälätaulukon iso kassakateluku; kassaprovisioasteikkoon (÷10) sitä ei
+ * saa muuntaa.
  */
 type MonthTargets = {
   liittKpl: number
@@ -139,30 +140,37 @@ type MonthTargets = {
 }
 
 /**
- * Kuukauden tavoitteet, tai null jos niitä ei ole saatavilla.
+ * Kuukauden tavoitteet Drivestä, tai null jos niitä ei ole saatavilla.
  *
- * Tavoitteet-välilehti on olemassa vasta heinäkuusta 2026, eikä sen
- * puuttuminen ole virhe — vanhemmat kuukaudet näytetään ilman tavoitetta.
- * Muutkin virheet niellään: tavoite on paneelin lisätieto, eikä sen takia saa
- * jäädä koko kuukauden yhteenvetoa kirjoittamatta.
+ * Lähde vaihtui 30.8.2026 myyntiseurantataulukon `Tavoitteet`-välilehdeltä
+ * kansioon `ARXCIAN / RJ-Mob / Tavoitteet (kopio)`, ja **hub lukee saman
+ * lähteen kuin sivut** — muuten sama prosentti näyttäisi eri lukua hubissa ja
+ * Myyntiseurannassa.
+ *
+ * Puuttuva kuukausitiedosto ei ole virhe vaan tila: vanhemmilla kuukausilla
+ * tavoitetta ei ole, ja paneeli näytetään ilman sitä. Virheet niellään
+ * samasta syystä kuin ennenkin — tavoite on paneelin lisätieto, eikä sen
+ * takia saa jäädä koko kuukauden yhteenvetoa kirjoittamatta.
  */
-async function loadMonthTargets(fileId: string): Promise<MonthTargets | null> {
-  try {
-    const { targets } = await loadTargets(fileId)
-    if (targets.length === 0) return null
+async function loadMonthTargets(month: string): Promise<MonthTargets | null> {
+  const [year, num] = month.split('-').map(Number)
+  const nimi = KUUKAUSI_NIMET[num - 1]
+  if (!nimi) return null
 
-    return {
-      liittKpl: targets.reduce((sum, row) => sum + row.liittTavoite, 0),
-      fsecKpl: targets.reduce((sum, row) => sum + row.fsecTavoite, 0),
-      kassa: targets.reduce((sum, row) => sum + row.kassaTavoite, 0),
-    }
+  try {
+    const { yhteensa } = await haeTavoitteet(year * 100 + num, nimi)
+    if (yhteensa.liittymat === null && yhteensa.fsecure === null && yhteensa.kassakate === null) return null
+    return { liittKpl: yhteensa.liittymat ?? 0, fsecKpl: yhteensa.fsecure ?? 0, kassa: yhteensa.kassakate ?? 0 }
   } catch (error) {
-    if (!(error instanceof TavoitteetPuuttuu)) {
-      console.error('[rjmob-summary] tavoitteiden luku epäonnistui', error)
-    }
+    console.error('[rjmob-summary] tavoitteiden luku epäonnistui', error)
     return null
   }
 }
+
+const KUUKAUSI_NIMET = [
+  'Tammikuu', 'Helmikuu', 'Maaliskuu', 'Huhtikuu', 'Toukokuu', 'Kesäkuu',
+  'Heinäkuu', 'Elokuu', 'Syyskuu', 'Lokakuu', 'Marraskuu', 'Joulukuu',
+]
 
 /** Yksi myyntiseurantataulukko kuukausiavaimineen. */
 type SeurantaSheet = {
@@ -179,12 +187,13 @@ type SeurantaSheet = {
  * eikä sitä lasketa uudelleen. Kun laskenta korjautuu, vanhat merkinnät eivät
  * korjaudu itsestään: `v2` otettiin käyttöön kun kassakate vaihtui
  * kassaprovisioasteikosta myyntiseurannan asteikkoon (ks. `kassakateOf`), ja
- * `v3` kun liittymät vaihtuivat myyjäsummasta myymälärajaukseen. Nosta
+ * `v3` kun liittymät vaihtuivat myyjäsummasta myymälärajaukseen ja `v4` kun
+ * tavoitteet siirtyivät Driveen ja työpäivälaskuri rajattiin eiliseen. Nosta
  * versiota aina kun jonkin kentän merkitys muuttuu — vanhat avaimet
  * vanhenevat itse.
  */
 export function monthCacheKey(month: string): string {
-  return `${RJMOB_SUMMARY_KEY}:v3:${month}`
+  return `${RJMOB_SUMMARY_KEY}:v4:${month}`
 }
 
 /** Kuluva kuukausi YYYY-MM Helsingin aikaa. */
@@ -369,7 +378,7 @@ function dashLoader(): (id: string) => Promise<DashData> {
 /**
  * Kuluneet ja kaikki työpäivät kuluvassa kuukaudessa, Helsingin aikaa.
  *
- * Työpäivä on ma–la ilman arkipyhiä (`laskeTyopaivat`), ja se on nimenomaan
+ * Työpäivä on ma–la ilman arkipyhiä (`tyopaivaIkkuna`), ja se on nimenomaan
  * se yksikkö jolla ennuste kuuluu tehdä: tavoitteet_ja_runrate_ohje sanoo
  * "tehty tähän mennessä jaettuna kuluneilla työpäivillä … kerrotaan jäljellä
  * olevilla työpäivillä". Kalenteripäivillä laskettu ennuste olisi väärässä
@@ -381,10 +390,13 @@ function dashLoader(): (id: string) => Promise<DashData> {
  */
 function workdayProgress(): { elapsed: number; total: number } {
   const [year, month, day] = todayISOHelsinki().split('-').map(Number)
-  return {
-    elapsed: laskeTyopaivat(year, month, day),
-    total: laskeTyopaivat(year, month),
-  }
+  // Kuluva päivä ei ole päättynyt: Winpos-tuonti ajetaan klo 8/12/16/20,
+  // joten täytenä työpäivänä laskettu tämä päivä sukauttaisi ennusteen joka
+  // aamu ja nostaisi sitä iltaa kohti. Sama ikkuna kuin sivuilla
+  // (`tyopaivaIkkuna`), tässä vain Helsingin päivästä johdettuna — palvelin
+  // on UTC:ssä, jolloin Suomen ilta olisi vielä edellinen päivä.
+  const { paattyneet, kaikki } = tyopaivaIkkuna(year, month, new Date(year, month - 1, day))
+  return { elapsed: paattyneet, total: kaikki }
 }
 
 /** Yhden kuukauden yhteenveto, vertailukohtana järjestyksessä edeltävä taulukko. */
@@ -481,7 +493,7 @@ export async function buildRjMobSummary(month?: string): Promise<RjMobSummaryDat
   const index = month ? sheets.findIndex(sheet => sheet.month === month) : 0
   if (index < 0) throw new Error(`Myyntiseurantaa kuukaudelta ${month} ei löytynyt`)
 
-  const targets = await loadMonthTargets(sheets[index].id)
+  const targets = await loadMonthTargets(sheets[index].month)
 
   return summaryFor(sheets[index], sheets[index + 1], dashLoader(), targets)
 }
@@ -526,10 +538,10 @@ export async function refreshRjMobSummaries(): Promise<RjMobRefreshResult> {
   const load = dashLoader()
 
   // Tavoitteet luetaan vain uusimmasta kuukaudesta: hub näyttää aina kuluvaa
-  // kuukautta, ja `loadTargets` on neljä Sheets-kutsua lisää per kuukausi.
+  // kuukautta, ja jokainen kuukausi on kaksi Drive-listausta ja lataus lisää.
   // Kolmentoista kuukauden tavoitteiden hakeminen neljästi vuorokaudessa
   // olisi satoja kutsuja dataan jota paneeli ei näytä.
-  const targets = await loadMonthTargets(sheets[0].id)
+  const targets = await loadMonthTargets(sheets[0].month)
   const months: string[] = []
   const failed: string[] = []
   let newestFailed = false

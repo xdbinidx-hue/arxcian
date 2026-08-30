@@ -88,7 +88,12 @@ async function lueDrivesta(kuukausiOrder: number): Promise<DriveLuku> {
   const drive = google.drive({ version: 'v3', auth })
   const sheets = google.sheets({ version: 'v4', auth })
 
-  const taulukot = await listaaTaulukot(drive)
+  // Myyjäkohtaiset tavoitteet ovat samassa kuukausikansiossa 30.8.2026
+  // alkaen, ja niissä on sama `N. Kuukausi VVVV` -osa nimessä. Bonus on
+  // myymäläkohtainen, joten myyjätaulukko ohitetaan nimen perusteella —
+  // muuten `parseTavoiteTaulukko` lukisi sen eikä tunnistaisi yhtään
+  // myymälää, ja kuukausi jäisi varoituksineen koodikopion varaan.
+  const taulukot = (await listaaTaulukot(drive)).filter(f => !/myyj[äa]/i.test(f.name ?? ''))
   const osuma = taulukot.find(f => monthOrder(f.name ?? '') === kuukausiOrder)
   if (!osuma?.id) return { tavoitteet: null, tiedosto: null, varoitukset: [] }
 
