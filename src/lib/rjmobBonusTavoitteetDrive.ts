@@ -1,6 +1,12 @@
 import { google } from 'googleapis'
 import { monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDrive'
-import { parseTavoiteTaulukko, valitseTavoitteet, type ValitutTavoitteet } from '@/lib/rjmobBonusTavoitteet'
+import {
+  parseTavoiteTaulukko, valitseTavoitteet, yhdistaTavoitteet, tavoitteetKuukaudelle,
+  onLukittu, tavoiteErot, uudetMerkinnat,
+  type MuutosMerkinta, type ValitutTavoitteet,
+} from '@/lib/rjmobBonusTavoitteet'
+import { haeLukittu, jaadyta, haeHistoria, lisaaHistoriaan } from '@/lib/rjmobBonusLukitus'
+import type { Myymala, MyymalaTavoite } from '@/lib/rjmobBonus'
 
 /**
  * Myymäläpäällikköbonuksen tavoitteet Drivestä.
@@ -65,19 +71,26 @@ export type TavoiteHaku = ValitutTavoitteet & {
   kuukausiOrder: number
   /** Drivestä löytyneen taulukon nimi, `null` jos taulukkoa ei ollut. */
   tiedosto: string | null
+  /** ISO-aika jolloin kuukauden tavoitteet jäädytettiin, `null` jos ei vielä. */
+  jaadytetty: string | null
+  /** Jäädytyksen jälkeen havaitut Drive-muutokset. Ei vaikuta laskentaan. */
+  historia: MuutosMerkinta[]
 }
 
-export async function haeBonusTavoitteet(kuukausiOrder: number): Promise<TavoiteHaku> {
+type DriveLuku = {
+  tavoitteet: Partial<Record<Myymala, MyymalaTavoite>> | null
+  tiedosto: string | null
+  varoitukset: string[]
+}
+
+async function lueDrivesta(kuukausiOrder: number): Promise<DriveLuku> {
   const auth = getAuth()
   const drive = google.drive({ version: 'v3', auth })
   const sheets = google.sheets({ version: 'v4', auth })
 
   const taulukot = await listaaTaulukot(drive)
   const osuma = taulukot.find(f => monthOrder(f.name ?? '') === kuukausiOrder)
-
-  if (!osuma?.id) {
-    return { ...valitseTavoitteet(kuukausiOrder, null), kuukausiOrder, tiedosto: null }
-  }
+  if (!osuma?.id) return { tavoitteet: null, tiedosto: null, varoitukset: [] }
 
   const meta = await sheets.spreadsheets.get({ spreadsheetId: osuma.id })
   const ekaValilehti = meta.data.sheets?.[0]?.properties?.title ?? ''
@@ -88,15 +101,89 @@ export async function haeBonusTavoitteet(kuukausiOrder: number): Promise<Tavoite
   const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
 
   const { tavoitteet, varoitukset } = parseTavoiteTaulukko(rows)
-  // Jäsennyksen varoitukset ovat taulukon omia puutteita, lähteen valinnan
-  // varoitukset kertovat lukituksesta — molemmat kuuluvat käyttäjälle, mutta
-  // niitä ei sekoiteta yhdeksi listaksi ennen kuin ne näytetään.
-  const valittu = valitseTavoitteet(kuukausiOrder, Object.keys(tavoitteet).length > 0 ? tavoitteet : null)
-
   return {
-    ...valittu,
-    varoitukset: [...varoitukset, ...valittu.varoitukset],
-    kuukausiOrder,
+    tavoitteet: Object.keys(tavoitteet).length > 0 ? tavoitteet : null,
     tiedosto: osuma.name ?? null,
+    varoitukset,
+  }
+}
+
+/**
+ * Kuukauden tavoitteet ja niiden lukitustila.
+ *
+ * Alkanut kuukausi luetaan **jäädytetystä avaimesta**, ei Drivestä: Driven
+ * arvo vain verrataan siihen ja ero kirjataan historiaan. Jäädytys tehdään
+ * laiskasti ensimmäisellä luvulla kuukauden alettua.
+ *
+ * Redisin ollessa poissa palataan lukitsemattomaan valintaan ja kerrotaan
+ * siitä — sivun on toimittava, mutta ei valehdellen että tavoite on lukossa.
+ */
+export async function haeBonusTavoitteet(
+  kuukausiOrder: number,
+  kuka = 'tuntematon',
+): Promise<TavoiteHaku> {
+  const drive = await lueDrivesta(kuukausiOrder)
+  const koodi = tavoitteetKuukaudelle(kuukausiOrder)
+
+  if (!onLukittu(kuukausiOrder)) {
+    const valittu = valitseTavoitteet(kuukausiOrder, drive.tavoitteet, koodi)
+    return {
+      ...valittu,
+      varoitukset: [...drive.varoitukset, ...valittu.varoitukset],
+      kuukausiOrder,
+      tiedosto: drive.tiedosto,
+      jaadytetty: null,
+      historia: [],
+    }
+  }
+
+  try {
+    let lukittu = await haeLukittu(kuukausiOrder)
+
+    if (!lukittu) {
+      const siemen = drive.tavoitteet
+        ? yhdistaTavoitteet(drive.tavoitteet, koodi)
+        : { tavoitteet: koodi ?? {}, varoitukset: [] }
+      if (Object.keys(siemen.tavoitteet).length === 0) {
+        // Ei jäädytetä tyhjää: muuten kuukausi lukittuisi pysyvästi nollaan
+        // sen takia että taulukko sattui puuttumaan ensimmäisellä luvulla.
+        return {
+          tavoitteet: null, lahde: 'puuttuu',
+          varoitukset: [...drive.varoitukset, 'Kuukaudelle ei ole tavoitteita — ei jäädytetty'],
+          kuukausiOrder, tiedosto: drive.tiedosto, jaadytetty: null, historia: [],
+        }
+      }
+      lukittu = await jaadyta(kuukausiOrder, siemen.tavoitteet, drive.tavoitteet ? 'drive' : 'koodi')
+    }
+
+    const erot = tavoiteErot(lukittu.tavoitteet, drive.tavoitteet)
+    const historia = await lisaaHistoriaan(
+      kuukausiOrder,
+      uudetMerkinnat(await haeHistoria(kuukausiOrder), erot, kuka),
+    )
+
+    return {
+      tavoitteet: lukittu.tavoitteet,
+      lahde: 'lukittu',
+      varoitukset: drive.varoitukset,
+      kuukausiOrder,
+      tiedosto: drive.tiedosto,
+      jaadytetty: lukittu.jaadytetty,
+      historia,
+    }
+  } catch (e: unknown) {
+    // Redis poissa. Palataan lukitsemattomaan valintaan, jossa koodikopio
+    // voittaa alkaneessa kuukaudessa — mutta kerrotaan ettei lukko ole
+    // luettavissa, jottei "lukittu" jää lupaukseksi jota ei ole pidetty.
+    const valittu = valitseTavoitteet(kuukausiOrder, drive.tavoitteet, koodi)
+    const msg = e instanceof Error ? e.message : String(e)
+    return {
+      ...valittu,
+      varoitukset: [...drive.varoitukset, ...valittu.varoitukset, `Tavoitteiden lukitusta ei voitu lukea: ${msg}`],
+      kuukausiOrder,
+      tiedosto: drive.tiedosto,
+      jaadytetty: null,
+      historia: [],
+    }
   }
 }

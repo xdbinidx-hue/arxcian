@@ -9,8 +9,8 @@ import {
   type Mittari, type MittariTulos, type Myymala, type MyymalaTavoite, type MyymalaToteuma,
 } from '@/lib/rjmobBonus'
 import {
-  tavoitteetKuukaudelle, tavoiteIlmanTapahtumaa, muutoksetKuukaudelle, onLukittu,
-  type TavoiteLahde,
+  tavoitteetKuukaudelle, tavoiteIlmanTapahtumaa, onLukittu, muutosTeksti,
+  type MuutosMerkinta, type TavoiteLahde,
 } from '@/lib/rjmobBonusTavoitteet'
 
 /**
@@ -34,9 +34,12 @@ interface TavoiteHaku {
   lahde: TavoiteLahde
   varoitukset: string[]
   tiedosto: string | null
+  jaadytetty: string | null
+  historia: MuutosMerkinta[]
 }
 
 const LAHDE_TEKSTI: Record<TavoiteLahde, string> = {
+  lukittu: 'Tavoitteet jäädytetty kuun alussa',
   drive: 'Tavoitteet luettu Drive-taulukosta',
   koodi: 'Tavoitteet lukitusta kopiosta',
   puuttuu: 'Tavoitteita ei ole',
@@ -228,7 +231,7 @@ export default function BonusPage() {
 
   const toteumat = toteumatMyymalataulukosta(stores)
   const kk = laskeKuukaudenBonukset(order, tavoitteet, toteumat)
-  const muutokset = muutoksetKuukaudelle(order)
+  const muutokset = tavoiteHaku?.historia ?? []
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px 40px' }}>
@@ -287,6 +290,7 @@ export default function BonusPage() {
                 yli {PORRAS_SATAKAKSI} % ei maksa enempää.
                 {tavoitteet && ` Tavoitteet ${onLukittu(order) ? 'lukittu' : 'ei vielä lukittu'}.`}
                 {tavoiteHaku && ` ${LAHDE_TEKSTI[tavoiteHaku.lahde]}${tavoiteHaku.tiedosto ? ` (${tavoiteHaku.tiedosto})` : ''}.`}
+                {tavoiteHaku?.jaadytetty && ` Jäädytetty ${tavoiteHaku.jaadytetty.slice(0, 10)}.`}
               </div>
             </div>
 
@@ -404,14 +408,15 @@ export default function BonusPage() {
           {muutokset.length > 0 && (
             <div style={kortti}>
               <div style={korttiOtsikko}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Tavoitteen muutokset lukituksen jälkeen</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Tavoitteen muutokset jäädytyksen jälkeen</div>
+                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                  Drive-taulukkoa on muutettu kuukauden alkamisen jälkeen. Bonus lasketaan yhä
+                  jäädytetystä tavoitteesta — muutos on kirjattu tähän eikä otettu käyttöön.
+                </div>
               </div>
               <div style={{ padding: '12px 16px', fontSize: 13 }}>
                 {muutokset.map((m, i) => (
-                  <div key={i} style={{ marginBottom: 6 }}>
-                    {m.milloin} · {m.kuka} · {m.myymala} {MITTARI_NIMI[m.mittari]}:
-                    {' '}{m.vanha ?? '—'} → {m.uusi ?? '—'} ({m.syy})
-                  </div>
+                  <div key={i} style={{ marginBottom: 6 }}>{muutosTeksti(m)}</div>
                 ))}
               </div>
             </div>

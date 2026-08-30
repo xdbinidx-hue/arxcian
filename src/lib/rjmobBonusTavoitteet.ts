@@ -2,7 +2,7 @@
 //
 // ".ts"-pääte importeissa on tahallinen: moduuli on yksikkötestattu ja Noden
 // ESM-resolveri ei osaa extensiotonta muotoa.
-import type { Myymala, MyymalaTavoite } from './rjmobBonus.ts'
+import type { Mittari, Myymala, MyymalaTavoite } from './rjmobBonus.ts'
 import { MYYMALAT, MITTARIT, MITTARI_NIMI, myymalaAvaimesta } from './rjmobBonus.ts'
 
 /**
@@ -35,29 +35,6 @@ export const LUKITUT_TAVOITTEET: Record<number, Record<Myymala, MyymalaTavoite>>
     Easton: { liittymat: 190, fsecure: 40, kassakate: 3300 },
     Kivistö: { liittymat: 180, fsecure: 40, kassakate: 3000 },
   },
-}
-
-/**
- * Tavoitteen muutos lukituksen jälkeen. Lista on tarkoituksella näkyvissä
- * käyttöliittymässä asti: muutos ilman jälkeä olisi bonuksen jakamista
- * ilmaiseksi, ja se on juuri se mitä lukitus estää.
- */
-export type TavoiteMuutos = {
-  kuukausiOrder: number
-  myymala: Myymala
-  mittari: keyof Omit<MyymalaTavoite, 'tapahtumaLiittymat'>
-  vanha: number | null
-  uusi: number | null
-  /** ISO-päivämäärä. */
-  milloin: string
-  kuka: string
-  syy: string
-}
-
-export const TAVOITE_MUUTOKSET: readonly TavoiteMuutos[] = []
-
-export function muutoksetKuukaudelle(kuukausiOrder: number): TavoiteMuutos[] {
-  return TAVOITE_MUUTOKSET.filter(m => m.kuukausiOrder === kuukausiOrder)
 }
 
 /**
@@ -196,7 +173,7 @@ export function parseTavoiteTaulukko(rows: string[][]): TavoiteTaulukko {
   return { tavoitteet, varoitukset }
 }
 
-export type TavoiteLahde = 'koodi' | 'drive' | 'puuttuu'
+export type TavoiteLahde = 'koodi' | 'drive' | 'lukittu' | 'puuttuu'
 
 export type ValitutTavoitteet = {
   tavoitteet: Record<Myymala, MyymalaTavoite> | Partial<Record<Myymala, MyymalaTavoite>> | null
@@ -251,13 +228,26 @@ export function valitseTavoitteet(
     return { tavoitteet: drive, lahde: 'drive', varoitukset }
   }
 
-  // Lukitsematon kuukausi: Drive on lähde, mutta **puuttuva rivi tai kenttä ei
-  // pyyhi aiempaa tavoitetta**. Keskeneräinen taulukko on tavallinen tila —
-  // Albin täyttää myymälät sitä mukaa kun luvut valmistuvat — ja ilman tätä
-  // yksikin puuttuva rivi pudottaisi sen myymälän bonuksen nollaan ilman että
-  // kukaan on päättänyt niin. Perintä kerrotaan aina varoituksena, jottei
-  // vanha luku jää näyttämään uudelta.
+  const yhdistetty = yhdistaTavoitteet(drive, koodi)
+  return { tavoitteet: yhdistetty.tavoitteet, lahde: 'drive', varoitukset: [...varoitukset, ...yhdistetty.varoitukset] }
+}
+
+/**
+ * Drive-taulukko koodikopion päälle, kenttä kerrallaan.
+ *
+ * **Puuttuva rivi tai kenttä ei pyyhi aiempaa tavoitetta.** Keskeneräinen
+ * taulukko on tavallinen tila — Albin täyttää myymälät sitä mukaa kun luvut
+ * valmistuvat — ja ilman tätä yksikin puuttuva rivi pudottaisi sen myymälän
+ * bonuksen nollaan ilman että kukaan on päättänyt niin. Perintä kerrotaan aina
+ * varoituksena, jottei vanha luku jää näyttämään uudelta.
+ */
+export function yhdistaTavoitteet(
+  drive: Partial<Record<Myymala, MyymalaTavoite>>,
+  koodi: Partial<Record<Myymala, MyymalaTavoite>> | null,
+): { tavoitteet: Partial<Record<Myymala, MyymalaTavoite>>; varoitukset: string[] } {
+  const varoitukset: string[] = []
   const yhdistetty: Partial<Record<Myymala, MyymalaTavoite>> = {}
+
   for (const { myymala } of MYYMALAT) {
     const d = drive[myymala]
     const k = koodi?.[myymala]
@@ -284,5 +274,87 @@ export function valitseTavoitteet(
     yhdistetty[myymala] = rivi
   }
 
-  return { tavoitteet: yhdistetty, lahde: 'drive', varoitukset }
+  return { tavoitteet: yhdistetty, varoitukset }
+}
+
+// ---------------------------------------------------------------------------
+// Lukituksen muutoshistoria
+// ---------------------------------------------------------------------------
+
+/**
+ * Yksi ero jäädytetyn tavoitteen ja Drive-taulukon nykyisen arvon välillä.
+ *
+ * Ero **ei muuta laskentaa** — jäädytetty luku on se johon bonus on sidottu.
+ * Se kirjataan silti, koska bonus on sidottu prosenttiin eikä euroon: hiljainen
+ * tavoitteen lasku kesken kuun olisi sama kuin bonuksen jakaminen ilmaiseksi.
+ */
+export type TavoiteEro = {
+  myymala: Myymala
+  mittari: Mittari
+  vanha: number | null
+  uusi: number | null
+}
+
+export type MuutosMerkinta = TavoiteEro & {
+  /** ISO-aika jolloin ero havaittiin — ei se hetki jolloin Albin muutti solua. */
+  havaittu: string
+  /** Kirjautunut käyttäjä jonka pyyntö havaitsi eron. */
+  kuka: string
+}
+
+/**
+ * Jäädytetyn ja Driven väliset erot.
+ *
+ * Vain ne kentät joilla Drivessä **on** arvo: puuttuva solu tarkoittaa
+ * keskeneräistä taulukkoa eikä tavoitteen poistoa, eikä siitä pidä syntyä
+ * merkintää "190 → tyhjä" joka näyttäisi tavoitteen laskulta.
+ */
+export function tavoiteErot(
+  lukittu: Partial<Record<Myymala, MyymalaTavoite>>,
+  drive: Partial<Record<Myymala, MyymalaTavoite>> | null,
+): TavoiteEro[] {
+  if (!drive) return []
+  const erot: TavoiteEro[] = []
+  for (const { myymala } of MYYMALAT) {
+    const l = lukittu[myymala]
+    const d = drive[myymala]
+    if (!d) continue
+    for (const m of MITTARIT) {
+      if (d[m] === null || d[m] === undefined) continue
+      const vanha = l ? l[m] : null
+      if (vanha !== d[m]) erot.push({ myymala, mittari: m, vanha, uusi: d[m] })
+    }
+  }
+  return erot
+}
+
+/**
+ * Uudet merkinnät historiaan.
+ *
+ * Sama ero havaitaan uudelleen jokaisella sivulatauksella niin kauan kuin
+ * Driven arvo poikkeaa jäädytetystä, joten ilman tunnistetta historia kasvaisi
+ * yhdestä muutoksesta sadaksi riviksi päivässä. Tunniste on myymälä + mittari
+ * + vanha → uusi, eli sama muutos kirjataan kerran.
+ */
+export function uudetMerkinnat(
+  historia: MuutosMerkinta[],
+  erot: TavoiteEro[],
+  kuka: string,
+  nyt: Date = new Date(),
+): MuutosMerkinta[] {
+  const tunniste = (e: TavoiteEro) => `${e.myymala}|${e.mittari}|${e.vanha ?? ''}|${e.uusi ?? ''}`
+  const nahdyt = new Set(historia.map(tunniste))
+  const uudet: MuutosMerkinta[] = []
+  for (const e of erot) {
+    const t = tunniste(e)
+    if (nahdyt.has(t)) continue
+    nahdyt.add(t)
+    uudet.push({ ...e, havaittu: nyt.toISOString(), kuka })
+  }
+  return uudet
+}
+
+export function muutosTeksti(m: MuutosMerkinta): string {
+  const pvm = m.havaittu.slice(0, 10)
+  return `${pvm} · ${m.kuka} · ${m.myymala} ${MITTARI_NIMI[m.mittari]}: ${m.vanha ?? '—'} → ${m.uusi ?? '—'} (ei vaikuta laskentaan, tavoite on lukittu)`
 }

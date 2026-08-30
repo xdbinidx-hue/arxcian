@@ -8,7 +8,7 @@ import {
 } from './rjmobBonus.ts'
 import {
   tavoitteetKuukaudelle, tavoiteYhteensa, tavoiteIlmanTapahtumaa,
-  parseTavoiteTaulukko, valitseTavoitteet,
+  parseTavoiteTaulukko, valitseTavoitteet, tavoiteErot, uudetMerkinnat, muutosTeksti,
 } from './rjmobBonusTavoitteet.ts'
 
 
@@ -297,4 +297,44 @@ test('uusi myymälärivi ilman aiempaa tavoitetta jää puuttuvaksi eikä peri m
   const drive = { Easton: { liittymat: 190, fsecure: null, kassakate: 3300 } }
   const v = valitseTavoitteet(202610, drive, null, new Date('2026-08-27T12:00:00Z'))
   assert.equal(v.tavoitteet!.Easton!.fsecure, null)
+})
+
+test('jäädytyksen jälkeinen Drive-muutos tunnistetaan mutta ei muuta laskentaa', () => {
+  const lukittu = tavoitteetKuukaudelle(202609)!
+  const drive = { ...lukittu, Easton: { liittymat: 150, fsecure: 40, kassakate: 3300 } }
+  const erot = tavoiteErot(lukittu, drive)
+  assert.equal(erot.length, 1)
+  assert.deepEqual(erot[0], { myymala: 'Easton', mittari: 'liittymat', vanha: 190, uusi: 150 })
+})
+
+test('Driven tyhjä solu ei ole tavoitteen lasku', () => {
+  // Keskeneräinen taulukko näyttäisi muuten siltä että tavoite poistettiin.
+  const lukittu = tavoitteetKuukaudelle(202609)!
+  const drive = { ...lukittu, Easton: { liittymat: null, fsecure: 40, kassakate: 3300 } }
+  assert.deepEqual(tavoiteErot(lukittu, drive), [])
+})
+
+test('sama muutos kirjataan historiaan kerran, ei joka sivulatauksella', () => {
+  const lukittu = tavoitteetKuukaudelle(202609)!
+  const drive = { ...lukittu, Easton: { liittymat: 150, fsecure: 40, kassakate: 3300 } }
+  const erot = tavoiteErot(lukittu, drive)
+  const eka = uudetMerkinnat([], erot, 'albin', new Date('2026-09-05T08:00:00Z'))
+  assert.equal(eka.length, 1)
+  assert.equal(eka[0].kuka, 'albin')
+  // Toinen sivulataus näkee saman eron eikä lisää mitään.
+  assert.deepEqual(uudetMerkinnat(eka, erot, 'albin', new Date('2026-09-05T09:00:00Z')), [])
+  // Uusi arvo on uusi muutos.
+  const drive2 = { ...lukittu, Easton: { liittymat: 120, fsecure: 40, kassakate: 3300 } }
+  assert.equal(uudetMerkinnat(eka, tavoiteErot(lukittu, drive2), 'arbnor').length, 1)
+})
+
+test('muutosteksti kertoo ettei muutos vaikuta laskentaan', () => {
+  const teksti = muutosTeksti({
+    myymala: 'Easton', mittari: 'liittymat', vanha: 190, uusi: 150,
+    havaittu: '2026-09-05T08:00:00.000Z', kuka: 'albin',
+  })
+  assert.match(teksti, /2026-09-05/)
+  assert.match(teksti, /albin/)
+  assert.match(teksti, /190 → 150/)
+  assert.match(teksti, /ei vaikuta laskentaan/)
 })
