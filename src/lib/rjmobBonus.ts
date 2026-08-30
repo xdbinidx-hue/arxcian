@@ -134,6 +134,16 @@ export type MyymalaTavoite = {
    * tapahtumakuukautta ei verrata arkikuukauteen suoraan.
    */
   tapahtumaLiittymat?: number
+  /**
+   * Tapahtumasta **toteutuneet** liittymät, kun ne on kirjattu taulukkoon.
+   *
+   * Vain tämä tekee normalisoidusta toteumasta mitatun luvun. Ilman sitä
+   * normalisointi jouduttaisiin laskemaan vähentämällä tapahtuman *tavoite*,
+   * mikä olettaisi tapahtuman osuneen suunnitelmaansa — ja juuri sen
+   * selvittämiseksi luku katsotaan. Luku joka olettaa vastauksen ei voi
+   * paljastaa sitä.
+   */
+  tapahtumaToteuma?: number
 }
 
 export type MyymalaToteuma = {

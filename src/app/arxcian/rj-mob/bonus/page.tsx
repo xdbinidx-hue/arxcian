@@ -5,11 +5,12 @@ import { saakoAjaaAutomaattisesti } from '@/lib/arxcian/autoRefresh'
 import {
   MYYMALAT, MITTARIT, MITTARI_NIMI, MITTARI_YKSIKKO, PORRAS_SATA, PORRAS_SATAKAKSI,
   bonusmalliVoimassa, laskeKuukaudenBonukset, toteumatMyymalataulukosta, tasonMaksimi,
-  BONUSMALLI_ALKAA,
+  ansaintakuukausi, BONUSMALLI_ALKAA,
   type Mittari, type MittariTulos, type Myymala, type MyymalaTavoite, type MyymalaToteuma,
 } from '@/lib/rjmobBonus'
 import {
   tavoitteetKuukaudelle, tavoiteIlmanTapahtumaa, onLukittu, muutosTeksti,
+  normalisoiToteuma, onTapahtumakuukausi, type Normalisointi,
   type MuutosMerkinta, type TavoiteLahde,
 } from '@/lib/rjmobBonusTavoitteet'
 
@@ -98,7 +99,14 @@ const korttiOtsikko = { padding: '12px 16px', borderBottom: '0.5px solid #eee' }
  * portaasta eikä prosentista, jotta solun sävy ja maksettu euro kertovat
  * saman asian.
  */
-function MittariSolu({ m, edellinen }: { m: MittariTulos; edellinen: number | undefined }) {
+function MittariSolu({ m, edellinen, edellinenTapahtuma, normalisointi }: {
+  m: MittariTulos
+  edellinen: number | undefined
+  /** Oliko edellinen kuukausi tälle myymälälle tapahtumakuukausi. */
+  edellinenTapahtuma: boolean
+  /** Vain tapahtumamyymälän liittymäsolulle. */
+  normalisointi: Normalisointi | null
+}) {
   if (m.porras === null) {
     return (
       <td style={{ ...td, background: '#fafafa', color: '#A32D2D', fontSize: 12 }}>
@@ -116,8 +124,17 @@ function MittariSolu({ m, edellinen }: { m: MittariTulos; edellinen: number | un
       <div style={{ fontSize: 12, color: v.teksti, fontWeight: 600, marginTop: 2 }}>
         {fmt(m.pct ?? 0, 1)} % · {fmt(m.bonus)} €
       </div>
+      {normalisointi && (
+        <div style={{ fontSize: 10, color: normalisointi.mitattu ? '#555' : '#854F0B', marginTop: 2 }}>
+          {normalisointi.mitattu
+            ? `ilman tapahtumaa ${arvo(normalisointi.arvo, m.mittari)}`
+            : 'ilman tapahtumaa: ei tiedossa'}
+        </div>
+      )}
       {edellinen !== undefined && (
-        <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>ed. kk {arvo(edellinen, m.mittari)}</div>
+        <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>
+          ed. kk {arvo(edellinen, m.mittari)}{edellinenTapahtuma ? ' (tapahtumakuukausi)' : ''}
+        </div>
       )}
     </td>
   )
@@ -309,6 +326,9 @@ export default function BonusPage() {
                 <tbody>
                   {kk.myymalat.map(b => {
                     const ed = edelliset[b.myymala]
+                    const tavoite = tavoitteet?.[b.myymala]
+                    const tapahtuma = (tavoite?.tapahtumaLiittymat ?? 0) > 0
+                    const edTapahtuma = onTapahtumakuukausi(ansaintakuukausi(order), b.myymala)
                     return (
                       <tr key={b.myymala}>
                         <td style={tdL}>{b.myymala}</td>
@@ -319,6 +339,10 @@ export default function BonusPage() {
                             key={m.mittari}
                             m={m}
                             edellinen={ed ? ed[m.mittari] : undefined}
+                            edellinenTapahtuma={edTapahtuma}
+                            normalisointi={tapahtuma && m.mittari === 'liittymat'
+                              ? normalisoiToteuma(m.toteuma, tavoite)
+                              : null}
                           />
                         ))}
                         <td style={{ ...td, fontWeight: 600 }}>
@@ -387,7 +411,11 @@ export default function BonusPage() {
                 <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
                   Bonus lasketaan aina koko lukitusta tavoitetta vasten — normalisoitu luku
                   kertoo vain mistä iso liittymämäärä tulee, jottei tapahtumakuukautta
-                  verrata arkikuukauteen suoraan.
+                  verrata arkikuukauteen suoraan. Toteuman normalisointi vaatii että
+                  tapahtuman <strong>toteutunut</strong> myynti on kirjattu tavoitetaulukkoon
+                  sarakkeeseen &quot;Tapahtuma toteuma&quot;: tapahtuman tavoitteen vähentäminen
+                  olettaisi tapahtuman osuneen suunnitelmaansa, ja juuri sen selvittämiseksi
+                  luku katsotaan.
                 </div>
               </div>
               <div style={{ padding: '12px 16px', fontSize: 13 }}>
@@ -398,6 +426,9 @@ export default function BonusPage() {
                       <strong>{m.myymala}</strong>: tavoite {fmt(t.liittymat ?? 0)} kpl, josta
                       {' '}{fmt(t.tapahtumaLiittymat ?? 0)} kpl tapahtumasta →
                       normaali myymälämyynti {fmt(tavoiteIlmanTapahtumaa(t) ?? 0)} kpl
+                      {t.tapahtumaToteuma !== undefined
+                        ? ` · tapahtuma toteutui ${fmt(t.tapahtumaToteuma)} kpl`
+                        : ' · tapahtuman toteumaa ei ole kirjattu'}
                     </div>
                   )
                 })}

@@ -9,6 +9,7 @@ import {
 import {
   tavoitteetKuukaudelle, tavoiteYhteensa, tavoiteIlmanTapahtumaa,
   parseTavoiteTaulukko, valitseTavoitteet, tavoiteErot, uudetMerkinnat, muutosTeksti,
+  normalisoiToteuma, onTapahtumakuukausi,
 } from './rjmobBonusTavoitteet.ts'
 
 
@@ -337,4 +338,49 @@ test('muutosteksti kertoo ettei muutos vaikuta laskentaan', () => {
   assert.match(teksti, /albin/)
   assert.match(teksti, /190 → 150/)
   assert.match(teksti, /ei vaikuta laskentaan/)
+})
+
+test('tapahtuman tavoite- ja toteumasarake erotetaan toisistaan', () => {
+  // Pelkkä "tapahtuma"-osajono nappaisi toteumasarakkeen tavoitteeksi ja
+  // veisi toteutuneen luvun tavoitteen paikalle.
+  const t = parseTavoiteTaulukko([
+    ['Myymälä', 'Liittymät', 'F-Secure', 'Kassakate', 'Tapahtuma kpl', 'Tapahtuma toteuma'],
+    ['Malmi', '900', '80', '4000', '600', '540'],
+  ])
+  assert.equal(t.tavoitteet.Malmi!.liittymat, 900)
+  assert.equal(t.tavoitteet.Malmi!.tapahtumaLiittymat, 600)
+  assert.equal(t.tavoitteet.Malmi!.tapahtumaToteuma, 540)
+})
+
+test('normalisoitu toteuma lasketaan vain mitatusta tapahtumamyynnistä', () => {
+  const tavoite = { liittymat: 900, fsecure: 80, kassakate: 4000, tapahtumaLiittymat: 600 }
+  // Ilman kirjattua toteumaa lukua ei anneta: tapahtuman tavoitteen
+  // vähentäminen olettaisi tapahtuman osuneen suunnitelmaansa.
+  const arvaamaton = normalisoiToteuma(950, tavoite)
+  assert.equal(arvaamaton.arvo, null)
+  assert.equal(arvaamaton.mitattu, false)
+
+  const mitattu = normalisoiToteuma(950, { ...tavoite, tapahtumaToteuma: 540 })
+  assert.equal(mitattu.arvo, 410)
+  assert.equal(mitattu.mitattu, true)
+})
+
+test('tapahtumaton myymälä on jo normalisoitu', () => {
+  const t = normalisoiToteuma(189, { liittymat: 190, fsecure: 40, kassakate: 3300 })
+  assert.equal(t.arvo, 189)
+  assert.equal(t.mitattu, true)
+})
+
+test('normalisoitu ei mene negatiiviseksi', () => {
+  const t = normalisoiToteuma(400, { liittymat: 900, fsecure: 80, kassakate: 4000, tapahtumaLiittymat: 600, tapahtumaToteuma: 540 })
+  assert.equal(t.arvo, 0)
+})
+
+test('tapahtumakuukausi tunnistetaan myös ilman tallessa olevaa tavoitetta', () => {
+  // Kivistön elokuu ei kelpaa arkitason vertailukohdaksi, vaikka elokuun
+  // tavoitteita ei ole tallessa — muuten syyskuu näyttäisi romahdukselta.
+  assert.equal(onTapahtumakuukausi(202608, 'Kivistö'), true)
+  assert.equal(onTapahtumakuukausi(202608, 'Easton'), false)
+  assert.equal(onTapahtumakuukausi(202609, 'Malmi'), true)
+  assert.equal(onTapahtumakuukausi(202609, 'Easton', tavoitteetKuukaudelle(202609)!.Easton), false)
 })

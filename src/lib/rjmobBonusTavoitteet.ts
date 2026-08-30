@@ -136,8 +136,13 @@ export function parseTavoiteTaulukko(rows: string[][]): TavoiteTaulukko {
     liittymat: otsikot.findIndex(c => osuu(c, 'liittym')),
     fsecure: otsikot.findIndex(c => osuu(c, 'f-secure', 'fsecure', 'f secure')),
     kassakate: otsikot.findIndex(c => osuu(c, 'kassakate', 'kassa')),
-    tapahtuma: otsikot.findIndex(c => osuu(c, 'tapahtuma')),
+    // Tapahtumasarakkeita voi olla kaksi: tavoite ja toteuma. Toteuma
+    // tunnistetaan ensin, jotta "Tapahtuma"-osajono ei nappaa sitä
+    // tavoitesarakkeeksi ja vie toteutunutta lukua tavoitteen paikalle.
+    tapahtumaToteuma: otsikot.findIndex(c => osuu(c, 'tapahtuma') && osuu(c, 'toteu')),
+    tapahtuma: -1,
   }
+  idx.tapahtuma = otsikot.findIndex((c, i) => i !== idx.tapahtumaToteuma && osuu(c, 'tapahtuma'))
   for (const m of MITTARIT) {
     if (idx[m] < 0) varoitukset.push(`Tavoitetaulukosta puuttuu sarake: ${MITTARI_NIMI[m]}`)
   }
@@ -155,11 +160,13 @@ export function parseTavoiteTaulukko(rows: string[][]): TavoiteTaulukko {
     if (!myymala || tavoitteet[myymala]) continue
 
     const tapahtuma = idx.tapahtuma >= 0 ? luku(r[idx.tapahtuma]) : null
+    const tapahtumaToteuma = idx.tapahtumaToteuma >= 0 ? luku(r[idx.tapahtumaToteuma]) : null
     tavoitteet[myymala] = {
       liittymat: idx.liittymat >= 0 ? luku(r[idx.liittymat]) : null,
       fsecure: idx.fsecure >= 0 ? luku(r[idx.fsecure]) : null,
       kassakate: idx.kassakate >= 0 ? luku(r[idx.kassakate]) : null,
       ...(tapahtuma !== null && tapahtuma > 0 ? { tapahtumaLiittymat: tapahtuma } : {}),
+      ...(tapahtumaToteuma !== null && tapahtumaToteuma >= 0 ? { tapahtumaToteuma } : {}),
     }
   }
 
@@ -270,6 +277,8 @@ export function yhdistaTavoitteet(
     }
     const tapahtuma = d.tapahtumaLiittymat ?? k?.tapahtumaLiittymat
     if (tapahtuma !== undefined && tapahtuma > 0) rivi.tapahtumaLiittymat = tapahtuma
+    const toteutunut = d.tapahtumaToteuma ?? k?.tapahtumaToteuma
+    if (toteutunut !== undefined) rivi.tapahtumaToteuma = toteutunut
 
     yhdistetty[myymala] = rivi
   }
@@ -357,4 +366,67 @@ export function uudetMerkinnat(
 export function muutosTeksti(m: MuutosMerkinta): string {
   const pvm = m.havaittu.slice(0, 10)
   return `${pvm} · ${m.kuka} · ${m.myymala} ${MITTARI_NIMI[m.mittari]}: ${m.vanha ?? '—'} → ${m.uusi ?? '—'} (ei vaikuta laskentaan, tavoite on lukittu)`
+}
+
+// ---------------------------------------------------------------------------
+// Tapahtumat ja normalisointi
+// ---------------------------------------------------------------------------
+
+/**
+ * Kuukaudet joissa myymälällä oli erillinen tapahtuma.
+ *
+ * **Tämä lista ei sisällä lukuja eikä vaikuta laskentaan.** Sen ainoa tehtävä
+ * on kertoa ettei kyseinen kuukausi kelpaa arkitason vertailukohdaksi: ilman
+ * sitä Kivistön elokuu (tapahtumakuukausi) näyttäisi syyskuun rinnalla siltä
+ * että myynti romahti, vaikka romahtanut on vertailukohta eikä myynti.
+ *
+ * Kuukausi tunnistetaan tapahtumaksi myös silloin kun sen tavoitteessa on
+ * `tapahtumaLiittymat` — tätä listaa tarvitaan niille kuukausille joiden
+ * tavoitteita ei ole tallessa.
+ */
+export const TAPAHTUMAKUUKAUDET: readonly { kuukausiOrder: number; myymala: Myymala }[] = [
+  // Elokuu 2026, Kivistö — todettu määrittelyn luvusta 4b. Tapahtuman kokoa ei
+  // ole kirjattu mihinkään, joten sitä ei arvata tähän.
+  { kuukausiOrder: 202608, myymala: 'Kivistö' },
+  // Syyskuu 2026, Malmi — 600 kpl tavoitteesta, ks. LUKITUT_TAVOITTEET.
+  { kuukausiOrder: 202609, myymala: 'Malmi' },
+]
+
+export function onTapahtumakuukausi(
+  kuukausiOrder: number,
+  myymala: Myymala,
+  tavoite?: MyymalaTavoite,
+): boolean {
+  if ((tavoite?.tapahtumaLiittymat ?? 0) > 0) return true
+  return TAPAHTUMAKUUKAUDET.some(t => t.kuukausiOrder === kuukausiOrder && t.myymala === myymala)
+}
+
+export type Normalisointi =
+  | { arvo: number; mitattu: true }
+  | { arvo: null; mitattu: false; syy: string }
+
+/**
+ * Toteuma ilman tapahtumamyyntiä.
+ *
+ * Palauttaa luvun **vain kun tapahtuman toteutunut myynti on kirjattu**.
+ * Vaihtoehto olisi vähentää tapahtuman *tavoite*, mutta se olettaisi
+ * tapahtuman osuneen suunnitelmaansa — ja juuri sen selvittämiseksi
+ * normalisoitu luku katsotaan. Arvattu erotus näyttäisi mitatulta ja johtaisi
+ * päätöksen harhaan siihen suuntaan jota ei voi tarkistaa.
+ */
+export function normalisoiToteuma(
+  toteuma: number,
+  tavoite: MyymalaTavoite | undefined,
+): Normalisointi {
+  if (!tavoite || (tavoite.tapahtumaLiittymat ?? 0) <= 0) {
+    return { arvo: toteuma, mitattu: true }
+  }
+  if (tavoite.tapahtumaToteuma === undefined) {
+    return {
+      arvo: null,
+      mitattu: false,
+      syy: 'tapahtuman toteutunutta myyntiä ei ole kirjattu — lisää tavoitetaulukkoon sarake "Tapahtuma toteuma"',
+    }
+  }
+  return { arvo: Math.max(0, toteuma - tavoite.tapahtumaToteuma), mitattu: true }
 }
