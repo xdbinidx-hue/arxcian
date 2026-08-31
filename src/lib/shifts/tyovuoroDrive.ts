@@ -65,11 +65,21 @@ export interface Ruudukko {
  *
  * Tiedosto voi olla joko natiivi Google Sheet tai Driveen tallennettu
  * .xlsx, joten tyyppi tarkistetaan ajossa eikä oleteta kumpaakaan.
- * Välilehti valitaan **ensimmäisenä järjestyksessä** eikä nimellä
- * "Taulukko1": nimi on suomenkielisen Excelin oletus ja voi vaihtua,
- * järjestys ei.
+ *
+ * Välilehti valitaan oletuksena **ensimmäisenä järjestyksessä** eikä nimellä:
+ * nimi voi vaihtua, järjestys ei. Se valinta pelasti lukijan 31.8.2026, kun
+ * `Taulukko1` jaettiin välilehdiksi `PK-SEUTU` ja `LAHTI` — PK-luku jatkoi
+ * toimintaansa muuttumatta.
+ *
+ * `valilehtiNimi` on sitä varten että **toinen** välilehti voidaan lukea
+ * nimellä. Lahden vuorot ovat samassa työkirjassa omalla välilehdellään, ja
+ * järjestys ei voi erottaa niitä toisistaan. Puuttuva välilehti ei ole virhe
+ * vaan tyhjä ruudukko: LAHTI-välilehteä ei ole vanhemmissa kuukausissa, eikä
+ * sen puuttuminen saa kaataa PK-lukua.
  */
-export async function lueRuudukko(vuosi: number, kuukausi: number): Promise<Ruudukko> {
+export async function lueRuudukko(
+  vuosi: number, kuukausi: number, valilehtiNimi?: string,
+): Promise<Ruudukko> {
   const tiedosto = await etsiKuukaudenTiedosto(vuosi, kuukausi)
   if (!tiedosto?.id) {
     throw new Error(
@@ -83,8 +93,14 @@ export async function lueRuudukko(vuosi: number, kuukausi: number): Promise<Ruud
   if (tiedosto.mimeType === SPREADSHEET_MIME) {
     const sheets = google.sheets({ version: 'v4', auth: readAuth() })
     const meta = await sheets.spreadsheets.get({ spreadsheetId: tiedosto.id })
-    const valilehti = meta.data.sheets?.[0]?.properties?.title
-    if (!valilehti) throw new Error('Taulukossa ei ole yhtään välilehteä')
+    const nimet = (meta.data.sheets ?? []).map(s => s.properties?.title ?? '').filter(Boolean)
+    if (nimet.length === 0) throw new Error('Taulukossa ei ole yhtään välilehteä')
+
+    const valilehti = valilehtiNimi
+      ? nimet.find(n => n.toLowerCase() === valilehtiNimi.toLowerCase())
+      : nimet[0]
+    if (!valilehti) return { tiedosto, valilehti: '', rivit: [] }
+
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: tiedosto.id,
       range: `'${valilehti}'!${LUKUALUE}`,
@@ -100,8 +116,13 @@ export async function lueRuudukko(vuosi: number, kuukausi: number): Promise<Ruud
     { responseType: 'arraybuffer' },
   )
   const wb = XLSX.read(Buffer.from(res.data as ArrayBuffer), { type: 'buffer' })
-  const valilehti = wb.SheetNames[0]
-  if (!valilehti) throw new Error('Taulukossa ei ole yhtään välilehteä')
+  if (wb.SheetNames.length === 0) throw new Error('Taulukossa ei ole yhtään välilehteä')
+  const valilehti = valilehtiNimi
+    ? wb.SheetNames.find(n => n.toLowerCase() === valilehtiNimi.toLowerCase())
+    : wb.SheetNames[0]
+  // Sama sääntö kuin natiivilla taulukolla: pyydettyä välilehteä ei ole =
+  // tyhjä ruudukko, ei virhe.
+  if (!valilehti) return { tiedosto, valilehti: '', rivit: [] }
   const rivit = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[valilehti], {
     header: 1, raw: false, defval: '', blankrows: true,
   })

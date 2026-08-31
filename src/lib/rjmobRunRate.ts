@@ -4,6 +4,8 @@ import { monthOrder } from '@/lib/rjmobDrive'
 import { tyopaivaIkkuna, viimeinenPaattynytPaiva, type TyopaivaIkkuna } from '@/lib/rjmobWorkdays'
 import { laskeVuoroIkkuna } from '@/lib/shiftSchedule'
 import { lueLista } from '@/lib/shifts/shiftStore'
+import { lueRuudukko } from '@/lib/shifts/tyovuoroDrive'
+import { jasennaLahtiVuorot, lahtiVuoroIkkuna, LAHTI_VALILEHTI } from '@/lib/shifts/lahtiVuorot'
 import { todayISOHelsinki } from '@/lib/arxcian/time'
 
 /**
@@ -95,14 +97,11 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
 
   const [tavoitteet, myyjaVuorot] = await Promise.all([
     haeTavoitteet(order, kuukausiNimi),
-    lueVuorot(kuukausiAvain(order), viimeinenPaattynytPaiva(order, now)).catch(e => {
-      varoitukset.push(`Työvuorolistaa ei voitu lukea: ${e instanceof Error ? e.message : String(e)}`)
-      return {} as Record<string, MyyjaIkkuna>
-    }),
+    lueVuorot(kuukausiAvain(order), viimeinenPaattynytPaiva(order, now), varoitukset),
   ])
 
   if (Object.keys(myyjaVuorot).length === 0) {
-    varoitukset.push(`Kuukaudelle ${kuukausiNimi} ei ole vahvistettua työvuorolistaa — myyjien ennustetta ei voi laskea`)
+    varoitukset.push(`Kuukaudelle ${kuukausiNimi} ei ole työvuorolistaa — myyjien ennustetta ei voi laskea`)
   }
 
   return {
@@ -115,6 +114,47 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
   }
 }
 
-async function lueVuorot(kuukausi: string, viimeinen: string): Promise<Record<string, MyyjaIkkuna>> {
-  return laskeVuoroIkkuna(await lueLista('final', kuukausi), viimeinen)
+/**
+ * Myyjien vuoroikkunat kahdesta lähteestä yhdistettynä.
+ *
+ * | Lähde | Kattaa | Miksi erikseen |
+ * |---|---|---|
+ * | KV `shifts:final:<kk>` | Malmi, Easton, Kivistö | generaattorin tuottama ja Vahvista-napilla lukittu lista |
+ * | Drive, `LAHTI`-välilehti | Holma, Syke | käsin täytetty, generaattori ei koske siihen |
+ *
+ * **Lahti voittaa päällekkäisyydessä.** Albin ja Arbnor esiintyvät molemmilla
+ * välilehdillä, ja LAHTI-välilehti on käsin ylläpidetty — se on tuoreempi
+ * tieto kuin generoitu lista. Käytännössä päällekkäisyys koskee vain heitä
+ * kahta.
+ *
+ * **Toisen lähteen kaatuminen ei vie toista.** Lahden luku on Drive-kutsu,
+ * joka voi kaatua verkkoon tai puuttuvaan välilehteen; silloin PK-myyjät
+ * saavat silti ikkunansa ja Lahden myyjille näytetään viiva. Päinvastoin
+ * sama. Hiljaa nielty tyhjä olisi tässä pahempi kuin puolikas tulos, joten
+ * kaatuminen kerrotaan varoituksena.
+ */
+async function lueVuorot(
+  kuukausi: string, viimeinen: string, varoitukset: string[],
+): Promise<Record<string, MyyjaIkkuna>> {
+  const [vuosi, kk] = kuukausi.split('-').map(Number)
+
+  const pk = await lueLista('final', kuukausi)
+    .then(days => laskeVuoroIkkuna(days, viimeinen))
+    .catch(e => {
+      varoitukset.push(`PK-seudun työvuorolistaa ei voitu lukea: ${virhe(e)}`)
+      return {} as Record<string, MyyjaIkkuna>
+    })
+
+  const lahti = await lueRuudukko(vuosi, kk, LAHTI_VALILEHTI)
+    .then(({ rivit }) => lahtiVuoroIkkuna(jasennaLahtiVuorot(rivit, vuosi, kk), viimeinen))
+    .catch(e => {
+      varoitukset.push(`Lahden työvuoroja ei voitu lukea: ${virhe(e)}`)
+      return {} as Record<string, MyyjaIkkuna>
+    })
+
+  return { ...pk, ...lahti }
+}
+
+function virhe(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }

@@ -884,10 +884,17 @@ sama prosentti näyttää samalta hubissa ja molemmilla sivuilla. **Ei sama kuin
 | myymälä | aukiolopäivät kuun alusta eiliseen (ma–la, ei pyhiä) | kuun kaikki aukiolopäivät |
 | myyjä | omat vuorot eiliseen asti | omat vuorot koko kuussa |
 
-Myyjän luvut tulevat työvuorolistasta (`laskeVuoroIkkuna`,
-[shiftSchedule.ts](src/lib/shiftSchedule.ts)), joka kattaa **vain Malmin,
-Eastonin ja Kivistön**. Holman ja Sykkeen myyjille ei siis ole vuoroikkunaa
-eikä ennustetta, ja se näkyy viivana — ei nollana. Yhteensä-rivi käyttää
+Myyjän luvut tulevat **kahdesta lähteestä yhdistettynä**: PK-seutu KV:n
+vahvistetusta listasta (`laskeVuoroIkkuna`,
+[shiftSchedule.ts](src/lib/shiftSchedule.ts)) ja Holma + Syke Driven
+`LAHTI`-välilehdeltä (`lahtiVuoroIkkuna`,
+[lahtiVuorot.ts](src/lib/shifts/lahtiVuorot.ts)) — ks. "Lahti luetaan, ei
+generoida". Lahti voittaa päällekkäisyydessä, joka koskee käytännössä vain
+Albinia ja Arbnoria; käsin ylläpidetty välilehti on tuoreempi kuin generoitu
+lista. Toisen lähteen kaatuminen ei vie toista, ja kumpikin kertoo
+kaatumisestaan varoituksena.
+
+Myyjä jolle ei löydy vuoroja kummastakaan saa viivan — ei nollaa. Yhteensä-rivi käyttää
 myyjätaulukossakin myymälätason työpäiviä, koska vuorojen summa olisi
 henkilötyövuoroja eli eri suuretta kuin myymälärivin sama luku.
 
@@ -994,6 +1001,55 @@ AH34). Suorakaide on turvaominaisuus eikä optimointi: sarakkeisiin A (Pvm), AR
 (Tapahtumat) ja AU (Toiveet) tai riville 35 (tuntisummakaavat) ei voi osua edes
 bugin sattuessa, ja kenttämaski tyhjentää vanhat jäänteet samalla kertaa.
 Väritetään **vain myymäläsarake**; vuoro- ja tuntisarake jäävät valkoisiksi.
+
+### Lahti luetaan, ei generoida
+
+Päätös 31.8.2026. Työvuorotyökirjassa on nyt **kaksi välilehteä**:
+`PK-SEUTU` ja `LAHTI` (aiemmin yksi `Taulukko1`).
+
+| | PK-SEUTU | LAHTI |
+|---|---|---|
+| myymälät | Malmi, Easton, Kivistö | Holma (`H`), Syke (`S`) |
+| myyjäsarakkeet | 11, B…AF | 8, B…W |
+| Tapahtumat / Toiveet | AR / AU | AF / AI |
+| generaattori | tuottaa | **ei koske** |
+
+**Lahdelle ei ole miehityssääntöjä, aukioloja eikä vuoropohjia**, eikä niitä
+saa päätellä taulukosta taaksepäin — sama sääntö kuin PK:lla, jonka
+generaattori portattiin käsin tehdystä syyskuun referenssilistasta. Lahden
+vuorot täytetään käsin, ja arxcian vain **lukee** ne
+([lahtiVuorot.ts](src/lib/shifts/lahtiVuorot.ts)) run raten nimittäjäksi.
+Generaattori, golden-testi ja kirjoituspolku pysyivät koskemattomina.
+
+**Välilehti valitaan kahdella eri tavalla, ja molemmat ovat tarkoituksellisia.**
+PK luetaan **järjestyksessä ensimmäisenä** — juuri se valinta piti lukijan
+pystyssä kun `Taulukko1` jaettiin kahtia, koska nimi vaihtui mutta järjestys
+ei. LAHTI luetaan **nimellä**, koska järjestys ei voi erottaa toista
+välilehteä kolmannesta. Puuttuva LAHTI on tyhjä ruudukko eikä virhe: sitä ei
+ole vanhemmissa kuukausissa.
+
+**Vahvista kirjoittaa `sheets[0]`:aan eli PK-SEUTU:un.** LAHTI on toisena
+eikä voi ylikirjoittua. Jos välilehtien järjestys joskus vaihtuu, tämä on se
+kohta joka pitää muuttaa nimivalinnaksi ennen kuin mitään kirjoitetaan.
+
+**`YLÖ` on työpäivä, `Saikku` ei — vaikka molemmilla on tunnit.**
+LAHTI-välilehdellä tapahtumat kirjoitetaan **koodina vuorosarakkeeseen**
+(`YLÖ` 11 h = Ylöjärvi, tyhjä vuoro + paikka `jkl` 10 h = Jyväskylä), kun
+PK-puolella tapahtuma on `x` myymäläsarakkeessa ja vuorosarakkeessa on aina
+kellonaika. Siksi PK:n `onPoissaolo` — *mikä tahansa kirjaimia sisältävä
+solu on poissaolo* — **ei kelpaa täällä**: se söi Steveniltä ja Jamilta
+kolme 11 tunnin tapahtumapäivää elokuulta 2026. Lahdessa poissaolo on
+**sanalista** (vapaa, loma, saikku, sairas, poissa), ja tuntematon koodi
+lasketaan työpäiväksi. Suunta on valittu: uusi tapahtumapaikka on
+todennäköisempi kuin uusi poissaolosana, ja hiljaa kadonnut pitkä
+tapahtumapäivä vääristää nimittäjää enemmän kuin yksi liikaa laskettu.
+Sairauspoissaololle on merkitty tunnit, joten pelkkä "onko tunteja" -sääntö
+laskisi sen työpäiväksi — myyjä ei silti ollut myymässä.
+
+**Basri Salihi ei ole LAHTI-välilehdellä** vaikka teki elokuussa 2026 30 h
+Holmassa. Se on taulukon tila eikä lukijan vika: hänelle ei synny
+vuoroikkunaa ja run rate näyttää viivan. Jos sarake lisätään, se lisätään
+myös `LAHTI_MYYJA_SARAKKEET`iin.
 
 **Sarake AU luetaan tarkoituksella ohi.** Siinä on toiveiden lisäksi
 viikkorutiini- ja onnenpäivälegenda, eli vapaata tekstiä jossa esiintyy
