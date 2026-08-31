@@ -17,7 +17,14 @@ function isPublic(pathname: string) {
     // tarkistaa authorizeCronilla CRON_SECRETin tai istunnon. Polut luetellaan
     // erikseen prefiksin sijaan, jottei uusi /api/webhook/*-reitti aukea vahingossa.
     pathname === '/api/webhook/drive' ||
-    pathname === '/api/webhook/register'
+    pathname === '/api/webhook/register' ||
+    // Ajastettu Etelän Härät -yhteenveto kutsuu tätä pilvestä ilman selainta,
+    // eli ilman istuntoevästettä. Reitti todentaa itse jaetulla avaimella
+    // (YHTEENVETO_AVAIN) ja on vain luku. Ilman ohitusta vastaus olisi
+    // login-sivun HTML eikä JSON. Täsmäpolku eikä prefiksi, samasta syystä
+    // kuin webhookeilla: `/api/yhteenveto/`-alle lisätty reitti ei saa aueta
+    // vahingossa.
+    pathname === '/api/yhteenveto'
   )
 }
 
