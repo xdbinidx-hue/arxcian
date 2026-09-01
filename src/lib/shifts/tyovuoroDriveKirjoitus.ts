@@ -121,7 +121,7 @@ export async function kirjoitaTyovuorot(
     throw new Error(
       `Näillä myyjillä on vuoroja mutta ei saraketta taulukossa: `
       + `${suunnitelma.puuttuvatSarakkeet.join(', ')}. Lisää sarake taulukkoon ja `
-      + 'kirjaa se MYYJA_SARAKKEET-karttaan (src/lib/shifts/tyovuoroExcel.ts) '
+      + 'kirjaa se kuukauden sarakekarttaan (src/lib/shifts/tyovuoroExcel.ts) '
       + 'ennen kirjoitusta — muuten heidän vuoronsa katoaisivat hiljaa.',
     )
   }

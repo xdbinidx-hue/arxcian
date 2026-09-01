@@ -56,23 +56,70 @@ export interface MyyjaSarakkeet {
 }
 
 /**
- * Myyjien sarakkeet taulukossa, kolme saraketta kutakin.
+ * Taulukon sarakejärjestys **kuukausittain**.
  *
  * Nimet on kirjoitettu tähän kokonaisina eikä tuotu `ROSTER_COLUMNS`ista,
  * koska ajonaikainen import estäisi `node --test`in (ks. tiedoston alku).
  * Yhdenmukaisuus rosterin kanssa on varmistettu testillä
  * `tyovuoroExcel.test.mts`, joten nimien erkaneminen kaataa testin eikä
  * jää huomaamatta.
+ *
+ * ⚠️ **Järjestys ei ole vakio.** Antin lähdettyä 30.9.2026 Ramin siirtyi hänen
+ * sarakkeisiinsa (AC) ja Keifa sai Raminin vanhat (AF). Kukin kuukausi on oma
+ * Drive-tiedostonsa, joten **syyskuun ja sitä vanhemmissa tiedostoissa on yhä
+ * vanha järjestys**: yksi globaali kartta lukisi Raminin poissaolot Antin
+ * sarakkeesta ja kirjoittaisi hänen vuoronsa väärään sarakkeeseen — hiljaa,
+ * ilman virhettä.
+ *
+ * Uusi järjestys lisätään uutena rivinä, **vanhaa ei muokata**. Sama sääntö
+ * kuin myyjän voimassaolovälillä: mennyttä ei kirjoiteta uusiksi.
  */
-export const MYYJA_SARAKKEET: MyyjaSarakkeet[] = [
-  ['Albin Rashica', 'B'], ['Arbnor Rashica', 'E'], ['Alec Fambro', 'H'],
-  ['Joona Huttunen', 'K'], ['Krenar Bajqinovci', 'N'], ['Kasperi Kemppainen', 'Q'],
-  ['Vladimir Kogan', 'T'], ['Hamza Hanif', 'W'], ['Lauri Ukkonen', 'Z'],
-  ['Antti Kiljala', 'AC'], ['Ramin Kadiri', 'AF'],
-].map(([seller, eka]) => {
-  const i = sarakeIndeksi(eka as string)
-  return { seller: seller as string, vuoro: i, tunnit: i + 1, myymala: i + 2 }
-})
+const SARAKEJARJESTYKSET: { alkaen: number; parit: [string, string][] }[] = [
+  {
+    // Alusta 30.9.2026 asti.
+    alkaen: 0,
+    parit: [
+      ['Albin Rashica', 'B'], ['Arbnor Rashica', 'E'], ['Alec Fambro', 'H'],
+      ['Joona Huttunen', 'K'], ['Krenar Bajqinovci', 'N'], ['Kasperi Kemppainen', 'Q'],
+      ['Vladimir Kogan', 'T'], ['Hamza Hanif', 'W'], ['Lauri Ukkonen', 'Z'],
+      ['Antti Kiljala', 'AC'], ['Ramin Kadiri', 'AF'],
+    ],
+  },
+  {
+    // 1.10.2026 alkaen: Ramin Antin tilalle, Keifa Raminin tilalle.
+    alkaen: 202610,
+    parit: [
+      ['Albin Rashica', 'B'], ['Arbnor Rashica', 'E'], ['Alec Fambro', 'H'],
+      ['Joona Huttunen', 'K'], ['Krenar Bajqinovci', 'N'], ['Kasperi Kemppainen', 'Q'],
+      ['Vladimir Kogan', 'T'], ['Hamza Hanif', 'W'], ['Lauri Ukkonen', 'Z'],
+      ['Ramin Kadiri', 'AC'], ['Keifa', 'AF'],
+    ],
+  },
+]
+
+function kolmikot(parit: [string, string][]): MyyjaSarakkeet[] {
+  return parit.map(([seller, eka]) => {
+    const i = sarakeIndeksi(eka)
+    return { seller, vuoro: i, tunnit: i + 1, myymala: i + 2 }
+  })
+}
+
+/**
+ * Kuukauden sarakekartta.
+ *
+ * Kuukausi valitaan samalla `vuosi × 100 + kuukausi` -säännöllä kuin
+ * tuottoseurannassa ja työvuorotiedoston haussa.
+ */
+export function myyjaSarakkeet(vuosi: number, kuukausi: number): MyyjaSarakkeet[] {
+  const jarjestysnro = vuosi * 100 + kuukausi
+  const osuva = SARAKEJARJESTYKSET
+    .filter(j => j.alkaen <= jarjestysnro)
+    .sort((a, b) => b.alkaen - a.alkaen)[0]
+  return kolmikot(osuva.parit)
+}
+
+/** Kaikki sarakekartoissa esiintyvät nimet. Vain testin ristiintarkistukseen. */
+export const SARAKEJARJESTYS_ALUT = SARAKEJARJESTYKSET.map(j => j.alkaen)
 
 /** Tapahtumat-sarake (yhdistetty AR:AT). */
 export const TAPAHTUMAT_SARAKE = sarakeIndeksi('AR')
@@ -147,6 +194,8 @@ export function jasennaTyovuorotaulukko(
 ): KuukaudenSyote {
   const paivia = new Date(vuosi, kuukausi, 0).getDate()
   const viimeinen = viimeinenPaivarivi(vuosi, kuukausi)
+  // Sarakekartta on kuukausikohtainen, ks. SARAKEJARJESTYKSET.
+  const sarakkeet = myyjaSarakkeet(vuosi, kuukausi)
   const paivat: PaivanSyote[] = []
 
   for (let paiva = 1; paiva <= paivia; paiva++) {
@@ -156,7 +205,7 @@ export function jasennaTyovuorotaulukko(
 
     const tapahtumateksti = teksti(rivi, TAPAHTUMAT_SARAKE)
     const poissaolot: { seller: string; label: string }[] = []
-    for (const s of MYYJA_SARAKKEET) {
+    for (const s of sarakkeet) {
       const solu = teksti(rivi, s.vuoro)
       if (onPoissaolo(solu)) poissaolot.push({ seller: s.seller, label: solu })
     }

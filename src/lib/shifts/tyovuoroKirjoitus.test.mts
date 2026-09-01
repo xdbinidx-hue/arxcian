@@ -4,7 +4,11 @@ import {
   rakennaKirjoitussuunnitelma, muotoileAika, EKA_SARAKE, VIKA_SARAKE,
   MYYMALA_VARIT, MYYMALA_SOLO_VARIT, TAPAHTUMA_VARI,
 } from './tyovuoroKirjoitus.ts'
-import { MYYJA_SARAKKEET, TAPAHTUMAT_SARAKE, TOIVEET_SARAKE, sarakeIndeksi } from './tyovuoroExcel.ts'
+import { myyjaSarakkeet, TAPAHTUMAT_SARAKE, TOIVEET_SARAKE, sarakeIndeksi } from './tyovuoroExcel.ts'
+
+// Nämä testit kirjoittavat syyskuuta 2026, jonka sarakejärjestyksessä Antti on
+// AC:ssä ja Ramin AF:ssä. Lokakuun kartta on eri, ks. tyovuoroExcel.test.mts.
+const SYYSKUU = myyjaSarakkeet(2026, 9)
 import { EVENT_PLACE } from '../shiftSchedule.ts'
 import type { DayInfo } from '../shiftSchedule.ts'
 
@@ -42,7 +46,7 @@ test('kirjoitus ei ulotu riville 35 (tuntisummakaavat)', () => {
 })
 
 test('vuoro kirjoittaa kolme saraketta ja värittää vain myymäläsarakkeen', () => {
-  const alec = MYYJA_SARAKKEET.find(s => s.seller === 'Alec Fambro')!
+  const alec = SYYSKUU.find(s => s.seller === 'Alec Fambro')!
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-01', {
       shifts: [{ store: 'Easton', seller: 'Alec Fambro', start: '10:00', end: '17:00', hours: 7, label: 'aamu' }],
@@ -61,7 +65,7 @@ test('vuoro kirjoittaa kolme saraketta ja värittää vain myymäläsarakkeen', 
 })
 
 test('soolovuoro saa kirkkaan värin', () => {
-  const joona = MYYJA_SARAKKEET.find(s => s.seller === 'Joona Huttunen')!
+  const joona = SYYSKUU.find(s => s.seller === 'Joona Huttunen')!
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-02', {
       soloStores: ['Kivistö'],
@@ -75,7 +79,7 @@ test('tapahtumavuoro kirjoitetaan x:nä eikä myymälävärillä', () => {
   // Tapahtumassa oleva myyjä on töissä muttei miehitä myymälää. Merkintä on
   // käsin tehty; generaattori ei tuota sitä. Väri on neutraali harmaa, jotta
   // se ei näytä miltään myymälältä taulukossa.
-  const lauri = MYYJA_SARAKKEET.find(s => s.seller === 'Lauri Ukkonen')!
+  const lauri = SYYSKUU.find(s => s.seller === 'Lauri Ukkonen')!
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-04', {
       shifts: [{ store: EVENT_PLACE, seller: 'Lauri Ukkonen', start: '10:00', end: '18:00', hours: 8, label: 'käsin' }],
@@ -89,7 +93,7 @@ test('tapahtumavuoro kirjoitetaan x:nä eikä myymälävärillä', () => {
 test('tapahtumavuoro ei ole soolo vaikka päivässä olisi onnenpäivä', () => {
   // `solo` on onnenpäivän myymäläkohtainen merkintä. Ilman tapahtuman
   // tarkistusta ensin väri-indeksointi osuisi tyhjään.
-  const lauri = MYYJA_SARAKKEET.find(s => s.seller === 'Lauri Ukkonen')!
+  const lauri = SYYSKUU.find(s => s.seller === 'Lauri Ukkonen')!
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-09', {
       soloStores: ['Easton', 'Kivistö'],
@@ -103,7 +107,7 @@ test('poissaolomerkintä kirjoitetaan takaisin eikä katoa', () => {
   // Kirjoitusalue on sama jossa Albinin "Nizza" on. Jos merkintää ei
   // palautettaisi, vahvistus söisi sen ja seuraava generointi luulisi
   // Arbnorin olevan töissä.
-  const arbnor = MYYJA_SARAKKEET.find(s => s.seller === 'Arbnor Rashica')!
+  const arbnor = SYYSKUU.find(s => s.seller === 'Arbnor Rashica')!
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-14', { absences: { 'Arbnor Rashica': 'Nizza' } }),
   ], 2026, 9)
@@ -131,7 +135,7 @@ test('kasin merkitty sunnuntaivuoro kirjoitetaan Driveen', () => {
   // erikoisaukiolo voi vaatia vuoron ja sen saa merkita kasin. Kirjoitus ei
   // saa suodattaa sita pois `closed`-lipun perusteella — merkinta joka ei
   // paady taulukkoon olisi juuri se hiljainen no-op jota vastaan varotaan.
-  const hamza = MYYJA_SARAKKEET.find(s => s.seller === 'Hamza Hanif')!
+  const hamza = SYYSKUU.find(s => s.seller === 'Hamza Hanif')!
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-09-06', {
       weekday: 0, closed: true,
@@ -152,21 +156,22 @@ test('sunnuntai ei saa vuoroja mutta rivi on silti olemassa', () => {
 })
 
 test('sarakkeeton myyjä raportoidaan eikä pudoteta hiljaa', () => {
-  // Keifa aloitti 1.10.2026 eikä hänen sarakkeensa ole vielä kartassa. Ilman
-  // `puuttuvatSarakkeet`ia hänen vuoronsa katoaisivat äänettömästi ja Vahvista
-  // raportoisi `ok: true` pienemmällä vuoromäärällä — juuri se `"ok": true`
-  // jonka takana ei tapahdu mitään. Kirjoituspolku kieltäytyy tämän listan
-  // perusteella, kuiva-ajo näyttää nimet.
+  // Antti ei ole lokakuun 2026 sarakekartassa. Jos käsin muokattuun
+  // luonnokseen jää häntä koskeva vuoro, se katoaisi ilman
+  // `puuttuvatSarakkeet`ia äänettömästi ja Vahvista raportoisi `ok: true`
+  // pienemmällä vuoromäärällä — juuri se `"ok": true` jonka takana ei tapahdu
+  // mitään. Kirjoituspolku kieltäytyy tämän listan perusteella, kuiva-ajo
+  // näyttää nimet.
   const s = rakennaKirjoitussuunnitelma([
     paiva('2026-10-01', {
       weekday: 4,
       shifts: [
         { store: 'Malmi', seller: 'Hamza Hanif', start: '10:00', end: '16:00', hours: 6, label: 'aamu' },
-        { store: 'Easton', seller: 'Keifa', start: '12:00', end: '19:00', hours: 7, label: 'ilta' },
+        { store: 'Easton', seller: 'Antti Kiljala', start: '12:00', end: '19:00', hours: 7, label: 'ilta' },
       ],
     }),
   ], 2026, 10)
-  assert.deepEqual(s.puuttuvatSarakkeet, ['Keifa'])
+  assert.deepEqual(s.puuttuvatSarakkeet, ['Antti Kiljala'])
   assert.equal(s.vuoroja, 1, 'vain sarakkeellinen myyjä päätyy soluihin')
 })
 

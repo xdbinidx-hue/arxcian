@@ -2,10 +2,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   jasennaTyovuorotaulukko, soloMyymalat, onPoissaolo, sarakeIndeksi,
-  MYYJA_SARAKKEET, TAPAHTUMAT_SARAKE, TOIVEET_SARAKE, ENSIMMAINEN_PAIVARIVI,
+  myyjaSarakkeet, TAPAHTUMAT_SARAKE, TOIVEET_SARAKE, ENSIMMAINEN_PAIVARIVI,
   viimeinenPaivarivi,
 } from './tyovuoroExcel.ts'
-import { ROSTER_COLUMNS, KEIFA } from '../shiftSchedule.ts'
+import { rosterKuussa } from '../shiftSchedule.ts'
+
+/** Syyskuun 2026 kartta — sama järjestys kuin ennen Antin lähtöä. */
+const SYYSKUU = myyjaSarakkeet(2026, 9)
+/** Lokakuun 2026 kartta — Ramin Antin tilalla, Keifa Raminin tilalla. */
+const LOKAKUU = myyjaSarakkeet(2026, 10)
 
 test('sarakekirjaimet kääntyvät indekseiksi', () => {
   assert.equal(sarakeIndeksi('A'), 0)
@@ -16,8 +21,8 @@ test('sarakekirjaimet kääntyvät indekseiksi', () => {
   assert.equal(sarakeIndeksi('AU'), 46)
 })
 
-test('myyjäsarakkeet vastaavat toimeksiannon karttaa', () => {
-  const kartta = Object.fromEntries(MYYJA_SARAKKEET.map(s => [s.seller.split(' ')[0], s.vuoro]))
+test('myyjäsarakkeet vastaavat toimeksiannon karttaa (syyskuu 2026)', () => {
+  const kartta = Object.fromEntries(SYYSKUU.map(s => [s.seller.split(' ')[0], s.vuoro]))
   assert.equal(kartta.Albin, sarakeIndeksi('B'))
   assert.equal(kartta.Arbnor, sarakeIndeksi('E'))
   assert.equal(kartta.Alec, sarakeIndeksi('H'))
@@ -30,31 +35,50 @@ test('myyjäsarakkeet vastaavat toimeksiannon karttaa', () => {
   assert.equal(kartta.Antti, sarakeIndeksi('AC'))
   assert.equal(kartta.Ramin, sarakeIndeksi('AF'))
   // Kolme saraketta per myyjä, peräkkäin.
-  for (const s of MYYJA_SARAKKEET) {
+  for (const s of [...SYYSKUU, ...LOKAKUU]) {
     assert.equal(s.tunnit, s.vuoro + 1)
     assert.equal(s.myymala, s.vuoro + 2)
   }
 })
 
-test('lukijan myyjälista pysyy synkassa rosterin kanssa', () => {
+test('kuukauden sarakekartta vastaa kuukauden rosteria', () => {
   // Nimet on kirjoitettu lukijaan käsin (ajonaikaista importtia ei voi
   // käyttää), joten tämä testi on ainoa este sille että ne erkanevat.
-  const sarakkeissa = MYYJA_SARAKKEET.map(s => s.seller)
-
-  // Tuntematon nimi sarakekartassa on aina virhe: se osoittaisi sarakkeeseen
-  // jota kukaan ei omista.
-  for (const nimi of sarakkeissa) {
-    assert.ok(ROSTER_COLUMNS.includes(nimi), `${nimi} ei ole rosterissa`)
+  //
+  // Vertailu tehdään **kuukauden** rosteriin, ei kaikkien aikojen listaan:
+  // syyskuussa taulukossa on Antti eikä Keifaa, lokakuussa päinvastoin. Jos
+  // kartta jäisi jälkeen, kirjoitus menisi väärään sarakkeeseen ilman virhettä.
+  for (const [vuosi, kuukausi] of [[2026, 9], [2026, 10]] as [number, number][]) {
+    const kartassa = myyjaSarakkeet(vuosi, kuukausi).map(s => s.seller).sort()
+    const rosterissa = [...rosterKuussa(vuosi, kuukausi).columns].sort()
+    assert.deepEqual(kartassa, rosterissa, `${vuosi}-${kuukausi}`)
   }
+})
 
-  // Ilman saraketta jäävät luetellaan **näkyviin** eikä ohiteta hiljaa.
-  // Keifa aloitti 1.10.2026 eikä hänen sarakekirjaimensa ole vielä tiedossa;
-  // niin kauan kuin hän on tässä listassa, `rakennaKirjoitussuunnitelma`
-  // raportoi hänet `puuttuvatSarakkeet`issa ja Vahvista kieltäytyy
-  // kirjoittamasta. Tavoite on tyhjä lista — kun sarake lisätään taulukkoon
-  // ja karttaan, tämä testi kaatuu ja muistuttaa päivittämään myös tämän.
-  const ilmanSaraketta = ROSTER_COLUMNS.filter(n => !sarakkeissa.includes(n))
-  assert.deepEqual(ilmanSaraketta, [KEIFA])
+test('sarakejärjestys vaihtui lokakuussa 2026', () => {
+  // Antti lähti 30.9.2026, Ramin siirtyi hänen sarakkeisiinsa ja Keifa sai
+  // Raminin vanhat. Syyskuun tiedostossa on yhä vanha järjestys, joten yksi
+  // globaali kartta lukisi Raminin poissaolot Antin sarakkeesta.
+  const syys = Object.fromEntries(SYYSKUU.map(s => [s.seller, s.vuoro]))
+  const loka = Object.fromEntries(LOKAKUU.map(s => [s.seller, s.vuoro]))
+
+  assert.equal(syys['Antti Kiljala'], sarakeIndeksi('AC'))
+  assert.equal(syys['Ramin Kadiri'], sarakeIndeksi('AF'))
+  assert.equal(loka['Ramin Kadiri'], sarakeIndeksi('AC'), 'Ramin Antin tilalle')
+  assert.equal(loka['Keifa'], sarakeIndeksi('AF'), 'Keifa Raminin tilalle')
+  assert.equal(loka['Antti Kiljala'], undefined, 'Antti ei ole lokakuun taulukossa')
+  assert.equal(syys['Keifa'], undefined, 'Keifa ei ole syyskuun taulukossa')
+
+  // Yhteiset myyjät eivät liiku.
+  for (const nimi of ['Albin Rashica', 'Arbnor Rashica', 'Lauri Ukkonen']) {
+    assert.equal(syys[nimi], loka[nimi], `${nimi} siirtyi`)
+  }
+})
+
+test('sarakekartta ei ulotu Tapahtumat- tai Toiveet-sarakkeeseen', () => {
+  for (const s of [...SYYSKUU, ...LOKAKUU]) {
+    assert.ok(s.myymala < TAPAHTUMAT_SARAKE, `${s.seller} osuu AR:ään tai yli`)
+  }
 })
 
 test('oman myymälän tapahtuma ja onnenpäivä tunnistuvat', () => {
@@ -105,8 +129,8 @@ function ruudukko(solut: { rivi: number; sarake: number; arvo: string }[]): stri
 }
 
 test('jäsennys poimii tapahtumat, soolot ja poissaolot oikeilta riveiltä', () => {
-  const arbnor = MYYJA_SARAKKEET.find(s => s.seller === 'Arbnor Rashica')!
-  const hamza = MYYJA_SARAKKEET.find(s => s.seller === 'Hamza Hanif')!
+  const arbnor = SYYSKUU.find(s => s.seller === 'Arbnor Rashica')!
+  const hamza = SYYSKUU.find(s => s.seller === 'Hamza Hanif')!
   const rivit = ruudukko([
     // Päivä 6 → rivi 9
     { rivi: ENSIMMAINEN_PAIVARIVI + 5, sarake: TAPAHTUMAT_SARAKE, arvo: 'Easton, Kivistö OP' },

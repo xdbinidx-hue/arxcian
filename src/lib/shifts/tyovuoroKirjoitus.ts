@@ -10,7 +10,7 @@ import type { DayInfo, StoreName } from '../shiftSchedule'
 import { PLACE_LETTER, onTapahtuma } from '../shiftSchedule.ts'
 // ".ts"-pääte on tahallinen: tämä moduuli on yksikkötestattu ja Noden
 // ESM-resolveri vaatii päätteen (ks. tsconfigin allowImportingTsExtensions).
-import { ENSIMMAINEN_PAIVARIVI, MYYJA_SARAKKEET, viimeinenPaivarivi, sarakeIndeksi } from './tyovuoroExcel.ts'
+import { ENSIMMAINEN_PAIVARIVI, myyjaSarakkeet, viimeinenPaivarivi, sarakeIndeksi } from './tyovuoroExcel.ts'
 
 /**
  * Kirjoitusalueen sarakerajat: **B–AH**, eli täsmälleen myyjien kolme
@@ -59,7 +59,7 @@ export interface Kirjoitussuunnitelma {
   /**
    * Myyjät joilla on vuoroja mutta **ei saraketta taulukossa**.
    *
-   * Ilman tätä heidän vuoronsa katoaisivat hiljaa: `MYYJA_SARAKKEET` on
+   * Ilman tätä heidän vuoronsa katoaisivat hiljaa: `myyjaSarakkeet` on
    * suunnitelman ainoa lähde, joten kartasta puuttuva nimi ei tuota virhettä
    * vaan pelkän tyhjän sarakkeen — ja Vahvista raportoisi `ok: true` ja
    * pienemmän vuoromäärän. Juuri se `"ok": true` jonka takana ei tapahtunut
@@ -109,7 +109,10 @@ export function rakennaKirjoitussuunnitelma(
 
   let vuoroja = 0
   let poissaoloja = 0
-  const sarakkeelliset = new Set(MYYJA_SARAKKEET.map(s => s.seller))
+  // Sarakekartta on kuukausikohtainen: järjestys vaihtui 1.10.2026, ks.
+  // SARAKEJARJESTYKSET. Väärän kuukauden kartta kirjoittaisi väärään sarakkeeseen.
+  const kartta = myyjaSarakkeet(vuosi, kuukausi)
+  const sarakkeelliset = new Set(kartta.map(s => s.seller))
   const puuttuvat = new Set<string>()
 
   for (let rivi = ekaRivi; rivi <= vikaRivi; rivi++) {
@@ -123,7 +126,7 @@ export function rakennaKirjoitussuunnitelma(
       if (!sarakkeelliset.has(s.seller)) puuttuvat.add(s.seller)
     }
 
-    for (const sarakkeet of MYYJA_SARAKKEET) {
+    for (const sarakkeet of kartta) {
       const cVuoro = sarakkeet.vuoro - EKA_SARAKE
       const cTunnit = sarakkeet.tunnit - EKA_SARAKE
       const cMyymala = sarakkeet.myymala - EKA_SARAKE

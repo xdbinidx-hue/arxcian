@@ -1099,14 +1099,28 @@ paikkausjärjestys **Ramin → Antti → Albin** muuttuu lokakuussa itsestään
 muotoon **Ramin → Albin** ilman koodimuutosta. Sama koskee jokaista tulevaa
 lähtijää.
 
-**Uusi myyjä tarvitsee myös sarakkeen Drive-taulukkoon.** `MYYJA_SARAKKEET`
-([tyovuoroExcel.ts](src/lib/shifts/tyovuoroExcel.ts)) on kirjoituspolun ainoa
-lähde, joten kartasta puuttuva nimi ei tuota virhettä vaan pelkän tyhjän
-sarakkeen — Vahvista raportoisi `ok: true` ja pienemmän vuoromäärän.
-`rakennaKirjoitussuunnitelma` palauttaa siksi `puuttuvatSarakkeet`in ja
-`kirjoitaTyovuorot` **kieltäytyy kirjoittamasta** kun se ei ole tyhjä.
-Kuiva-ajo pääsee läpi ja näyttää nimet. **Keifan sarakekirjain on 1.9.2026 yhä
-avoin**, joten lokakuun kirjoitus estyy siihen asti tarkoituksella.
+**Taulukon sarakejärjestys ei ole vakio, ja se vaihtui 1.10.2026.** Antin
+lähdettyä **Ramin siirtyi hänen sarakkeisiinsa (AC) ja Keifa sai Raminin
+vanhat (AF)**. Kukin kuukausi on oma Drive-tiedostonsa, joten syyskuun ja sitä
+vanhemmissa tiedostoissa on yhä vanha järjestys: yksi globaali kartta lukisi
+Raminin poissaolot Antin sarakkeesta ja kirjoittaisi hänen vuoronsa väärään
+sarakkeeseen — hiljaa, ilman virhettä. `myyjaSarakkeet(vuosi, kuukausi)`
+([tyovuoroExcel.ts](src/lib/shifts/tyovuoroExcel.ts)) valitsee kartan samalla
+`vuosi × 100 + kuukausi` -säännöllä kuin muukin kuukausivalinta. **Uusi
+järjestys lisätään uutena rivinä `SARAKEJARJESTYKSET`iin, vanhaa ei muokata** —
+sama sääntö kuin voimassaolovälillä: mennyttä ei kirjoiteta uusiksi.
+`tyovuoroExcel.test.mts` vertaa kummankin kartan **kuukauden rosteriin**, joten
+listojen erkaneminen kaataa testin.
+
+Sarakemäärä ei kasvanut (11 myyjää ennen ja jälkeen), joten kirjoitusalue on
+yhä B4:AH.
+
+**Kartasta puuttuva nimi on kirjoituseste, ei varoitus.** Puuttuva nimi ei
+tuota virhettä vaan pelkän tyhjän sarakkeen, jolloin Vahvista raportoisi
+`ok: true` ja pienemmän vuoromäärän. `rakennaKirjoitussuunnitelma` palauttaa
+siksi `puuttuvatSarakkeet`in ja `kirjoitaTyovuorot` **kieltäytyy
+kirjoittamasta** kun se ei ole tyhjä. Kuiva-ajo pääsee läpi ja näyttää nimet —
+juuri sitä varten se on.
 
 **Lokakuu 2026 on ensimmäinen 31 päivän kuukausi jonka tämä työkalu
 kirjoittaa.** Ennen kirjoitusta on tarkistettava taulukosta ulottuuko
