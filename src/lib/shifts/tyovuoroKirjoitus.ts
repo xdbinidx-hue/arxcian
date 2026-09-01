@@ -56,6 +56,17 @@ export interface Kirjoitussuunnitelma {
   vuoroja: number
   /** Montako poissaolomerkintää säilytetään. */
   poissaoloja: number
+  /**
+   * Myyjät joilla on vuoroja mutta **ei saraketta taulukossa**.
+   *
+   * Ilman tätä heidän vuoronsa katoaisivat hiljaa: `MYYJA_SARAKKEET` on
+   * suunnitelman ainoa lähde, joten kartasta puuttuva nimi ei tuota virhettä
+   * vaan pelkän tyhjän sarakkeen — ja Vahvista raportoisi `ok: true` ja
+   * pienemmän vuoromäärän. Juuri se `"ok": true` jonka takana ei tapahtunut
+   * mitään. Kirjoituspolku kieltäytyy kun tämä ei ole tyhjä; kuiva-ajo
+   * näyttää nimet.
+   */
+  puuttuvatSarakkeet: string[]
 }
 
 function a1Sarake(indeksi: number): string {
@@ -98,6 +109,8 @@ export function rakennaKirjoitussuunnitelma(
 
   let vuoroja = 0
   let poissaoloja = 0
+  const sarakkeelliset = new Set(MYYJA_SARAKKEET.map(s => s.seller))
+  const puuttuvat = new Set<string>()
 
   for (let rivi = ekaRivi; rivi <= vikaRivi; rivi++) {
     const paiva = rivi - ekaRivi + 1
@@ -105,6 +118,10 @@ export function rakennaKirjoitussuunnitelma(
     const day = byDate.get(date)
     if (!day) continue
     const r = rivi - ekaRivi
+
+    for (const s of day.shifts) {
+      if (!sarakkeelliset.has(s.seller)) puuttuvat.add(s.seller)
+    }
 
     for (const sarakkeet of MYYJA_SARAKKEET) {
       const cVuoro = sarakkeet.vuoro - EKA_SARAKE
@@ -148,5 +165,6 @@ export function rakennaKirjoitussuunnitelma(
     varit,
     vuoroja,
     poissaoloja,
+    puuttuvatSarakkeet: Array.from(puuttuvat),
   }
 }

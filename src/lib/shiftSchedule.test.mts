@@ -25,10 +25,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  generateMonth, STORE_MANAGERS, FULL_TIME_SELLERS, MANAGER_NAMES,
+  generateMonth, STORE_MANAGERS, MANAGER_NAMES,
   VLADIMIR, ANTTI, RAMIN, ALBIN, ANTTI_MAX_SHIFTS_PER_WEEK,
   RAMIN_MAX_SHIFTS_PER_WEEK, VLADIMIR_MAX_SHIFTS_PER_WEEK, sopiiVuoro,
-  laskeVajeet, laskeTunnit,
+  laskeVajeet, laskeTunnit, KEIFA, MAX_SHIFTS_PER_WEEK, rosterKuussa,
+  jaaAnkkurit, onVoimassa, voimassaKuussa,
   type DayInfo, type KuukaudenSyote, type PaivanSyote, type StoreName,
 } from './shiftSchedule.ts'
 
@@ -267,7 +268,9 @@ test('Malmi jakautuu tasan kokoaikaisten kesken', () => {
   // ankkuripaikka, joten hänen Malmi-mahdollisuutensa ovat kapeammat kuin
   // muiden. **Älä kiristä tätä takaisin kahteen** — se onnistuu vain
   // sijoittamalla hänet aamuvuoroon.
-  const malmi = FULL_TIME_SELLERS.map(s =>
+  // Kuukauden kokoaikaiset, ei kaikkien aikojen lista: Keifa aloittaa vasta
+  // 1.10.2026, ja hänen nollansa mukana ero olisi 11 eikä 3.
+  const malmi = rosterKuussa(2026, 9).fullTime.map(s =>
     tulos.days.reduce((n, d) => n + d.shifts.filter(x => x.seller === s && x.store === 'Malmi').length, 0))
   const ero = Math.max(...malmi) - Math.min(...malmi)
   assert.ok(ero <= 3, `Malmi-vuorojen ero kokoaikaisten välillä on ${ero} (${malmi.join(', ')})`)
@@ -307,7 +310,7 @@ test('onnenpäivänä vain päällikkö, mutta muut myymälät toimivat normaali
 
 test('päälliköiden tunnit ovat kokoaikaisten yläpuolella', () => {
   const paallikot = MANAGER_NAMES.map(m => tulos.tunnit[m])
-  const kokoaikaiset = FULL_TIME_SELLERS.map(s => tulos.tunnit[s])
+  const kokoaikaiset = rosterKuussa(2026, 9).fullTime.map(s => tulos.tunnit[s])
   assert.ok(
     Math.min(...paallikot) > Math.max(...kokoaikaiset),
     `pienin päällikkö ${Math.min(...paallikot)} h ei ylitä suurinta kokoaikaista ${Math.max(...kokoaikaiset)} h`,
@@ -350,5 +353,192 @@ test('kukaan ei tee kahta vuoroa samana päivänä', () => {
   for (const d of tulos.days) {
     const sellers = d.shifts.map(s => s.seller)
     assert.equal(new Set(sellers).size, sellers.length, `${d.date}: sama myyjä kahdesti`)
+  }
+})
+
+// ===================== Myyjän voimassaolo =====================
+//
+// Albinin vahvistus 1.9.2026: Antin viimeinen työpäivä on 30.9.2026 ja Keifa
+// aloittaa 1.10.2026. Nämä ovat KOVIA invariantteja.
+//
+// Lokakuu ajetaan **tyhjällä syötteellä** — ei tapahtumia, ei onnenpäiviä, ei
+// poissaoloja. Se on juuri se tilanne jossa Albinin tuntien pitää olla nolla:
+// jos hän saa vuoron silloin kun kukaan ei ole poissa, jokin sääntö toimii
+// väärin eikä kyse ole normaalista vaihtelusta.
+
+function tyhjaSyote(vuosi: number, kuukausi: number): KuukaudenSyote {
+  const paivia = new Date(vuosi, kuukausi, 0).getDate()
+  const paivat: PaivanSyote[] = []
+  for (let d = 1; d <= paivia; d++) {
+    paivat.push({
+      date: `${vuosi}-${String(kuukausi).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      tapahtumat: [], soloMyymalat: [], poissaolot: [],
+    })
+  }
+  return { vuosi, kuukausi, paivat }
+}
+
+const lokakuu = generateMonth(2026, 10, tyhjaSyote(2026, 10))
+
+test('voimassaolo rajaa päivä- ja kuukausitasolla', () => {
+  assert.equal(onVoimassa(ANTTI, '2026-09-30'), true)
+  assert.equal(onVoimassa(ANTTI, '2026-10-01'), false)
+  assert.equal(onVoimassa(KEIFA, '2026-09-30'), false)
+  assert.equal(onVoimassa(KEIFA, '2026-10-01'), true)
+  // Merkitsemätön myyjä on aina listalla.
+  assert.equal(onVoimassa(VLADIMIR, '2020-01-01'), true)
+
+  assert.equal(voimassaKuussa(ANTTI, 2026, 9), true)
+  assert.equal(voimassaKuussa(ANTTI, 2026, 10), false)
+  assert.equal(voimassaKuussa(KEIFA, 2026, 9), false)
+  assert.equal(voimassaKuussa(KEIFA, 2026, 10), true)
+})
+
+test('Anttia ei poisteta listalta — hän on syyskuussa mukana', () => {
+  // Poistaminen näyttäisi siivoukselta mutta pyyhkisi hänet myös menneiltä
+  // kuukausilta. Voimassaoloväli hoitaa saman ilman sitä hintaa.
+  assert.ok(rosterKuussa(2026, 9).on(ANTTI), 'Antti puuttuu syyskuun rosterista')
+  assert.ok(tulos.vuorot[ANTTI] > 0, 'Antti jäi ilman syyskuun vuoroja')
+})
+
+test('Antilla ei ole yhtään vuoroa lokakuussa 2026', () => {
+  assert.equal(rosterKuussa(2026, 10).on(ANTTI), false)
+  for (const d of lokakuu.days) {
+    assert.ok(!d.shifts.some(s => s.seller === ANTTI), `${d.date}: Antille tuli vuoro`)
+  }
+  assert.equal(lokakuu.tunnit[ANTTI] ?? 0, 0)
+})
+
+test('Keifalla ei ole yhtään vuoroa syyskuussa 2026', () => {
+  assert.equal(rosterKuussa(2026, 9).on(KEIFA), false)
+  for (const d of tulos.days) {
+    assert.ok(!d.shifts.some(s => s.seller === KEIFA), `${d.date}: Keifalle tuli vuoro`)
+  }
+  assert.equal(tulos.tunnit[KEIFA] ?? 0, 0)
+})
+
+test('Keifalla on enintään viisi vuoroa jokaisella lokakuun viikolla', () => {
+  assert.ok(lokakuu.vuorot[KEIFA] > 0, 'Keifa jäi kokonaan ilman vuoroja')
+  for (const viikko of viikoittain(lokakuu.days)) {
+    const n = vuorojaViikossa(viikko, KEIFA)
+    assert.ok(n <= MAX_SHIFTS_PER_WEEK,
+      `viikko ${viikko[0].date}: Keifa ${n} vuoroa (katto ${MAX_SHIFTS_PER_WEEK})`)
+  }
+})
+
+test('Albin ei tee yhtään tuntia lokakuussa kun kukaan ei ole poissa', () => {
+  // Albinin tunnit ovat oire, eivät miehitystä. Tyhjällä syötteellä hänen
+  // pitää jäädä nollaan; jos ei jää, joku muu on jäänyt ilman vuoroja.
+  //
+  // Tämä kaatui toteutuksen aikana 4 tunnilla (pe 30.10. Malmi 10–14), ja syy
+  // oli swingin ehdoton etuoikeus `fallbackFor`issa: swing söi paikkausvuorot
+  // ohi tuntikirjanpidon, kaksi kokoaikaista tuli viikkokattoonsa torstaihin
+  // mennessä eikä perjantain yhdeksänteen paikkaan jäänyt ketään. Ks.
+  // `fallbackFor`in kommentti.
+  assert.equal(lokakuu.tunnit[ALBIN] ?? 0, 0,
+    `Albin ${lokakuu.tunnit[ALBIN]} h lokakuussa ilman poissaoloja`)
+})
+
+test('lokakuussa ei ole yhtään vajetta kun kukaan ei ole poissa', () => {
+  assert.deepEqual(lokakuu.vajeet, [])
+})
+
+test('kokoaikaisten tuntiero pysyy alle 15 tunnissa', () => {
+  // Toimeksiannon raja 1.9.2026. Swingiksi joutuva ei saa jäädä ankkuroituja
+  // huonompaan — eikä parempaan: mitattu joulukuu 2026 oli 38 h ero ennen kuin
+  // swingin ehdoton etuoikeus poistettiin.
+  for (const [vuosi, kuukausi] of [[2026, 10], [2026, 11], [2026, 12]] as [number, number][]) {
+    const t = generateMonth(vuosi, kuukausi, tyhjaSyote(vuosi, kuukausi))
+    const h = rosterKuussa(vuosi, kuukausi).fullTime.map(s => t.tunnit[s] ?? 0)
+    const ero = Math.max(...h) - Math.min(...h)
+    assert.ok(ero <= 15, `${vuosi}-${kuukausi}: kokoaikaisten tuntiero ${ero} h (${h.join(', ')})`)
+  }
+})
+
+test('päälliköiden tunnit ovat kokoaikaisten yläpuolella myös lokakuussa', () => {
+  const paallikot = MANAGER_NAMES.map(m => lokakuu.tunnit[m])
+  const kokoaikaiset = rosterKuussa(2026, 10).fullTime.map(s => lokakuu.tunnit[s])
+  assert.ok(Math.min(...paallikot) > Math.max(...kokoaikaiset),
+    `pienin päällikkö ${Math.min(...paallikot)} h ei ylitä suurinta kokoaikaista ${Math.max(...kokoaikaiset)} h`)
+})
+
+test('keskiviikkoisin kaikki kolme päällikköä ovat Malmilla myös lokakuussa', () => {
+  for (const d of lokakuu.days.filter(x => x.weekday === 3)) {
+    const malmilla = d.shifts.filter(s => s.store === 'Malmi').map(s => s.seller)
+    for (const mgr of MANAGER_NAMES) {
+      assert.ok(malmilla.includes(mgr), `${d.date}: ${mgr} ei ole Malmilla`)
+    }
+  }
+})
+
+// ===================== Vladimirin rajoitteet regressiona lokakuussa =====================
+//
+// Nämä on jo testattu syyskuulta. Toisto lokakuulta on tahallinen: myyjälistan
+// muutos on juuri se hetki jolloin aikarajoite voi pudota huomaamatta.
+
+test('Vladimirin rajoitteet pitävät myös lokakuussa 2026', () => {
+  for (const d of lokakuu.days) {
+    const omat = d.shifts.filter(s => s.seller === VLADIMIR)
+    if ([1, 3, 0].includes(d.weekday)) {
+      assert.equal(omat.length, 0, `${d.date} (wd${d.weekday}): Vladimirille tuli vuoro`)
+    }
+    if (d.weekday !== 6) {
+      for (const s of omat) assert.ok(s.start >= '12:00', `${d.date}: Vladimir aloittaa ${s.start}`)
+    }
+  }
+  const lauantait = lokakuu.days.filter(d => d.weekday === 6)
+  assert.equal(lauantait.length, 5, 'lokakuussa 2026 on viisi lauantaita')
+  for (const d of lauantait) {
+    assert.ok(d.shifts.some(s => s.seller === VLADIMIR), `${d.date}: Vladimir ei ole töissä`)
+  }
+})
+
+test('Vladimir ei saa ankkuria vaikka ankkuroitavia on viisi', () => {
+  // Jokainen ankkuripaikka on aamuvuoro. Jos hän jää kiertoon, hänen
+  // paikkansa jää tyhjäksi joka viikko ja hän itse melkein kokonaan listalta.
+  assert.ok(!rosterKuussa(2026, 10).anchorable.includes(VLADIMIR))
+})
+
+// ===================== Swing-kierto =====================
+
+test('swing syntyy vasta kun ankkuroitavia on enemmän kuin paikkoja', () => {
+  const nelja = ['A', 'B', 'C', 'D']
+  assert.equal(jaaAnkkurit(nelja, {}, {}, null).swing, null,
+    'neljä ankkuroitavaa ja neljä paikkaa — swingiä ei pidä syntyä')
+  assert.equal(Object.keys(jaaAnkkurit(nelja, {}, {}, null).anchors).length, 4)
+
+  const viisi = ['A', 'B', 'C', 'D', 'E']
+  assert.equal(jaaAnkkurit(viisi, {}, {}, null).swing, 'E')
+  assert.equal(Object.keys(jaaAnkkurit(viisi, {}, {}, null).anchors).length, 4)
+})
+
+test('sama myyjä ei jää swingiksi kahtena peräkkäisenä viikkona', () => {
+  const viisi = ['A', 'B', 'C', 'D', 'E']
+  // Tasatilanne (kaikki nollissa) on juuri se joka toistuu kuukauden
+  // tynkäviikon jälkeen: ilman edellisen swingin muistia E olisi swing myös
+  // toisella viikolla.
+  assert.equal(jaaAnkkurit(viisi, {}, {}, null).swing, 'E')
+  assert.equal(jaaAnkkurit(viisi, {}, {}, 'E').swing, 'D')
+  // Vaihto tehdään viimeisen ankkuroidun kanssa, joten E saa ankkuripaikan.
+  assert.ok(jaaAnkkurit(viisi, {}, {}, 'E').anchors['E'])
+})
+
+test('swing ei toistu peräkkäisillä viikoilla oikeilla kuukausilla', () => {
+  // Mitattu vika: marraskuu 2026 alkaa sunnuntaista, joten ensimmäinen viikko
+  // on tynkä ilman vuoroja ja Malmi-kertymät ovat nollia myös toisen viikon
+  // alkaessa. Ilman edellisen swingin muistia Keifa olisi swing kahdesti.
+  for (const [vuosi, kuukausi] of [[2026, 10], [2026, 11], [2026, 12], [2027, 1]] as [number, number][]) {
+    const roster = rosterKuussa(vuosi, kuukausi)
+    const malmi: Record<string, number> = {}
+    let edellinen: string | null = null
+    // Karkea toisinto: kertymät eivät ole tässä oikeat, mutta tasatilanne on
+    // juuri se jossa vika esiintyi.
+    for (let viikko = 0; viikko < 6; viikko++) {
+      const jako = jaaAnkkurit(roster.anchorable, malmi, {}, edellinen)
+      assert.notEqual(jako.swing, edellinen,
+        `${vuosi}-${kuukausi} viikko ${viikko}: swing toistui (${jako.swing})`)
+      if (jako.swing) malmi[jako.swing] = (malmi[jako.swing] ?? 0) + 1
+      edellinen = jako.swing
+    }
   }
 })

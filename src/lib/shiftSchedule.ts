@@ -73,8 +73,17 @@ export const MANAGER_NAMES = [STORE_MANAGERS.Malmi, STORE_MANAGERS.Easton, STORE
  */
 export const VLADIMIR = 'Vladimir Kogan'
 
+/**
+ * Keifa aloitti 1.10.2026 kokoaikaisena ilman aikarajoitteita — häntä
+ * kohdellaan täsmälleen kuten Krenaria, Kasperia, Hamzaa ja Lauria. Nimi on
+ * tarkoituksella pelkkä etunimi (Albinin vahvistus 1.9.2026), toisin kuin
+ * muilla; sama muoto on oltava myös Drive-taulukon sarakeotsikossa.
+ */
+export const KEIFA = 'Keifa'
+
 export const FULL_TIME_SELLERS = [
   'Krenar Bajqinovci', 'Kasperi Kemppainen', VLADIMIR, 'Hamza Hanif', 'Lauri Ukkonen',
+  KEIFA,
 ]
 
 export const ANTTI = 'Antti Kiljala'
@@ -82,7 +91,15 @@ export const RAMIN = 'Ramin Kadiri'
 export const ALBIN = 'Albin Rashica'
 export const PART_TIME_SELLERS = [ANTTI, RAMIN]
 
-/** Kalenterinäkymän sarakejärjestys: päälliköt, kokoaikaiset, osa-aikaiset, viimeinen keino. */
+/**
+ * Kaikkien aikojen sarakejärjestys: päälliköt, kokoaikaiset, osa-aikaiset,
+ * viimeinen keino.
+ *
+ * ⚠️ Tämä on **kaikkien aikojen** lista, ei kuukauden lista. Lähtenyt myyjä
+ * pysyy tässä, koska vanhojen kuukausien listat viittaavat häneen. Kuukauden
+ * oma joukko saadaan `rosterKuussa`lla — käyttöliittymä käyttää sitä, ei
+ * tätä.
+ */
 export const ROSTER_COLUMNS = [
   ...MANAGER_NAMES,
   ...FULL_TIME_SELLERS,
@@ -90,6 +107,102 @@ export const ROSTER_COLUMNS = [
   RAMIN,
   ALBIN,
 ]
+
+// ===================== Myyjän voimassaolo =====================
+//
+// Myyjiä tulee ja lähtee jatkuvasti. Jos jokainen vaihdos olisi oma
+// erikoistapauksensa koodissa, kolmen kuukauden päästä kukaan ei tietäisi
+// miksi listalla on mitä on — ja **vanhat kuukaudet rikkoutuisivat**, koska
+// poistettu myyjä katoaisi myös niiltä listoilta joilla hän oikeasti oli
+// töissä. Siksi myyjää ei koskaan poisteta: hän saa päättymispäivän.
+//
+// Vahvistettu Albinilta 1.9.2026: Antin viimeinen työpäivä on 30.9.2026 ja
+// Keifa aloittaa 1.10.2026.
+
+export interface Voimassaolo {
+  /** Ensimmäinen päivä listalla (YYYY-MM-DD). Puuttuva = on ollut aina. */
+  alkaen?: string
+  /** Viimeinen päivä listalla (YYYY-MM-DD). Puuttuva = jatkuu toistaiseksi. */
+  asti?: string
+}
+
+/**
+ * Myyjien voimassaolovälit. **Vain poikkeukset kirjataan** — puuttuva merkintä
+ * tarkoittaa että myyjä on listalla aina.
+ *
+ * Tämä on se kohta joka rikkoutuu ensimmäisenä kun listaa "siivotaan":
+ * lähteneen myyjän poistaminen `ROSTER_COLUMNS`ista näyttää siivoukselta,
+ * mutta se pyyhkii hänet myös menneiltä kuukausilta.
+ */
+export const SELLER_VALIDITY: Record<string, Voimassaolo> = {
+  [ANTTI]: { asti: '2026-09-30' },
+  [KEIFA]: { alkaen: '2026-10-01' },
+}
+
+/**
+ * Onko myyjä listalla tänä päivänä.
+ *
+ * Vertailu tehdään merkkijonona: ISO-muotoiset päivämäärät ovat merkkijonoina
+ * samassa järjestyksessä kuin ajallisesti, joten `Date`-oliota ei tarvita
+ * (sama päättely kuin `laskeVuoroIkkuna`ssa).
+ */
+export function onVoimassa(seller: string, date: string): boolean {
+  const v = SELLER_VALIDITY[seller]
+  if (!v) return true
+  if (v.alkaen && date < v.alkaen) return false
+  if (v.asti && date > v.asti) return false
+  return true
+}
+
+/** Osuuko myyjän voimassaolo yhtään tähän kuukauteen. */
+export function voimassaKuussa(seller: string, vuosi: number, kuukausi: number): boolean {
+  const v = SELLER_VALIDITY[seller]
+  if (!v) return true
+  const eka = dateStr(vuosi, kuukausi, 1)
+  const vika = dateStr(vuosi, kuukausi, new Date(vuosi, kuukausi, 0).getDate())
+  if (v.alkaen && v.alkaen > vika) return false
+  if (v.asti && v.asti < eka) return false
+  return true
+}
+
+/**
+ * Yhden kuukauden myyjäjoukko.
+ *
+ * Kuukauden joukko suodataan **kerran generoinnin alussa** ja annetaan
+ * `WeekPlan`ille, jottei kuukausiehtoa tarvitse toistaa jokaisessa
+ * valintahaarassa. Päivätason tarkistus on silti tallella `canWork`issa:
+ * kuukauden puolivälissä alkava tai päättyvä myyjä ei saa vuoroja väärältä
+ * puolelta rajaa.
+ */
+export interface KuukaudenRoster {
+  /** Kuukauden kokoaikaiset. */
+  fullTime: string[]
+  /** Ketkä voivat saada viikkoankkurin — kokoaikaiset ilman Vladimiria. */
+  anchorable: string[]
+  /** Kuukauden sarakejärjestys käyttöliittymälle. */
+  columns: string[]
+  /** Onko myyjä tässä kuukaudessa mukana lainkaan. */
+  on(seller: string): boolean
+}
+
+export function rosterKuussa(vuosi: number, kuukausi: number): KuukaudenRoster {
+  const mukana = (s: string) => voimassaKuussa(s, vuosi, kuukausi)
+  const fullTime = FULL_TIME_SELLERS.filter(mukana)
+  const columns = ROSTER_COLUMNS.filter(mukana)
+  const joukko = new Set(columns)
+  return {
+    fullTime,
+    // Vladimir ei voi olla ankkuri, ks. ANCHOR_SLOTS.
+    anchorable: fullTime.filter(s => s !== VLADIMIR),
+    columns,
+    on: (seller: string) => joukko.has(seller),
+  }
+}
+
+/** Kuukauden sarakejärjestys käyttöliittymälle. */
+export function rosterColumnsFor(vuosi: number, kuukausi: number): string[] {
+  return rosterKuussa(vuosi, kuukausi).columns
+}
 
 // ===================== Kiintiöt =====================
 //
@@ -300,26 +413,22 @@ export function sopiiVuoro(seller: string, weekday: number, start: string): bool
 // ⚠️ **Jokainen ankkuripaikka on aamuvuoro** (aikaisin alku 10:00, myöhäisin
 // Malmi idx 1 ma/pe klo 12:00). Vladimir ei siis voi olla ankkuri: hänen
 // ankkuripaikkansa jäisi tyhjäksi joka viikko ja hän itse jäisi melkein
-// kokonaan listalta. Siksi `WeekPlan` jakaa ankkurit vain `ANCHORABLE`-
-// listalle. Tämä ei ole ilmeinen koodia lukemalla ja rikkoutuu ensimmäisenä
-// kun ankkurilogiikkaa "yksinkertaistetaan".
-type AnchorSlot = { store: StoreName; templateIndex: number }
-const ANCHOR_SLOTS: AnchorSlot[] = [
+// kokonaan listalta. Siksi `WeekPlan` jakaa ankkurit vain kuukauden
+// `roster.anchorable`-listalle. Tämä ei ole ilmeinen koodia lukemalla ja
+// rikkoutuu ensimmäisenä kun ankkurilogiikkaa "yksinkertaistetaan".
+export type AnchorSlot = { store: StoreName; templateIndex: number }
+export const ANCHOR_SLOTS: AnchorSlot[] = [
   { store: 'Malmi', templateIndex: 0 },
   { store: 'Malmi', templateIndex: 1 },
   { store: 'Easton', templateIndex: 0 },
   { store: 'Kivistö', templateIndex: 0 },
 ]
 
-/**
- * Ketkä voivat saada viikkoankkurin. Vladimir on rajattu ulos yllä kuvatusta
- * syystä — hän toimii vapaana täydentäjänä `sopiiVuoro`-tarkistuksen kautta.
- *
- * Neljä ankkuroitavaa ja neljä ankkuripaikkaa tarkoittaa ettei erillistä
- * swing-myyjää synny. Mekanismia ei silti poisteta: se herää itsestään jos
- * kokoaikaisia joskus on kuusi.
- */
-const ANCHORABLE = FULL_TIME_SELLERS.filter(s => s !== VLADIMIR)
+// Ketkä voivat saada viikkoankkurin, ratkeaa kuukausittain: `rosterKuussa`n
+// `anchorable` on sen kuukauden kokoaikaiset ilman Vladimiria. Syyskuussa 2026
+// heitä on neljä ja ankkuripaikkoja neljä, joten swingiä ei synny lainkaan.
+// Keifan myötä 1.10.2026 alkaen heitä on viisi ja **yksi jää joka viikko
+// swingiksi** — mekanismi oli tätä varten olemassa jo ennen häntä.
 
 // ===================== Apurit =====================
 
@@ -414,6 +523,52 @@ function dateStr(vuosi: number, kuukausi: number, paiva: number): string {
 }
 
 /**
+ * Kenelle viikon ankkuripaikat menevät ja kuka jää swingiksi.
+ *
+ * Erotettu `WeekPlan`ista puhtaaksi funktioksi, jotta swing-kierto on
+ * testattavissa suoraan eikä vain kuukauden tuloksesta päättelemällä.
+ */
+export function jaaAnkkurit(
+  anchorable: string[],
+  malmi: Record<string, number>,
+  ledger: Record<string, number>,
+  edellinenSwing: string | null,
+): { anchors: Record<string, AnchorSlot>; swing: string | null } {
+  const jarjestys = [...anchorable].sort((a, b) =>
+    (malmi[a] ?? 0) - (malmi[b] ?? 0)
+    || (ledger[a] ?? 0) - (ledger[b] ?? 0)
+    || anchorable.indexOf(a) - anchorable.indexOf(b))
+
+  // Swing ei saa osua samalle myyjälle kahtena peräkkäisenä viikkona.
+  //
+  // Pelkkä Malmi-kertymä ei riitä estämään sitä: kuukauden ensimmäinen
+  // "viikko" voi olla tynkä jossa ei ole yhtään vuoroa (marraskuu 2026 alkaa
+  // sunnuntaista), jolloin kertymät ovat nollia ja seuraava viikko saa
+  // täsmälleen saman järjestyksen. Mitattu ennen korjausta: Keifa olisi swing
+  // sekä viikolla 1 että 2.
+  //
+  // Vaihto tehdään **viimeisen ankkuroidun kanssa**, ei nostamalla häntä
+  // kärkeen: kärki on Malmin aamuankkuri, ja swingiksi päätyy juuri se jolla on
+  // eniten Malmia takanaan — kärkeen nosto veisi Malmin tasajaon väärään
+  // suuntaan.
+  if (jarjestys.length > ANCHOR_SLOTS.length
+      && jarjestys[jarjestys.length - 1] === edellinenSwing) {
+    const n = jarjestys.length
+    const t = jarjestys[n - 1]
+    jarjestys[n - 1] = jarjestys[n - 2]
+    jarjestys[n - 2] = t
+  }
+
+  const anchors: Record<string, AnchorSlot> = {}
+  let swing: string | null = null
+  jarjestys.forEach((seller, i) => {
+    if (i < ANCHOR_SLOTS.length) anchors[seller] = ANCHOR_SLOTS[i]
+    else swing = seller
+  })
+  return { anchors, swing }
+}
+
+/**
  * Yhden viikon tila: ankkurit, swing, käytetyt vuorot ja kertyneet tunnit.
  *
  * Tuntikirjanpito on koko kuukauden mittainen (`ledger`) mutta vuorolaskurit
@@ -431,14 +586,17 @@ class WeekPlan {
   private ledger: Record<string, number>
   private absences: Map<string, Set<string>>
   private malmi: Record<string, number>
+  readonly roster: KuukaudenRoster
 
   constructor(
     ledger: Record<string, number>,
     absences: Map<string, Set<string>>, malmi: Record<string, number>,
+    roster: KuukaudenRoster, edellinenSwing: string | null,
   ) {
     this.ledger = ledger
     this.absences = absences
     this.malmi = malmi
+    this.roster = roster
 
     // Ankkuripaikat jaetaan **Malmi-kertymän mukaan**, ei kiinteällä
     // kiertopointterilla. Malmi on paras myyntipaikka, joten sen kaksi
@@ -448,15 +606,9 @@ class WeekPlan {
     //
     // Viikkoankkuri itsessään säilyy: sama henkilö pysyy samassa myymälässä ja
     // vuorossa koko viikon, eikä pompi paikasta toiseen päivittäin.
-    const jarjestys = [...ANCHORABLE].sort((a, b) =>
-      (this.malmi[a] ?? 0) - (this.malmi[b] ?? 0)
-      || (this.ledger[a] ?? 0) - (this.ledger[b] ?? 0)
-      || ANCHORABLE.indexOf(a) - ANCHORABLE.indexOf(b))
-
-    jarjestys.forEach((seller, i) => {
-      if (i < ANCHOR_SLOTS.length) this.anchors[seller] = ANCHOR_SLOTS[i]
-      else this.swing = seller
-    })
+    const jako = jaaAnkkurit(this.roster.anchorable, this.malmi, this.ledger, edellinenSwing)
+    this.anchors = jako.anchors
+    this.swing = jako.swing
   }
 
   used(seller: string): number {
@@ -475,7 +627,11 @@ class WeekPlan {
   }
 
   canWork(seller: string, date: string): boolean {
-    return !this.isAbsent(seller, date) && this.used(seller) < this.capFor(seller)
+    // Voimassaolo tarkistetaan tässä päivätasolla vaikka kuukauden joukko on
+    // jo suodatettu: kesken kuuta alkava tai päättyvä myyjä on mukana
+    // kuukaudessa muttei jokaisena sen päivänä.
+    return onVoimassa(seller, date)
+      && !this.isAbsent(seller, date) && this.used(seller) < this.capFor(seller)
   }
 
   record(seller: string, cross: boolean) {
@@ -517,7 +673,7 @@ class WeekPlan {
    */
   malmiVahiten(seller: string): boolean {
     const oma = this.malmi[seller] ?? 0
-    return FULL_TIME_SELLERS.every(s => s === seller || (this.malmi[s] ?? 0) > oma)
+    return this.roster.fullTime.every(s => s === seller || (this.malmi[s] ?? 0) > oma)
   }
 
   byMalmi(sellers: string[]): string[] {
@@ -533,6 +689,10 @@ export function generateMonth(
   vuosi: number, kuukausi: number, syote: KuukaudenSyote,
 ): GenerointiTulos {
   const daysInMonth = new Date(vuosi, kuukausi, 0).getDate()
+
+  // Kuukauden myyjäjoukko suodataan **kerran tässä**, ei erikoistapauksena
+  // jokaisessa valintahaarassa. Ks. SELLER_VALIDITY.
+  const roster = rosterKuussa(vuosi, kuukausi)
 
   // Syöte päivittäin haettavaksi.
   const syotePerDate = new Map<string, PaivanSyote>()
@@ -572,8 +732,11 @@ export function generateMonth(
   // viikkovuoroa kuluvat arkeen eikä lauantaille jää ketään.
   const WEEK_ORDER = [6, 1, 2, 3, 4, 5, 0]
 
+  // Edellisen viikon swing kulkee mukana, jotta sama myyjä ei jää swingiksi
+  // kahtena peräkkäisenä viikkona. Ks. WeekPlanin konstruktori.
+  let edellinenSwing: string | null = null
   weekKeys.forEach(wk => {
-    const plan = new WeekPlan(ledger, absences, malmiCount)
+    const plan = new WeekPlan(ledger, absences, malmiCount, roster, edellinenSwing)
     const paivat = weeks.get(wk)!
     for (const wd of WEEK_ORDER) {
       for (const paiva of paivat) {
@@ -583,6 +746,7 @@ export function generateMonth(
         byDate.set(date, buildDay(date, wd, plan, syotePerDate.get(date), ledger, vuorot, malmiCount))
       }
     }
+    edellinenSwing = plan.swing
   })
 
   const days: DayInfo[] = []
@@ -651,8 +815,8 @@ function buildDay(
         if (idx >= templates.length) continue
         const tmpl = templates[idx]
         const pool = store === 'Malmi'
-          ? plan.byMalmi(FULL_TIME_SELLERS)
-          : plan.byHours(FULL_TIME_SELLERS)
+          ? plan.byMalmi(plan.roster.fullTime)
+          : plan.byHours(plan.roster.fullTime)
         // Vladimir on töissä JOKAISENA lauantaina — se on sääntö, ei
         // tuntitasauksen sivutuote, joten etuoikeus kirjoitetaan auki.
         // Lauantai käsitellään viikon sisällä ensin (WEEK_ORDER), joten hänen
@@ -661,7 +825,7 @@ function buildDay(
         // Etuoikeus annetaan muualla kuin Malmilla: Malmin lauantaipaikat
         // jaetaan `byMalmi`lla omana tavoitteenaan, ja Easton/Kivistö 10–16 on
         // 6 h siinä missä Malmin lauantaivuorot ovat 4 h.
-        const jono = store !== 'Malmi' && !today.has(VLADIMIR)
+        const jono = store !== 'Malmi' && !today.has(VLADIMIR) && plan.roster.on(VLADIMIR)
           ? [VLADIMIR, ...pool.filter(s => s !== VLADIMIR)]
           : pool
         const direct = jono.find(s =>
@@ -717,7 +881,7 @@ function buildDay(
 
       const anchor = plan.anchorFor(store, idx)
       // Kelpoisuus tarkistetaan myös ankkurilta. Vladimir ei voi olla ankkuri
-      // (ks. ANCHORABLE), joten ehto ei nykyisellään koskaan hylkää mitään —
+      // (ks. roster.anchorable), joten ehto ei nykyisellään hylkää mitään —
       // se on tässä siltä varalta että ankkuripaikkoja joskus muutetaan.
       if (anchor && !today.has(anchor) && plan.canWork(anchor, date)
           && sopiiVuoro(anchor, weekday, tmpl.start)) {
@@ -774,21 +938,26 @@ function managerPlacements(
 
 /**
  * Varajärjestys tyhjälle paikalle. Vajeen paikkausjärjestys on
- * **Ramin → Antti → Albin**, ja kokoaikaiset ennen niitä:
+ * **Ramin → Antti → Albin**, ja kokoaikaiset ennen niitä.
  *
- *  1. Viikon swing — hän on jo se joustava rooli. Nykyisellä myyjälistalla
- *     tätä ei synny: ankkuroitavia on neljä ja ankkuripaikkoja neljä.
+ * ⚠️ Jokainen nimetty haara kysyy ensin `plan.roster.on(...)`: kuukauden
+ * myyjäjoukko ratkaisee ketä on olemassa. Antin viimeinen työpäivä on
+ * 30.9.2026, joten **lokakuusta alkaen järjestys on Ramin → Albin** ilman että
+ * sääntöä kirjoitetaan tähän uusiksi. Sama koskee jokaista tulevaa lähtijää.
  *
- * Jokainen haara suodatetaan `sopiiVuoro`lla, joten Vladimir tulee valituksi
- * vain vuoroihin jotka kelpaavat hänelle — hän kulkee kohdan 3 kautta, jossa
- * matalat tunnit nostavat hänet luonnostaan kärkeen.
+ *  1. Vladimir — rajoitetuin ensin, ks. alla.
  *  2. Ramin, jos hänellä on alle kaksi vuoroa viikossa. Hän on osa-aikainen
  *     eikä hätävara: ilman tätä hän jää 60–80 h tavoitteen alle.
- *  3. Muu kokoaikainen, vähiten tunteja tehnyt ensin.
- *  4. Ramin (loput vuorot kattoon asti).
- *  5. Toisen myymälän päällikkö, enintään MANAGER_CROSS_CAP/vko.
- *  6. Antti (max 3/vko).
- *  7. Albin viimeisenä keinona — häntä ei rajoita viikkokiintiö, vain poissaolo.
+ *  3. Antti Kivistöön (max 3/vko), samalla periaatteella kuin Ramin.
+ *  4. Muu kokoaikainen, vähiten tunteja tehnyt ensin — myös viikon swing
+ *     kulkee tätä kautta, ei omaa etuoikeushaaraansa.
+ *  5. Ramin (loput vuorot kattoon asti).
+ *  6. Toisen myymälän päällikkö, enintään MANAGER_CROSS_CAP/vko.
+ *  7. Antti, sitten Albin viimeisenä keinona — Albinia ei rajoita
+ *     viikkokiintiö, vain poissaolo.
+ *
+ * Jokainen haara suodatetaan `sopiiVuoro`lla, joten Vladimir tulee valituksi
+ * vain vuoroihin jotka kelpaavat hänelle.
  */
 function fallbackFor(
   date: string, weekday: number, today: Set<string>, plan: WeekPlan,
@@ -798,10 +967,22 @@ function fallbackFor(
   // juuri tämän takia: myyjää ei voi valita ennen kuin alkuaika on tiedossa.
   const kelpaa = (seller: string) => sopiiVuoro(seller, weekday, tmpl.start)
 
-  if (plan.swing && !today.has(plan.swing) && plan.canWork(plan.swing, date)
-      && kelpaa(plan.swing)) {
-    return { seller: plan.swing, cross: false }
-  }
+  // ⚠️ **Swingillä ei ole ehdotonta etuoikeutta**, vaikka `ANCHOR_STEP`-ajan
+  // toteutus antoi sen. Etuoikeus ohitti tuntikirjanpidon kokonaan, ja koska
+  // swing täyttää joka viikko kaikki aukot, hänen tuntinsa karkasivat: mitattu
+  // joulukuu 2026 **38 h** ero kokoaikaisten välillä (137 vs. 99), marraskuu
+  // 30 h, ja lokakuussa Albin joutui hätävaraksi neljäksi tunniksi. Ilman
+  // etuoikeutta samat kuukaudet ovat 5 h, 9 h ja Albin 0 h.
+  //
+  // Se on sama vika jonka takia valinta ylipäätään tehdään kertyneistä
+  // tunneista ("ero kasvoi 44 tuntiin kuukaudessa"), vain toisesta suunnasta.
+  // Vika ei näkynyt aiemmin koska swing oli 19.8.2026–30.9.2026 aina `null`:
+  // ankkuroitavia oli neljä ja paikkoja neljä, joten haara oli kuollutta
+  // koodia. Keifan myötä se heräsi.
+  //
+  // Swing on yhä se joustava rooli: hänellä ei ole ankkuria, joten `byHours`
+  // ohjaa paikkausvuorot hänelle heti kun hän on muita jäljessä. Rooli
+  // säilyy, sokea etuoikeus ei.
 
   // Rajoitetuin ensin: Vladimir kelpaa vain neljänä päivänä ja vain klo 12
   // jälkeen alkaviin vuoroihin, kun taas Ramin ja Antti käyvät mihin tahansa
@@ -817,12 +998,14 @@ function fallbackFor(
   // ilman tätä rajausta hän jää Eastonin illaksi koko kuukaudeksi. Väistäessään
   // hän ei jää tyhjäksi vaan tulee valituksi alempaa kokoaikaisten joukosta —
   // tyypillisesti juuri saman päivän Malmin iltavuoroon.
-  if (!today.has(VLADIMIR) && plan.canWork(VLADIMIR, date) && kelpaa(VLADIMIR)
+  if (plan.roster.on(VLADIMIR)
+      && !today.has(VLADIMIR) && plan.canWork(VLADIMIR, date) && kelpaa(VLADIMIR)
       && (store === 'Malmi' || !plan.malmiVahiten(VLADIMIR))) {
     return { seller: VLADIMIR, cross: false }
   }
 
-  if (!today.has(RAMIN) && plan.used(RAMIN) < 2 && plan.canWork(RAMIN, date)
+  if (plan.roster.on(RAMIN)
+      && !today.has(RAMIN) && plan.used(RAMIN) < 2 && plan.canWork(RAMIN, date)
       && kelpaa(RAMIN)) {
     return { seller: RAMIN, cross: false }
   }
@@ -832,7 +1015,7 @@ function fallbackFor(
   // kokoaikaiset ehtivät täyttää ne kaikki ennen kuin varajärjestys pääsee
   // hänen kohdalleen — varsinkin sen jälkeen kun lauantai kevennettiin
   // neljään vuoroon eikä kapasiteetti enää lopu kesken.
-  if (store === ANTTI_STORE && !today.has(ANTTI)
+  if (plan.roster.on(ANTTI) && store === ANTTI_STORE && !today.has(ANTTI)
       && plan.canWork(ANTTI, date) && kelpaa(ANTTI)) {
     return { seller: ANTTI, cross: false }
   }
@@ -841,13 +1024,14 @@ function fallbackFor(
   // tehnyt. Ilman tätä Malmi kasautuisi sille jolla sattuu olemaan tunteja
   // vähiten, eikä paras myyntipaikka jakautuisi tasan.
   const jarjestys = store === 'Malmi'
-    ? plan.byMalmi(FULL_TIME_SELLERS)
-    : plan.byHours(FULL_TIME_SELLERS)
+    ? plan.byMalmi(plan.roster.fullTime)
+    : plan.byHours(plan.roster.fullTime)
   const fullTimer = jarjestys.find(s =>
     !today.has(s) && plan.canWork(s, date) && kelpaa(s))
   if (fullTimer) return { seller: fullTimer, cross: false }
 
-  if (!today.has(RAMIN) && plan.canWork(RAMIN, date) && kelpaa(RAMIN)) {
+  if (plan.roster.on(RAMIN) && !today.has(RAMIN) && plan.canWork(RAMIN, date)
+      && kelpaa(RAMIN)) {
     return { seller: RAMIN, cross: false }
   }
 
@@ -860,7 +1044,9 @@ function fallbackFor(
   }
 
   for (const cand of [ANTTI, ALBIN]) {
+    if (!plan.roster.on(cand)) continue
     if (today.has(cand) || plan.isAbsent(cand, date)) continue
+    if (!onVoimassa(cand, date)) continue
     if (!kelpaa(cand)) continue
     // Antti tekee vain Kivistöä — Malmin tai Eastonin vaje ei ole hänen
     // paikattavissaan, vaikka hänellä olisi viikkokiintiötä jäljellä.

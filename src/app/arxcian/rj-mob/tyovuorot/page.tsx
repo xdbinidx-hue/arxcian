@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   DayInfo, Shift, StoreName, ShiftPlace, STORES, STORE_COLORS, STORE_SOLO_COLORS,
   EVENT_PLACE, EVENT_COLOR, PLACE_LETTER, onTapahtuma,
-  ROSTER_COLUMNS, MANAGER_NAMES, hoursBetween, laskeVajeet, laskeTunnit,
+  rosterColumnsFor, MANAGER_NAMES, hoursBetween, laskeVajeet, laskeTunnit,
 } from '@/lib/shiftSchedule'
 // Sama poissaolosääntö kuin Drive-lukijalla. Kirjoitus- ja lukupää eivät saa
 // erota: solu jonka arxcian tallentaa poissaoloksi on luettava takaisin
@@ -161,6 +161,13 @@ export default function TyovuorotPage() {
   useEffect(() => { lataa() }, [lataa])
 
   const days = tila === 'draft' ? draft : final
+  // Sarakkeet ovat **kuukauden** myyjät, eivät kaikkien aikojen lista: ilman
+  // tätä lokakuussa näkyisi tyhjä Antti-sarake ja syyskuussa tyhjä Keifa-sarake.
+  // Ks. rosterKuussa / SELLER_VALIDITY.
+  const sarakkeet = useMemo(() => {
+    const [v, kk] = month.split('-').map(Number)
+    return rosterColumnsFor(v, kk)
+  }, [month])
   const vajeet = useMemo(() => laskeVajeet(days), [days])
   const { tunnit, vuorot } = useMemo(() => laskeTunnit(days), [days])
 
@@ -382,7 +389,7 @@ export default function TyovuorotPage() {
           <div style={{ background: 'white', border: '0.5px solid #eee', borderRadius: 12, padding: 12, marginBottom: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#555', marginBottom: 8 }}>Tunnit kuukaudessa</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
-              {ROSTER_COLUMNS.map(seller => (
+              {sarakkeet.map(seller => (
                 <div key={seller} style={{ fontSize: 11, color: '#333', whiteSpace: 'nowrap' }}>
                   <span style={{ fontWeight: MANAGER_NAMES.includes(seller) ? 600 : 400 }}>{seller.split(' ')[0]}</span>
                   {' '}<strong>{tunnit[seller] ?? 0} h</strong>
@@ -442,7 +449,7 @@ export default function TyovuorotPage() {
                   <thead>
                     <tr>
                       <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: '#f8f8f6' }}>Pvm</th>
-                      {ROSTER_COLUMNS.map(seller => (
+                      {sarakkeet.map(seller => (
                         <th key={seller} colSpan={3} style={{ ...th, borderRight: '1px solid #ddd' }}>{seller.split(' ')[0]}</th>
                       ))}
                       <th style={{ ...th, textAlign: 'left', minWidth: 180 }}>Tapahtumat</th>
@@ -454,7 +461,7 @@ export default function TyovuorotPage() {
                         <td style={{ padding: '5px 8px', fontSize: 11, fontWeight: 600, color: day.closed ? '#c99' : '#333', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: day.closed ? '#fef2f2' : 'white' }}>
                           {dateLabel(day)}
                         </td>
-                        {ROSTER_COLUMNS.map(seller => (
+                        {sarakkeet.map(seller => (
                           muokkaus && muokkaus.date === day.date && muokkaus.seller === seller ? (
                             <SoluMuokkain key={seller} day={day} seller={seller}
                               onSave={(aika, store) => muokkaaSolu(day.date, seller, aika, store)}

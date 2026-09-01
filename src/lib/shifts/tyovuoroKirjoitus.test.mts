@@ -150,3 +150,32 @@ test('sunnuntai ei saa vuoroja mutta rivi on silti olemassa', () => {
   assert.ok(s.arvot[5].every(v => v === ''))
   assert.equal(s.vuoroja, 0)
 })
+
+test('sarakkeeton myyjä raportoidaan eikä pudoteta hiljaa', () => {
+  // Keifa aloitti 1.10.2026 eikä hänen sarakkeensa ole vielä kartassa. Ilman
+  // `puuttuvatSarakkeet`ia hänen vuoronsa katoaisivat äänettömästi ja Vahvista
+  // raportoisi `ok: true` pienemmällä vuoromäärällä — juuri se `"ok": true`
+  // jonka takana ei tapahdu mitään. Kirjoituspolku kieltäytyy tämän listan
+  // perusteella, kuiva-ajo näyttää nimet.
+  const s = rakennaKirjoitussuunnitelma([
+    paiva('2026-10-01', {
+      weekday: 4,
+      shifts: [
+        { store: 'Malmi', seller: 'Hamza Hanif', start: '10:00', end: '16:00', hours: 6, label: 'aamu' },
+        { store: 'Easton', seller: 'Keifa', start: '12:00', end: '19:00', hours: 7, label: 'ilta' },
+      ],
+    }),
+  ], 2026, 10)
+  assert.deepEqual(s.puuttuvatSarakkeet, ['Keifa'])
+  assert.equal(s.vuoroja, 1, 'vain sarakkeellinen myyjä päätyy soluihin')
+})
+
+test('kaikilla sarakkeellisilla myyjillä puuttuvat-lista on tyhjä', () => {
+  const s = rakennaKirjoitussuunnitelma([
+    paiva('2026-09-01', {
+      weekday: 2,
+      shifts: [{ store: 'Malmi', seller: 'Hamza Hanif', start: '10:00', end: '16:00', hours: 6, label: 'aamu' }],
+    }),
+  ], 2026, 9)
+  assert.deepEqual(s.puuttuvatSarakkeet, [])
+})

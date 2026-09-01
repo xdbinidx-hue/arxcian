@@ -5,7 +5,7 @@ import {
   MYYJA_SARAKKEET, TAPAHTUMAT_SARAKE, TOIVEET_SARAKE, ENSIMMAINEN_PAIVARIVI,
   viimeinenPaivarivi,
 } from './tyovuoroExcel.ts'
-import { ROSTER_COLUMNS } from '../shiftSchedule.ts'
+import { ROSTER_COLUMNS, KEIFA } from '../shiftSchedule.ts'
 
 test('sarakekirjaimet kääntyvät indekseiksi', () => {
   assert.equal(sarakeIndeksi('A'), 0)
@@ -39,7 +39,22 @@ test('myyjäsarakkeet vastaavat toimeksiannon karttaa', () => {
 test('lukijan myyjälista pysyy synkassa rosterin kanssa', () => {
   // Nimet on kirjoitettu lukijaan käsin (ajonaikaista importtia ei voi
   // käyttää), joten tämä testi on ainoa este sille että ne erkanevat.
-  assert.deepEqual([...MYYJA_SARAKKEET.map(s => s.seller)].sort(), [...ROSTER_COLUMNS].sort())
+  const sarakkeissa = MYYJA_SARAKKEET.map(s => s.seller)
+
+  // Tuntematon nimi sarakekartassa on aina virhe: se osoittaisi sarakkeeseen
+  // jota kukaan ei omista.
+  for (const nimi of sarakkeissa) {
+    assert.ok(ROSTER_COLUMNS.includes(nimi), `${nimi} ei ole rosterissa`)
+  }
+
+  // Ilman saraketta jäävät luetellaan **näkyviin** eikä ohiteta hiljaa.
+  // Keifa aloitti 1.10.2026 eikä hänen sarakekirjaimensa ole vielä tiedossa;
+  // niin kauan kuin hän on tässä listassa, `rakennaKirjoitussuunnitelma`
+  // raportoi hänet `puuttuvatSarakkeet`issa ja Vahvista kieltäytyy
+  // kirjoittamasta. Tavoite on tyhjä lista — kun sarake lisätään taulukkoon
+  // ja karttaan, tämä testi kaatuu ja muistuttaa päivittämään myös tämän.
+  const ilmanSaraketta = ROSTER_COLUMNS.filter(n => !sarakkeissa.includes(n))
+  assert.deepEqual(ilmanSaraketta, [KEIFA])
 })
 
 test('oman myymälän tapahtuma ja onnenpäivä tunnistuvat', () => {

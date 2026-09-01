@@ -1076,6 +1076,78 @@ syyskuun tiedostosta, jossa on 30 päivää. Päivärivit johdetaan kuukauden
 pituudesta. Ennen ensimmäistä 31 päivän kuukautta on tarkistettava ulottuuko
 `SUM(C4:C33)` riville 34 — se korjataan taulukossa, ei koodissa.
 
+### Myyjää ei koskaan poisteta listalta — hän saa päättymispäivän
+
+Vahvistettu Albinilta 1.9.2026: Antin viimeinen työpäivä on 30.9.2026 ja
+**Keifa** aloittaa kokoaikaisena 1.10.2026 ilman aikarajoitteita.
+
+Myyjiä tulee ja lähtee jatkuvasti, joten vaihdos ei ole erikoistapaus vaan
+kenttä. `SELLER_VALIDITY` ([shiftSchedule.ts](src/lib/shiftSchedule.ts)) antaa
+myyjälle valinnaisen `alkaen`/`asti`-välin, `rosterKuussa` suodattaa kuukauden
+joukon kerran generoinnin alussa ja `onVoimassa` tarkistaa saman päivätasolla
+`canWork`issa. **Vain poikkeukset kirjataan** — merkitsemätön myyjä on listalla
+aina.
+
+**Poistaminen näyttää siivoukselta mutta rikkoo menneet kuukaudet.** Antti oli
+syyskuussa 2026 oikeasti töissä 98 tuntia; jos hänet poistetaan
+`ROSTER_COLUMNS`ista, syyskuun lista menettää hänet sekä näkymästä että
+kirjoituspolusta. Tämä on se kohta joka rikkoutuu ensimmäisenä. `ROSTER_COLUMNS`
+on siksi **kaikkien aikojen** lista ja käyttöliittymä lukee `rosterColumnsFor`ia.
+
+`fallbackFor`in jokainen nimetty haara kysyy `plan.roster.on(...)`, joten
+paikkausjärjestys **Ramin → Antti → Albin** muuttuu lokakuussa itsestään
+muotoon **Ramin → Albin** ilman koodimuutosta. Sama koskee jokaista tulevaa
+lähtijää.
+
+**Uusi myyjä tarvitsee myös sarakkeen Drive-taulukkoon.** `MYYJA_SARAKKEET`
+([tyovuoroExcel.ts](src/lib/shifts/tyovuoroExcel.ts)) on kirjoituspolun ainoa
+lähde, joten kartasta puuttuva nimi ei tuota virhettä vaan pelkän tyhjän
+sarakkeen — Vahvista raportoisi `ok: true` ja pienemmän vuoromäärän.
+`rakennaKirjoitussuunnitelma` palauttaa siksi `puuttuvatSarakkeet`in ja
+`kirjoitaTyovuorot` **kieltäytyy kirjoittamasta** kun se ei ole tyhjä.
+Kuiva-ajo pääsee läpi ja näyttää nimet. **Keifan sarakekirjain on 1.9.2026 yhä
+avoin**, joten lokakuun kirjoitus estyy siihen asti tarkoituksella.
+
+**Lokakuu 2026 on ensimmäinen 31 päivän kuukausi jonka tämä työkalu
+kirjoittaa.** Ennen kirjoitusta on tarkistettava taulukosta ulottuuko
+`SUM(C4:C33)` riville 34, ks. `TURVARAJA_RIVI`. Korjaus tehdään taulukossa,
+ei koodissa.
+
+### Swing-myyjä: rooli säilyy, sokea etuoikeus ei
+
+Ankkuroitavia oli 19.8.–30.9.2026 neljä ja ankkuripaikkoja neljä, joten
+swing-myyjää ei syntynyt lainkaan — `WeekPlan.swing` oli aina `null` ja sitä
+lukeva `fallbackFor`in haara oli **kuollutta koodia**. Keifan myötä
+ankkuroitavia on viisi ja swing on joka viikossa.
+
+Kaksi asiaa piti korjata kun haara heräsi:
+
+- **Swingillä ei ole enää ehdotonta etuoikeutta paikkausvuoroihin.** Etuoikeus
+  ohitti tuntikirjanpidon kokonaan, ja koska swing täyttää joka viikko kaikki
+  aukot, hänen tuntinsa karkasivat: mitattu joulukuu 2026 **38 h** ero
+  kokoaikaisten välillä (137 vs. 99 h), marraskuu 30 h, ja lokakuussa Albin
+  joutui hätävaraksi neljäksi tunniksi vaikka kukaan ei ollut poissa. Ilman
+  etuoikeutta samat kuukaudet ovat 5 h, 9 h ja Albin 0 h. Se on sama vika kuin
+  se jonka takia valinta ylipäätään tehdään kertyneistä tunneista ("ero kasvoi
+  44 tuntiin kuukaudessa"), vain toisesta suunnasta. Swing on yhä joustava
+  paikkaaja — hänellä ei ole ankkuria, joten `byHours` ohjaa aukot hänelle heti
+  kun hän on jäljessä.
+- **Sama myyjä ei jää swingiksi kahtena peräkkäisenä viikkona.** Malmi-kertymä
+  ei yksin estä sitä: kuukauden ensimmäinen viikko voi olla tynkä ilman
+  vuoroja (marraskuu 2026 alkaa sunnuntaista), jolloin kertymät ovat nollia ja
+  seuraava viikko saa saman järjestyksen. `jaaAnkkurit` vaihtaa toistuvan
+  swingin **viimeisen ankkuroidun kanssa** — ei kärkeen, koska kärki on Malmin
+  aamuankkuri ja swingiksi päätyy juuri se jolla on eniten Malmia takanaan.
+
+**`ANCHOR_STEP`iä ei palauteta.** Kiinteä +2-kiertopointteri poistettiin
+19.8.2026 (`2191889`) juuri siksi että se jakoi Malmin tasan vasta viidessä
+viikossa. Jako tehdään Malmi-kertymästä, ja se hoitaa viidennen ankkuroitavan
+itsestään.
+
+`jaaAnkkurit` on erotettu `WeekPlan`ista puhtaaksi funktioksi, jotta kierto on
+testattavissa suoraan; `shiftSchedule.test.mts` kaatuu jos swing toistuu tai
+jos neljällä ankkuroitavalla syntyy swing.
+
 ### Myyjäkohtaiset aikarajoitteet — ja miksi Vladimir ei voi olla ankkuri
 
 Vahvistettu Albinilta 26.8.2026. Nämä ovat **sääntöjä, eivät toiveita**, ja ne
@@ -1100,11 +1172,12 @@ ja rikkoutuu ensimmäisenä kun ankkurilogiikkaa "yksinkertaistetaan":
 `ANCHOR_SLOTS`in neljä paikkaa ovat **kaikki aamuvuoroja** (Malmi 10–16,
 Malmi 11–18 / ma-pe 12–18, Easton 10–17, Kivistö 10–17). Jos hän jää
 ankkurikiertoon, hänen ankkuripaikkansa jää tyhjäksi joka viikko ja hän itse
-jää melkein kokonaan listalta. Siksi ankkurit jaetaan `ANCHORABLE`-listalle
-(kokoaikaiset ilman Vladimiria) ja hän toimii vapaana täydentäjänä.
-Ankkuroitavia on nyt neljä ja ankkuripaikkoja neljä, joten **swing-myyjää ei
-synny** — mekanismia ei silti poisteta, se herää itsestään jos kokoaikaisia
-joskus on kuusi.
+jää melkein kokonaan listalta. Siksi ankkurit jaetaan kuukauden
+`roster.anchorable`-listalle (kokoaikaiset ilman Vladimiria) ja hän toimii
+vapaana täydentäjänä. Ankkuroitavia oli 19.8.–30.9.2026 neljä ja
+ankkuripaikkoja neljä, joten swing-myyjää ei syntynyt lainkaan; **Keifan myötä
+1.10.2026 alkaen heitä on viisi ja swing on joka viikossa** — ks. "Swing-myyjä:
+rooli säilyy, sokea etuoikeus ei".
 
 **Kelpoisuus tarvitsee vuoron alkuajan, ei vain päivää ja myyjää.** Siksi
 `fallbackFor` saa vuoropohjan parametrina eikä valitse myyjää ennen kuin
@@ -1161,6 +1234,16 @@ Malmi tasan kokoaikaisten kesken). Testi pitää nyt kirjaa **nykyisten säänt�
 tuottamasta tilannekuvasta**: Alec 156 · Joona 155 · Arbnor 131 · Lauri 117 ·
 Krenar 115 · Kasperi 104 · Hamza 95 · Vladimir 94 · Ramin 78 · Antti 70 ·
 Albin 4 = 1 119 h, ei yhtään vajetta.
+
+Syyskuun lista on lisäksi **bittitarkka**: 1.9.2026 tehty myyjälistan
+muutos (Antti pois, Keifa sisään) todennettiin vertaamalla `generateMonth(2026, 9, …)`n
+koko JSON-tulostetta ennen ja jälkeen — sama SHA-256. Voimassaoloväli ei siis
+kosketa mennyttä kuukautta lainkaan.
+
+Lokakuulta 2026 testataan tyhjällä syötteellä eri asia: **kovat invariantit**
+(Antti 0 vuoroa, Keifa enintään 5/vko, Albin 0 h, ei vajeita, Vladimirin
+rajoitteet regressiona) eikä tuntisummia. Lokakuun luvut riippuvat vielä
+tapahtumista ja poissaoloista joita taulukossa on.
 
 Suhtautuminen testiin ei muutu: jos muutat logiikkaa ja luvut muuttuvat,
 **oletus on että muutos on väärä**. Päivitä odotukset vasta kun olet lukenut

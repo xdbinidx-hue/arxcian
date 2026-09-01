@@ -21,6 +21,8 @@ export interface KirjoitusTulos {
   kirjoitettu: boolean
   /** Muutama ensimmäinen rivi luettavassa muodossa kuiva-ajon tarkistukseen. */
   esikatselu: string[]
+  /** Myyjät joilla on vuoroja muttei saraketta taulukossa. Kirjoitus estyy. */
+  puuttuvatSarakkeet: string[]
 }
 
 /** "FECACA" → Sheetsin 0..1-väri. */
@@ -106,9 +108,23 @@ export async function kirjoitaTyovuorot(
     poissaoloja: suunnitelma.poissaoloja,
     kirjoitettu: false,
     esikatselu: esikatseleRivit(suunnitelma),
+    puuttuvatSarakkeet: suunnitelma.puuttuvatSarakkeet,
   }
 
   if (optiot.kuivaAjo) return tulos
+
+  // Sarakkeeton myyjä on kirjoituseste, ei varoitus. Suunnitelma osaa jättää
+  // hänet pois ilman virhettä, joten ilman tätä Vahvista kirjoittaisi listan
+  // josta hänen vuoronsa puuttuvat ja raportoisi silti onnistuneensa.
+  // Kuiva-ajo pääsee tähän asti ja näyttää nimet — juuri sitä varten se on.
+  if (suunnitelma.puuttuvatSarakkeet.length > 0) {
+    throw new Error(
+      `Näillä myyjillä on vuoroja mutta ei saraketta taulukossa: `
+      + `${suunnitelma.puuttuvatSarakkeet.join(', ')}. Lisää sarake taulukkoon ja `
+      + 'kirjaa se MYYJA_SARAKKEET-karttaan (src/lib/shifts/tyovuoroExcel.ts) '
+      + 'ennen kirjoitusta — muuten heidän vuoronsa katoaisivat hiljaa.',
+    )
+  }
 
   const rows = suunnitelma.arvot.map((rivi, r) => ({
     values: rivi.map((arvo, c) => ({
