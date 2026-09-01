@@ -45,6 +45,28 @@ interface DriveFile {
 }
 
 /**
+ * Rivit joita myymälätaulukko ei näytä, ja se osa jonka se näyttää mutta
+ * myyjätaulukko ei. Palvelimen `Ulkopuoliset` sellaisenaan — kentät ovat
+ * valinnaisia, koska /api/sheets on CDN-välimuistissa ja vanha vastaus voi
+ * yhä olla ilman niitä.
+ */
+interface Era {
+  liittKpl: number
+  liittEur: number
+  fsecKpl: number
+  fsecEur: number
+  kassa: number
+  tunnit: number
+}
+interface Ulkopuoliset {
+  standi: Era
+  omatMuualla: Era
+  muut: Era
+  vieraatMyymaloissa: Era
+  paikat: { nimi: string; liittKpl: number; kassa: number; tunnit: number }[]
+}
+
+/**
  * Myyjän `kassa` on kassaprovisio, myymälän `kassa` valmiiksi kassakate.
  * Run rate vertaa molempia samaan tavoitteeseen (kassakate, alv 0), joten
  * myyjärivi kerrotaan takaisin. Sama luku kuin `KASSAKATE_JAKAJA`
@@ -53,12 +75,28 @@ interface DriveFile {
  */
 const KASSAKATE_KERROIN = 10
 
+/**
+ * Myymälätaulukon alle listattavat erät. Järjestys on selitysjärjestys:
+ * ensin se mikä on myymälän luvussa mukana muttei myyjätaulukossa, sitten se
+ * mikä on myyjätaulukossa muttei myymälän luvussa, ja lopuksi se mikä ei ole
+ * kummassakaan.
+ */
+const ULKOPUOLISET_RIVIT: { avain: 'vieraatMyymaloissa' | 'omatMuualla' | 'standi' | 'muut'; label: string; selite: string }[] = [
+  { avain: 'vieraatMyymaloissa', label: 'Muut myyjät myymälöissämme', selite: 'sisältyy yllä oleviin myymälälukuihin, ei myyjätaulukkoon' },
+  { avain: 'omatMuualla', label: 'Omat myyjät muualla', selite: 'tapahtumat ym. — myyjätaulukossa mukana, myymälärivillä ei' },
+  { avain: 'standi', label: 'Ständimyynti', selite: 'poistetaan aina myymälän tuloksesta' },
+  { avain: 'muut', label: 'Muut myymälät', selite: 'muun organisaation myynti, ei RJ-Mobia' },
+]
+
 export default function EtelanHaratPage() {
   const [files, setFiles] = useState<DriveFile[]>([])
   const [selectedFile, setSelectedFile] = useState('')
   const [sellers, setSellers] = useState<SellerResult[]>([])
   const [stores, setStores] = useState<Record<string, StoreData>>({})
   const [kuukausi, setKuukausi] = useState('')
+  const [lahde, setLahde] = useState('')
+  const [puutteet, setPuutteet] = useState<string[]>([])
+  const [ulkopuoliset, setUlkopuoliset] = useState<Ulkopuoliset | null>(null)
   const [loading, setLoading] = useState(false)
   const [runrate, setRunrate] = useState<RunRateData | null>(null)
 
@@ -96,6 +134,9 @@ export default function EtelanHaratPage() {
           setSellers(sorted)
           setStores(d.stores ?? {})
           setKuukausi(d.kuukausi ?? '')
+          setLahde(d.lahde ?? '')
+          setPuutteet(d.puutteet ?? [])
+          setUlkopuoliset(d.ulkopuoliset ?? null)
         }
         setLoading(false)
       })
@@ -256,6 +297,14 @@ Generoi viesti:`
 
         {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
 
+        {/* Puuttuva sarake ei palauta nollaa vaan puutteen, ja puute näkyy
+            tässä: nolla näyttäisi mitatulta tulokselta. */}
+        {!loading && puutteet.length > 0 && (
+          <div style={{background:'#FDECEC', border:'0.5px solid #E0A0A0', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12.5, color:'#A32D2D'}}>
+            {puutteet.map((v, i) => <div key={i}>⚠ {v}</div>)}
+          </div>
+        )}
+
         {!loading && runrate && (
           <>
             {runrate.varoitukset.length > 0 && (
@@ -362,6 +411,7 @@ Generoi viesti:`
             <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, marginBottom:16, overflow:'hidden'}}>
               <div style={{padding:'12px 16px', borderBottom:'0.5px solid #eee'}}>
                 <span style={{fontWeight:500, fontSize:14}}>Myymälät — {kuukausi}</span>
+                {lahde && <span style={{fontSize:11, color:'#aaa', marginLeft:8}}>{lahde}</span>}
               </div>
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%', borderCollapse:'collapse'}}>
@@ -411,6 +461,40 @@ Generoi viesti:`
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
                       <td style={tehoTot(storeTeho.total)}>{fmt(storeTeho.total)} €/h</td>
                     </tr>
+
+                    {/* Rajauksen ulkopuoliset rivit. Nämä EIVÄT ole mukana
+                        Yhteensä-rivissä — ne ovat tässä siksi, ettei mikään
+                        katoaisi hiljaa jos suodatin joskus menee rikki, ja
+                        koska juuri ne selittävät miksi myyjätaulukon summa on
+                        eri kuin myymälätaulukon. */}
+                    {ulkopuoliset && ULKOPUOLISET_RIVIT.map(({ avain, label, selite }) => {
+                      const e = ulkopuoliset[avain]
+                      if (!e || (e.liittKpl === 0 && e.kassa === 0 && e.fsecKpl === 0)) return null
+                      return (
+                        <tr key={avain} style={{background:'#fbfbf9', color:'#777'}}>
+                          <td style={{...tdLStyle, color:'#bbb'}}>·</td>
+                          <td style={{...tdLStyle, fontWeight:400}}>
+                            {label}
+                            <span style={{display:'block', fontSize:11, color:'#aaa'}}>{selite}</span>
+                          </td>
+                          <td style={tdStyle}>{fmt(e.liittEur)} €</td>
+                          <td style={tdStyle}>{e.liittKpl}</td>
+                          <td style={tdStyle}>{fmt(e.fsecEur)} €</td>
+                          <td style={tdStyle}>{e.fsecKpl}</td>
+                          <td style={tdStyle}>{fmt(e.kassa)} €</td>
+                          <td style={tdStyle}>{fmt(e.tunnit)}</td>
+                          <td style={tdStyle} colSpan={3} />
+                        </tr>
+                      )
+                    })}
+                    {ulkopuoliset && ulkopuoliset.paikat.length > 0 && (
+                      <tr>
+                        <td colSpan={11} style={{...tdStyle, textAlign:'left', fontSize:11, color:'#aaa', padding:'6px 10px 10px 40px'}}>
+                          Tapahtumat ja muut paikat: {ulkopuoliset.paikat
+                            .map(pk => `${pk.nimi} ${fmtN(pk.liittKpl)} kpl`).join(' · ')}
+                        </td>
+                      </tr>
+                    )}
 
                   </tbody>
                 </table>

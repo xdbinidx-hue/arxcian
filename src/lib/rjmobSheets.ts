@@ -1,7 +1,11 @@
 import { google } from 'googleapis'
-import type { SellerResult } from '@/lib/rjmob'
-import { laskeMyyja, shouldSkip, isStandi, isRJMobSellerForMonth, SellerRaw, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import type { SellerResult, SellerRaw } from '@/lib/rjmob'
+import { laskeMyyja, shouldSkip, isStandi, isRJMobSellerForMonth, FSEC_RECURRING, FSEC_TOTAL_SELLER, FSEC_INTERNET_SELLER, RJ_MOB_SELLERS } from '@/lib/rjmob'
 import { monthOrder } from '@/lib/rjmobDrive'
+import {
+  UUSI_LUKULAHDE_ALKAEN, etsiOtsikkorivi, lueSarakkeet, summaaMyymalat, summaaMyyjat,
+  type MyyjaSumma, type Ulkopuoliset,
+} from '@/lib/rjmobMyymalaTaulukko'
 
 /**
  * Yhden kuukauden myyntiseurannan luvut. Kentät ovat samat kuin ennen
@@ -47,6 +51,23 @@ export type DashData = {
    * rakenne, jossa "Myyjät Yhteensä" -välilehteä ei enää ole.
    */
   format: 'new' | 'old' | 'myymaloittain'
+  /**
+   * Mistä välilehdistä luvut tulivat, käyttöliittymän `meta.lahde`a varten.
+   * Esim. `"Myyjät Myymälöittäin + data"`.
+   */
+  lahde: string
+  /**
+   * Rivit jotka eivät kuulu viiden myymälän tulokseen: ständimyynti ja muut
+   * kustannuspaikat (tapahtumat mukaan lukien). Vain uudella lukupolulla
+   * (1.9.2026 alkaen) — vanhoissa kuukausissa ne jäivät nimeämättä, eikä
+   * historiaa muuteta takautuvasti.
+   */
+  ulkopuoliset?: Ulkopuoliset
+  /**
+   * Puuttuvat sarakkeet ja muut lähteen viat. Puuttuvasta sarakkeesta ei
+   * palauteta nollaa — nolla näyttäisi mitatulta tulokselta.
+   */
+  puutteet: string[]
 }
 
 function getAuth() {
@@ -157,7 +178,12 @@ type HoursMap = Record<string, { total: number, normaali: number, koulutus: numb
  * elokuusta 2026 käytössä oleva "Myyjät Myymälöittäin" -pohjainen jäsennin
  * tarvitsee samat tunnit. Logiikkaa ei muutettu siirrossa.
  */
-async function readHoursMap(sheets: ReturnType<typeof google.sheets>, fileId: string, dataSheet: string): Promise<HoursMap> {
+async function readHoursMap(
+  sheets: ReturnType<typeof google.sheets>,
+  fileId: string,
+  dataSheet: string,
+  puutteet?: string[],
+): Promise<HoursMap> {
   const hoursMap: HoursMap = {}
   if (!dataSheet) return hoursMap
 
@@ -171,6 +197,22 @@ async function readHoursMap(sheets: ReturnType<typeof google.sheets>, fileId: st
   const dSairas = findCol(dataHeaders, 'sairas')
   const absenceColNames = ['koulutus', 'palaveri', 'sairas', 'isyysvapaa', 'isyys', 'äitiysvapaa', 'äitiys', 'vanhempainvapaa', 'vanhempain', 'lomautus', 'poissaolo']
   const absenceCols = dataHeaders.map((h, i) => absenceColNames.some(a => h.includes(a)) ? i : -1).filter(i => i >= 0)
+
+  // Puuttuva tuntisarake antaisi jokaiselle myyjälle nolla tuntia, ja teho
+  // €/h olisi nolla — luku joka näyttää mitatulta. Kerrotaan se sen sijaan.
+  // `puutteet` annetaan vain uudella lukupolulla, jottei vanhojen kuukausien
+  // vastaus muutu.
+  if (puutteet) {
+    if (dNimi < 0) puutteet.push('data: sarake "Nimi" puuttuu — tunteja ei voi kohdistaa myyjille')
+    if (dTotal < 0) puutteet.push('data: sarake "Kokonaistunnit(h)" puuttuu')
+    if (dNormaali < 0 && absenceCols.length === 0) puutteet.push('data: sarake "Normaali työ(h)" puuttuu eikä poissaoloja voi vähentää')
+    // Työpäiviä ei lueta täällä vaan /api/targetsissa, mutta sarake
+    // tarkistetaan tässä koska data-välilehti on jo auki: puute on parempi
+    // kertoa kerran kuin jättää kertomatta siellä missä sitä käytetään.
+    if (findCol(dataHeaders, 'toteutuneet työpäivät', 'työpäivät', 'tyopaiva') < 0) {
+      puutteet.push('data: sarake "Toteutuneet työpäivät(pv)" puuttuu')
+    }
+  }
 
   for (let i = 1; i < dataRows.length; i++) {
     const row = dataRows[i]
@@ -459,7 +501,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     fsecFV: totalFsecKpl * FSEC_RECURRING * 12,
   }
 
-  return ({ kuukausi: fileName, sellers: results, stores: storeResults, storeHours, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' as const })
+  return ({ kuukausi: fileName, sellers: results, stores: storeResults, storeHours, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'new' as const, lahde: 'Myyjät Yhteensä + Myyjät Myymälöittäin + data', puutteet: [] })
 }
 
 /**
@@ -533,6 +575,13 @@ async function parseMyymaloittainFormat(
   sheetNames: string[],
   fileName: string,
 ): Promise<DashData> {
+  // Kuukausiraja, ei formaattiraja: syyskuun 2026 työkirja näyttää elokuun
+  // työkirjalta, mutta lukutapa on eri (Albinin päätös 1.9.2026). Elokuu ja
+  // vanhemmat jatkavat alla olevalla polulla, jottei historia muutu.
+  if (monthOrder(fileName) >= UUSI_LUKULAHDE_ALKAEN) {
+    return await parseYhdestaLahteesta(sheets, fileId, sheetNames, fileName)
+  }
+
   const monthNum = parseMonthNumFromFileName(fileName)
   const myymalaSheet = sheetNames.find(n => n.toLowerCase().includes('myymäl') || n.toLowerCase().includes('myymal')) ?? ''
   const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
@@ -651,6 +700,131 @@ async function parseMyymaloittainFormat(
     kuukausi: fileName, sellers: results, stores: storeResults, storeHours, totals,
     standiInfo: standiRaws.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })),
     sheetNames, format: 'myymaloittain' as const,
+    lahde: 'Myyjät Myymälöittäin + Kassamyynti + data', puutteet: [],
+  }
+}
+
+/**
+ * **1.9.2026 alkaen: yksi lukulähde.**
+ *
+ * Liittymät, F-Secure ja kassakate luetaan kaikki "Myyjät Myymälöittäin"
+ * -välilehdeltä ja tunnit "data"-välilehdeltä. Aiemmin sama mittari tuli
+ * kahdesta paikasta eri rajauksella ja eri asteikolla — myymälän luku
+ * välilehden yhteenvetoriviltä, myyjän kassakate "Kassamyynti"-välilehden
+ * `Kate(alv0)`:sta jaettuna kymmenellä — jolloin hubin ja Myyntiseurannan
+ * luvut eivät voineet täsmätä eikä kukaan muistanut kumpi oli oikea.
+ *
+ * Kaksi rajausta säilyy tarkoituksella, ja ne ovat eri asia kuin kaksi
+ * lähdettä (Albinin vastaus 1.9.2026):
+ *
+ * | Taulukko | Rajaus |
+ * |---|---|
+ * | myymälä | vain siinä myymälässä tehty |
+ * | myyjä | myyjän koko tulos kaikista kustannuspaikoista |
+ *
+ * Erotus — ständimyynti ja muut kustannuspaikat, joihin tapahtumat
+ * (Ylöjärvi, Jyväskylä) kuuluvat — palautuu `ulkopuoliset`issa eikä katoa.
+ *
+ * **"Kassamyynti"-välilehteä ei enää lueta täällä.** Winpos-tuonti kirjoittaa
+ * sinne edelleen omaa reittiään (`/api/winpos/import`), ja `/api/targets`
+ * lukee sen yhä — muutos koskee vain tätä lukupäätä. Välilehti ei syötä
+ * "Myyjät Myymälöittäin" -välilehteä kaavoilla (todettu 1.9.2026: koko alue
+ * on liitettyjä arvoja), joten ketju ei katkea.
+ */
+async function parseYhdestaLahteesta(
+  sheets: ReturnType<typeof google.sheets>,
+  fileId: string,
+  sheetNames: string[],
+  fileName: string,
+): Promise<DashData> {
+  const monthNum = parseMonthNumFromFileName(fileName)
+  const kuukausiOrder = monthOrder(fileName)
+  const myymalaSheet = sheetNames.find(n => n.toLowerCase().includes('myymäl') || n.toLowerCase().includes('myymal')) ?? ''
+  const dataSheet = sheetNames.find(n => n.toLowerCase() === 'data') ?? ''
+
+  // Puuttuva välilehti on virhe eikä puute: ilman sitä ei ole yhtään lukua,
+  // ja tyhjä taulukko näyttäisi kuukaudelta jona ei myyty mitään.
+  if (!myymalaSheet) {
+    throw new Error(`"Myyjät Myymälöittäin" -välilehteä ei löytynyt (löytyi: ${sheetNames.join(', ')})`)
+  }
+
+  const puutteet: string[] = []
+  if (!dataSheet) puutteet.push('data-välilehteä ei löytynyt — tunnit luetaan myymäläriveiltä')
+
+  const [hoursMap, myymalaRes] = await Promise.all([
+    readHoursMap(sheets, fileId, dataSheet, puutteet),
+    sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myymalaSheet}'!A1:BZ300` }),
+  ])
+
+  const rows = (myymalaRes.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => normalizeMinus(String(c ?? ''))))
+
+  const headerIdx = etsiOtsikkorivi(rows)
+  if (headerIdx < 0) throw new Error('Otsikkoriviä ei löytynyt Myyjät Myymälöittäin -välilehdeltä')
+
+  const { sarakkeet, puutteet: sarakePuutteet } = lueSarakkeet(rows[headerIdx])
+  puutteet.push(...sarakePuutteet)
+
+  const kuuluuMyyjiin = (nimi: string) => isRJMobSellerForMonth(nimi, monthNum)
+  const { myymalat, ulkopuoliset, storeHours } = summaaMyymalat(rows, headerIdx, sarakkeet, kuuluuMyyjiin)
+  const { myyjat, standit } = summaaMyyjat(rows, headerIdx, sarakkeet, kuuluuMyyjiin)
+
+  const toRaw = (a: MyyjaSumma): SellerRaw => {
+    const hours = hoursMap[a.nimi.toLowerCase()]
+    const normaaliTunnit = hours ? (hours.normaali || hours.total) : a.tunnit
+    const palkkaTunnit = hours ? (hours.total || hours.normaali) : normaaliTunnit
+    return {
+      nimi: a.nimi,
+      liittKpl: a.liittKpl, liittEur: a.liittEur,
+      fsecKpl: a.fsecKpl, fsecTotalKpl: a.fsecTotalKpl, fsecInternetKpl: a.fsecInternetKpl,
+      fsecEur: a.fsecEur,
+      // `SellerRaw.kassa` on myyjän asteikolla (kassaprovisio) — sama asteikko
+      // kuin lähteen Kassakate-sarake sellaisenaan. Kutsujat kertovat sen
+      // takaisin kassakatteeksi `KASSAKATE_KERROIN`illa, kuten myymälärivillä.
+      kassa: a.kassaRjmob,
+      tunnit: normaaliTunnit,
+      palkkaTunnit: palkkaTunnit > 0 ? palkkaTunnit : normaaliTunnit,
+      dnaUusmyyntiKpl: a.dnaUusmyyntiKpl,
+    }
+  }
+
+  // Rivi ilman liittymiä ja ilman kassakatetta ei ole myyntiä. Rajaus tehdään
+  // summauksen jälkeen: yksittäinen myymälärivi voi olla tyhjä vaikka myyjän
+  // kokonaismyynti ei ole.
+  const sellerRaws = myyjat.map(toRaw).filter(r => r.liittKpl !== 0 || r.liittEur !== 0 || r.kassa !== 0)
+  const standiRaws = standit.map(toRaw)
+
+  const storeResults: DashData['stores'] = {}
+  for (const [nimi, e] of Object.entries(myymalat)) {
+    storeResults[nimi] = {
+      liittKpl: e.liittKpl, liittEur: e.liittEur,
+      fsecKpl: e.fsecKpl, fsecEur: e.fsecEur,
+      kassa: e.kassa, kassaRjmob: e.kassaRjmob,
+      tunnit: e.tunnit,
+    }
+  }
+
+  const results = sellerRaws.map(s => laskeMyyja(s, kuukausiOrder))
+  const active = results.filter(r => r.tyyppi !== 'ref' && r.tyyppi !== 'standi')
+  const tiimi = active.filter(r => r.tyyppi !== 'owner')
+  const storeFsecKpl = Object.values(storeResults).reduce((s, r) => s + r.fsecKpl, 0)
+  const totalFsecKpl = Object.keys(storeResults).length > 0 ? storeFsecKpl : active.reduce((s, r) => s + r.fsecKpl, 0)
+
+  const totals = {
+    liittKpl: active.reduce((s, r) => s + r.liittKpl, 0),
+    liittEur: active.reduce((s, r) => s + r.liittEur, 0),
+    fsecKpl: totalFsecKpl,
+    kassa: active.reduce((s, r) => s + r.kassa, 0),
+    rjmobTulo: active.reduce((s, r) => s + r.rjmobTulo, 0),
+    tyokulu: tiimi.reduce((s, r) => s + r.tyokulu, 0),
+    netto: active.reduce((s, r) => s + r.netto, 0),
+    fsecFV: totalFsecKpl * FSEC_RECURRING * 12,
+  }
+
+  return {
+    kuukausi: fileName, sellers: results, stores: storeResults, storeHours, totals,
+    standiInfo: standiRaws.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })),
+    sheetNames, format: 'myymaloittain' as const,
+    lahde: 'Myyjät Myymälöittäin + data', ulkopuoliset, puutteet,
   }
 }
 
@@ -765,5 +939,5 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
 
   // Vanhassa muodossa myymäläkohtaisia myyjärivejä ei ole, joten
   // palkkakulun kohdistus jää tyhjäksi eikä sitä arvata aluetiedosta.
-  return ({ kuukausi: fileName, sellers: results, stores: storeResults, storeHours: {}, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' as const })
+  return ({ kuukausi: fileName, sellers: results, stores: storeResults, storeHours: {}, totals, standiInfo: standiRows.map(s => ({ nimi: s.nimi, liittKpl: s.liittKpl, liittEur: s.liittEur })), sheetNames, format: 'old' as const, lahde: targetSheet, puutteet: [] })
 }

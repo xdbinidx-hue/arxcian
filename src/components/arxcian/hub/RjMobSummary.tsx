@@ -97,6 +97,15 @@ export async function RjMobSummary({ delay }: { delay?: number }) {
             </p>
           )}
 
+          {/* Muutosprosentti näytetään silloinkin kun jaksot on luettu eri
+              tavalla, mutta ei ilman huomautusta: prosentti näyttäisi muuten
+              mitatulta muutokselta. */}
+          {data.vertailuHuomio && (
+            <p className="mb-3 text-[11px] leading-snug text-ax-warn">
+              {data.vertailuHuomio}
+            </p>
+          )}
+
           <div className="divide-y divide-ax-line/10">
             {METRICS.map(metric => {
               const value = data.metrics[metric.key]

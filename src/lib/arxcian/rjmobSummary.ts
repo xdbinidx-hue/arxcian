@@ -4,6 +4,7 @@ import { haeTavoitteet } from '@/lib/rjmobTavoiteDrive'
 import { tyopaivaIkkuna } from '@/lib/rjmobWorkdays'
 import { readCached, writeCached, type Fetched } from './cache'
 import { todayISOHelsinki } from './time'
+import { UUSI_LUKULAHDE_ALKAEN } from '@/lib/rjmobMyymalaTaulukko'
 
 /**
  * RJ-Mobin kuukausiyhteenveto hubin paneelia ja avustajaa varten.
@@ -121,6 +122,20 @@ export type RjMobSummaryData = {
     fsecure: RjMobMetric
     kassakate: RjMobMetric
   }
+  /**
+   * Huomautus kuukausivertailusta, tai puuttuu kun vertailu on suora.
+   *
+   * Lukulähde vaihtui 1.9.2026 (`UUSI_LUKULAHDE_ALKAEN`), ja sen yli menevä
+   * `changePercent` vertaa kahta eri tavalla luettua kuukautta. Ero on pieni
+   * mutta olemassa, ja **prosentti ilman huomautusta näyttäisi mitatulta
+   * muutokselta** — sama periaate kuin vanhentuneen datan kanssa: vertailu
+   * saa olla epätarkka, sen kertomatta jättäminen ei.
+   *
+   * Valinnainen tarkoituksella: välimuistissa jo oleva merkintä on
+   * kirjoitettu ilman tätä kenttää, ja avain elää valmiilla kuukausilla
+   * vuoden.
+   */
+  vertailuHuomio?: string | null
 }
 
 /**
@@ -171,6 +186,12 @@ const KUUKAUSI_NIMET = [
   'Tammikuu', 'Helmikuu', 'Maaliskuu', 'Huhtikuu', 'Toukokuu', 'Kesäkuu',
   'Heinäkuu', 'Elokuu', 'Syyskuu', 'Lokakuu', 'Marraskuu', 'Joulukuu',
 ]
+
+/** "2026-09" -> 202609, sama järjestysluku kuin `monthOrder` tiedostonimestä. */
+function kuukausiOrderOf(month: string): number {
+  const [vuosi, kk] = month.split('-').map(Number)
+  return vuosi * 100 + kk
+}
 
 /** Yksi myyntiseurantataulukko kuukausiavaimineen. */
 type SeurantaSheet = {
@@ -313,15 +334,21 @@ function fsecKplOf(data: DashData): number {
  *
  * | Kenttä | Asteikko | Lähde |
  * |---|---|---|
- * | `totals.kassa` (= Σ myyjien `kassa`) | kassaprovisio ×1 | Kassamyynti-välilehden Kate(alv0) ÷ 10 |
- * | `stores[].kassa` | kassakate ×10 | Myyjät Myymälöittäin -välilehden kassaprovisio × 10 |
+ * | `totals.kassa` (= Σ myyjien `kassa`) | myyjän asteikko ×1 | Myyjät Myymälöittäin -välilehden Kassakate-sarake |
+ * | `stores[].kassa` | kassakate ×10 | sama sarake × `KASSAKATE_KERROIN` |
+ *
+ * Ennen 1.9.2026 myyjän luku tuli Kassamyynti-välilehden `Kate(alv0)`:sta
+ * jaettuna kymmenellä — sama asteikko, eri lähde. Asteikkoero säilyy silti:
+ * hubin on valittava puoli eikä yhdenmukaistettava kertoimia.
  *
  * Hub näytti aiemmin `totals.kassa`n otsikolla "Kassakate", jolloin luku oli
  * kymmenesosa siitä kassakatteesta jonka myyntiseuranta näyttää: 678,98 €
- * siellä missä taulukossa luki 6 789,80 €. Kerroin on kuvattu
- * [rjmobSheets.ts](../../rjmobSheets.ts):n `KASSAKATE_JAKAJA`ssa ja
- * `readStores`issa — ne menevät tarkoituksella eri suuntiin, joten hubin on
- * valittava puoli eikä yhdenmukaistettava kertoimia.
+ * siellä missä taulukossa luki 6 789,80 €. Kerroin on 1.9.2026 alkaen yhtenä
+ * nimettynä lukuna
+ * [rjmobMyymalaTaulukko.ts](../../rjmobMyymalaTaulukko.ts):n
+ * `KASSAKATE_KERROIN`issa; vanhemmilla kuukausilla se on
+ * [rjmobSheets.ts](../../rjmobSheets.ts):n `KASSAKATE_JAKAJA` ja
+ * `readStores`.
  *
  * Myymälätaulukko on myös oikea rajaus: se kattaa RJ-Mobin viisi myymälää
  * ständimyyjät poistettuina, kun taas myyjätaulukko kattaa koko organisaation
@@ -443,10 +470,18 @@ async function summaryFor(
     return ((value * (isRunningMonth ? factor : 1)) / target) * 100
   }
 
+  // Kuukausivertailu 1.9.2026 rajan yli: eri lukutapa molemmin puolin.
+  const rajanYli = prevData !== null && previousSheet !== undefined
+    && kuukausiOrderOf(sheet.month) >= UUSI_LUKULAHDE_ALKAEN
+    && kuukausiOrderOf(previousSheet.month) < UUSI_LUKULAHDE_ALKAEN
+
   return {
     month: sheet.month,
     monthLabel: monthLabelOf(sheet.name),
     projected: isRunningMonth && Boolean(prev),
+    vertailuHuomio: rajanYli
+      ? 'Muutos edelliseen kuukauteen: lukulähde vaihtui 1.9.2026, joten jaksot on luettu eri tavalla.'
+      : null,
     workdays,
     metrics: {
       liittymat: {

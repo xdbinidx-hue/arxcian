@@ -970,6 +970,81 @@ etsii samasta kansiosta ja myyjätiedoston nimessä on sama
 myymälätavoitteiksi, ei tunnistaisi yhtään myymälää ja putoaisi
 koodikopioon.
 
+## Myyntiseurannan lukulähde vaihtui 1.9.2026 — ja raja on kuukausiraja
+
+Albinin päätös 1.9.2026. Liittymät, F-Secure ja kassakate luetaan **yhdestä
+paikasta**: `Myyjät Myymälöittäin` -välilehdeltä, tunnit `data`-välilehdeltä.
+Ennen tätä sama mittari tuli kahdesta paikasta eri rajauksella ja eri
+asteikolla — hub myymälätaulukosta, Myyntiseuranta-sivu myyjätaulukosta ja
+`Kassamyynti`-välilehdeltä — eikä kukaan muistanut kumpi oli oikea.
+
+**Raja on `UUSI_LUKULAHDE_ALKAEN = 202609`**
+([rjmobMyymalaTaulukko.ts](src/lib/rjmobMyymalaTaulukko.ts)), ei formaattiraja:
+syyskuun työkirja näyttää elokuun työkirjalta. Elokuu ja vanhemmat kulkevat yhä
+`parseMyymaloittainFormat`in vanhalla haaralla, ja se on **todennettu
+ajamalla**: `loadDashData` elokuun 2026 tiedostolla antaa merkilleen saman
+tulosteen ennen ja jälkeen muutoksen. Historia ei muutu takautuvasti.
+
+**Kassakate = lähteen sarake × 10.** Välilehden `Kassakate`-sarake on myyjän
+asteikolla eli sama luku kuin `Kassamyynti`-välilehden sivupaneelin
+`Kate myyjä` (= `Kate(alv0)` ÷ 10). Elokuussa 2026 Malmin sarake lukee
+`303,00`, kun saman työkirjan `Tavoitteet`-välilehti antaa Malmille tavoitteen
+`4 000,00 €` ja `Kate(alv0)` yhteensä on `15 104,95 €` — näytettävä luku on
+siis **3 030,00 €**. Kerroin on yhtenä nimettynä vakiona
+(`KASSAKATE_KERROIN`), ja `rjmobMyymalaTaulukko.test.mts` kaatuu jos se
+muuttuu. **Sarakkeen lukeminen sellaisenaan tekisi "% tavoitteesta"-luvusta
+kymmenesosan**, ja se näyttäisi mitatulta.
+
+**Kaksi rajausta säilyy tarkoituksella, ja ne ovat eri asia kuin kaksi
+lähdettä** (Albinin vastaus 1.9.2026):
+
+| Taulukko | Rajaus |
+|---|---|
+| myymälä | vain siinä myymälässä tehty |
+| myyjä | myyjän koko tulos kaikista kustannuspaikoista |
+
+Erotus **ei katoa** vaan palautuu `ulkopuoliset`-erinä, jotka myös täsmäyttävät
+taulukot. Elokuu 2026, liittymät:
+
+```
+myymälät 1430 = RJ-Mobin myyjät myymälöissä 1314 + vieraatMyymaloissa 116
+myyjät   1567 = RJ-Mobin myyjät myymälöissä 1314 + omatMuualla       253
+välilehti 6457 = 1430 + standi 467 + muut 4307 + omatMuualla 253
+```
+
+`omatMuualla` on käytännössä **tapahtumamyynti**: Ylöjärvi ja Jyväskylä, samat
+paikat kuin työvuorolistan `YLÖ`- ja `jkl`-koodit. Se on 30.8.2026 päätöksen
+mukaisesti myyjän luvussa mukana, muttei myymälän — siksi erä on näkyvissä
+eikä pääteltävissä.
+
+**Myymälän luku on myyjärivien summa**, ei välilehden omalta
+yhteenvetoriviltä. Elokuussa 2026 molemmat antavat saman luvun rivi riviltä,
+mikä on juuri se mitä siirrolta halutaan; yhteenvetorivi taas on käsin
+ylläpidetyissä kopioissa joskus puuttunut kokonaan, jolloin myymälä katosi
+hiljaa. Ständimyyjät poistetaan yhä aina myymälän tuloksesta
+(myyntiseuranta_ohje).
+
+**Sarakkeet haetaan otsikon nimellä, ja puuttuva sarake on `puutteet`-merkintä
+eikä nolla.** Nolla näyttää mitatulta tulokselta. `Kassakate` haetaan
+täsmäävällä nimellä, koska samalla välilehdellä on myös `Kassaprovisio`, joka
+on eri suure.
+
+**Winpos-tuontia ei purettu.** `/api/winpos/import` kirjoittaa yhä
+`Kassamyynti`-välilehdelle ja `/api/targets` lukee sen. Tarkistettu 1.9.2026:
+`Myyjät Myymälöittäin` **ei ole kaavayhteydessä** `Kassamyynti`iin — koko alue
+on liitettyjä arvoja — joten tuonnin ketju ei katkennut, mutta se ei myöskään
+enää syötä myyntiseurannan lukupäätä.
+
+**Run raten työpäivänimittäjä ei muuttunut.** `data`-välilehden
+`Toteutuneet työpäivät(pv)` kertoo vain kuluneet päivät, ei kuukauden kaikkia,
+joten se ei voi korvata työvuorolistoja (`laskeVuoroIkkuna` +
+`lahtiVuoroIkkuna`, ks. "Run rate on ennuste"). Sarakkeen puuttuminen
+raportoidaan silti puutteena.
+
+`claude/paallikkobonus-2026-09.md`:n lause bonuksen lähteestä
+("myymälätaulukko") on tämän muutoksen jälkeen vanhentunut. **Bonuslaskentaan
+ei koskettu** — se korjataan kun uusi bonusmalli on Drivessä.
+
 ## Työvuorolista
 
 Kuukauden kierto on: Albin täyttää tapahtumat Drive-taulukkoon → Generoi →

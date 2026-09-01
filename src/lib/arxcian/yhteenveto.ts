@@ -5,6 +5,7 @@ import { loadRunRate } from '@/lib/rjmobRunRate'
 import { myymalaRivit, myyjaRivit, yhteensaRivi, type RunRateTavoite, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
 import { myymalanTehot, tehoaEiArvioida } from '@/lib/rjmob'
 import { mittari, setti, nimiAvaimet, myymalaPerMyyja, type Mittari, type MittariSetti } from './yhteenvetoRivit'
+import type { Ulkopuoliset } from '@/lib/rjmobMyymalaTaulukko'
 
 /**
  * Ajastetun yhteenvedon luku-API:n ulostulo.
@@ -96,6 +97,15 @@ export type Yhteenveto = {
   kassamyynti: null
   myymalat: MyymalaRivi[]
   myyjat: MyyjaRivi[]
+  /**
+   * Rivit joita `myymalat` ei kata, ja se osa jonka `myymalat` kattaa mutta
+   * `myyjat` ei. Näillä myymälä- ja myyjätaulukon ero on täsmäytettävissä
+   * lukuna eikä arvauksena — ks.
+   * [rjmobMyymalaTaulukko.ts](../rjmobMyymalaTaulukko.ts):n `Ulkopuoliset`.
+   *
+   * `null` vanhoilla kuukausilla (ennen 1.9.2026), joissa erittelyä ei ole.
+   */
+  ulkopuoliset: Ulkopuoliset | null
 }
 
 /** Teho vain kun tunteja on — nolla tuntia antaisi nollan joka näyttäisi mitatulta. */
@@ -136,6 +146,11 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
   ])
 
   varoitukset.push(...runrate.varoitukset)
+  // Lähteen omat puutteet (esim. kadonnut sarake) kulkevat läpi asti:
+  // puuttuvasta sarakkeesta ei palauteta nollaa, ja nolla ilman varoitusta
+  // näyttäisi mitatulta tulokselta.
+  varoitukset.push(...dash.puutteet)
+  if (dash.puutteet.length > 0) puutteet.push('myyntiseurannan-sarakkeet')
 
   // --- Toteumat samassa muodossa kuin Etelän Härät -sivulla ---
 
@@ -230,7 +245,10 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
     meta: {
       haettu: nyt.toISOString(),
       kuukausi: `${Math.floor(kk / 100)}-${String(kk % 100).padStart(2, '0')}`,
-      lahde: tiedosto.name!,
+      // Tiedostonimen lisäksi välilehdet: 1.9.2026 alkaen luvut tulevat
+      // yhdestä paikasta, ja se on juuri se mikä vastauksesta on voitava
+      // lukea ilman että koodia avataan.
+      lahde: `${tiedosto.name!} · ${dash.lahde}`,
       tyopaivat: { paattyneet, kaikki },
       kuukaudestaKulunut: kaikki > 0 ? paattyneet / kaikki : null,
       puutteet,
@@ -241,5 +259,6 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
     kassamyynti: null,
     myymalat: myymalatUlos,
     myyjat: myyjatUlos,
+    ulkopuoliset: dash.ulkopuoliset ?? null,
   }
 }
