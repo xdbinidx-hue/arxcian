@@ -1,10 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 import { RunRateTaulukko } from '@/components/rjmob/RunRateTaulukko'
-import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso } from '@/lib/rjmob'
+import { UusmyyntiTaulukko, KassamyyntiTaulukko, type TargetRow } from '@/components/rjmob/TavoiteTaulukot'
+import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso, runRateMittari } from '@/lib/rjmob'
 import { myymalaRivit, myyjaRivit, yhteensaRivi, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
 import type { RunRateData } from '@/lib/rjmobRunRate'
+import { tyopaivaTilanne } from '@/lib/rjmobWorkdays'
 
 interface SellerResult {
   nimi: string
@@ -24,7 +27,6 @@ interface SellerResult {
   // kaadeta sivua undefined.toLocaleString()-virheeseen.
   myyntiTehoLiitt?: number
   myyntiTeho?: number
-  myyntiTehoTotal?: number
 }
 
 interface StoreData {
@@ -88,7 +90,62 @@ const ULKOPUOLISET_RIVIT: { avain: 'vieraatMyymaloissa' | 'omatMuualla' | 'stand
   { avain: 'muut', label: 'Muut myymälät', selite: 'muun organisaation myynti, ei RJ-Mobia' },
 ]
 
+/**
+ * Sivun kolme näkymää. Siirtyivät tänne 1.9.2026 kun Tavoitteet ja Run Rate
+ * -välilehti poistettiin: sama data oli kahdessa paikassa, ja uusmyynti sekä
+ * kassamyynti vaativat erilliselle välilehdelle käymistä.
+ *
+ * Valittu näkymä on URL-parametrissa eikä pelkässä tilassa, jotta näkymän voi
+ * linkittää ja selaimen takaisin-nappi toimii. Tuntematon arvo putoaa
+ * oletukseen — linkin rikkoutuminen ei saa jättää sivua tyhjäksi.
+ */
+type Nakyma = 'tavoitteet' | 'uusmyynti' | 'kassamyynti'
+
+const NAKYMAT: { id: Nakyma; label: string }[] = [
+  { id: 'tavoitteet', label: 'Tavoitteet & Runrate' },
+  { id: 'uusmyynti', label: 'Uusmyynti' },
+  { id: 'kassamyynti', label: 'Kassamyynti' },
+]
+
+/**
+ * Infopalkki. Näyttää **kaksi eri työpäivälukua**, ja ero on tarkoituksellinen:
+ *
+ * - *päättyneet* on ennusteen nimittäjä, raja eilisessä (`ikkuna`)
+ * - *kulunut % kuukaudesta* on vanha infoluku joka laskee kuluvan päivän
+ *   mukaan. Se ei ole enää väriraja missään — ennuste huomioi ajan
+ *   kulumisen jo itse — mutta se jää näkyviin taustatiedoksi.
+ */
+function WorkdayInfo({ kuukausi, ikkuna }: {
+  kuukausi: string
+  ikkuna: { paattyneet: number; kaikki: number } | null
+}) {
+  const { paiva, paiviaKuukaudessa, kulunutPct: pct } = tyopaivaTilanne()
+  const kulunutPct = Math.round(pct)
+
+  return (
+    <div style={{background:'#E6F1FB', borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', gap:24, fontSize:13, color:'#185FA5', flexWrap:'wrap'}}>
+      <span><strong>{kuukausi}</strong></span>
+      <span>📅 Tänään päivä {paiva}/{paiviaKuukaudessa}</span>
+      {ikkuna && <span>🏪 Myymälä: {ikkuna.paattyneet}/{ikkuna.kaikki} työpäivää päättynyt (ma-la, ei pyhiä, ei tätä päivää)</span>}
+      <span>📈 Kulunut {kulunutPct}% kuukaudesta</span>
+    </div>
+  )
+}
+
+/**
+ * `useSearchParams` vaatii Suspense-rajan, muuten koko sivu putoaisi
+ * käännösaikana asiakasrenderöintiin. Fallback on tyhjä: sisältö tulee
+ * hakupyynnöistä eikä palvelimelta, joten latausviesti tulee sisältä.
+ */
 export default function EtelanHaratPage() {
+  return (
+    <Suspense fallback={null}>
+      <EtelanHaratSivu />
+    </Suspense>
+  )
+}
+
+function EtelanHaratSivu() {
   const [files, setFiles] = useState<DriveFile[]>([])
   const [selectedFile, setSelectedFile] = useState('')
   const [sellers, setSellers] = useState<SellerResult[]>([])
@@ -99,6 +156,27 @@ export default function EtelanHaratPage() {
   const [ulkopuoliset, setUlkopuoliset] = useState<Ulkopuoliset | null>(null)
   const [loading, setLoading] = useState(false)
   const [runrate, setRunrate] = useState<RunRateData | null>(null)
+  // Uusmyynti- ja Kassamyynti-näkymien rivit. Oma reittinsä (`/api/targets`)
+  // eikä /api/sheets, koska ne ovat myyntiseurantataulukon myyjäkohtaisia
+  // lukuja joita myymälälukujen lukupää ei tuota.
+  const [targets, setTargets] = useState<TargetRow[]>([])
+  const [targetsVirhe, setTargetsVirhe] = useState('')
+  const [targetsLoading, setTargetsLoading] = useState(false)
+
+  const router = useRouter()
+  const params = useSearchParams()
+  const pyydetty = params.get('nakyma')
+  const nakyma: Nakyma = NAKYMAT.some(n => n.id === pyydetty) ? (pyydetty as Nakyma) : 'tavoitteet'
+
+  const vaihdaNakyma = (id: Nakyma) => {
+    const p = new URLSearchParams(params.toString())
+    // Oletusnäkymä ilman parametria: jaettu osoite pysyy siistinä eikä
+    // takaisin-nappi jää pyörimään kahden identtisen tilan välillä.
+    if (id === 'tavoitteet') p.delete('nakyma')
+    else p.set('nakyma', id)
+    const q = p.toString()
+    router.push(q ? `?${q}` : '?', { scroll: false })
+  }
 
   useEffect(() => {
     fetch('/api/files')
@@ -153,6 +231,18 @@ export default function EtelanHaratPage() {
       .catch(() => setRunrate(null))
   }, [selectedFile])
 
+  // Haetaan kuukauden vaihtuessa eikä näkymän: näkymän vaihto ei saa tehdä
+  // uutta hakua eikä jättää edellisen kuukauden rivejä näkyviin.
+  useEffect(() => {
+    if (!selectedFile) return
+    setTargets([]); setTargetsVirhe(''); setTargetsLoading(true)
+    fetch(`/api/targets?fileId=${selectedFile}`)
+      .then(r => r.json())
+      .then(d => { if (d.error) setTargetsVirhe(d.error); else setTargets(d.targets ?? []) })
+      .catch(e => setTargetsVirhe(String(e)))
+      .finally(() => setTargetsLoading(false))
+  }, [selectedFile])
+
   const fmt = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2})
   const fmtN = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 0, maximumFractionDigits: 0})
 
@@ -193,10 +283,13 @@ export default function EtelanHaratPage() {
   // teholuvuista: hän ei tee myyntivuoroja, joten hänen tuntinsa ja
   // provisionsa vääristäisivät tiimin lukua kumpaankin suuntaan.
   const tehoRivit = sellers.filter(s => !eiTehoa(s.nimi))
+  // Total teho poistettiin myyjätaulukosta 1.9.2026: kaksi tehomittaria
+  // riittää johtamiskeskusteluun, ja kolmas luku samalla rivillä hämärsi sen
+  // kumpaa katsotaan. Laskenta jää `laskeMyyja`an — Yhteenveto ja hubin
+  // tilannekatsaus lukevat sitä yhä.
   const sellerTeho = {
     liitt: yhteisTeho(tehoRivit, s => s.myyntiTehoLiitt, s => s.tunnit),
     kassa: yhteisTeho(tehoRivit, s => s.myyntiTeho, s => s.tunnit),
-    total: yhteisTeho(tehoRivit, s => s.myyntiTehoTotal, s => s.tunnit),
   }
 
   const storeTeho = {
@@ -218,6 +311,26 @@ export default function EtelanHaratPage() {
     nimi: s.nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa * KASSAKATE_KERROIN,
   }))
 
+  // Kassamyynti-näkymän tavoite ja ennuste kulkevat samaa laskentaa kuin run
+  // rate -taulukot: yksi "% tavoitteesta" sivulla, ei kahta eri kaavaa saman
+  // otsikon alla. Toteuma tulee tässä `/api/targets`in `kassaKate`sta, joka on
+  // jo kassakate (alv 0) — sitä ei siis kerrota `KASSAKATE_KERROIN`illa kuten
+  // myyjärivin kassaprovisiota yllä.
+  const myyjaIkkuna = (nimi: string) => runrate?.myyjaVuorot[nimi] ?? { paattyneet: 0, kaikki: 0 }
+  const kassaRr = (r: TargetRow) => {
+    const { paattyneet, kaikki } = myyjaIkkuna(r.nimi)
+    return runRateMittari(r.kassaKate, rrMyyjaTavoitteet[r.nimi]?.kassakate ?? null, paattyneet, kaikki)
+  }
+  const kassaRrYhteensa = runRateMittari(
+    targets.reduce((sum, r) => sum + r.kassaKate, 0),
+    tavoiteSumma(Object.values(rrMyyjaTavoitteet)).kassakate,
+    runrate?.tyopaivat.paattyneet ?? 0,
+    runrate?.tyopaivat.kaikki ?? 0,
+  )
+
+  /** Otsikoihin ilman "Myyntiseuranta"-etuliitettä, kuten run rate -taulukoissa. */
+  const kuukausiLyhyt = kuukausi.replace('Myyntiseuranta ', '')
+
   const thStyle = {padding:'8px 10px', fontSize:11, fontWeight:500, color:'#888', textAlign:'right' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6'}
   const thLStyle = {...thStyle, textAlign:'left' as const}
   const tdStyle = {padding:'7px 10px', fontSize:12, textAlign:'right' as const, borderBottom:'0.5px solid #f0f0f0', whiteSpace:'nowrap' as const}
@@ -235,7 +348,7 @@ export default function EtelanHaratPage() {
   }
   const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, color: tehoColor(teho, liittyma), fontWeight:500})
   const tehoTot = (teho: number, liittyma = false) => ({...totStyle, color: tehoColor(teho, liittyma)})
-  // Kolmen tehosarakkeen solu. Asteikko annetaan eksplisiittisesti eikä
+  // Tehosarakkeen solu. Asteikko annetaan eksplisiittisesti eikä
   // päätellä indeksistä: sarakejärjestyksen vaihtaminen siirtäisi muuten
   // liittymän 8,5-rajan hiljaa väärään sarakkeeseen ilman että mikään kaatuu.
   const tehoTd = (n: number | undefined, key: number, liittyma = false) => Number.isFinite(n)
@@ -296,6 +409,31 @@ Generoi viesti:`
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 
         {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
+
+        {/* Tilarivi ja näkymänapit ovat kaikkien kolmen näkymän yläpuolella:
+            kuukausi ja työpäivätilanne koskevat niitä kaikkia. */}
+        {!loading && kuukausi && (
+          <WorkdayInfo kuukausi={kuukausiLyhyt} ikkuna={runrate?.tyopaivat ?? null} />
+        )}
+
+        {!loading && (
+          <div style={{display:'flex', gap:8, marginBottom:16, overflowX:'auto', paddingBottom:2}}>
+            {NAKYMAT.map(n => (
+              <button key={n.id} onClick={() => vaihdaNakyma(n.id)}
+                style={{
+                  padding:'8px 16px', borderRadius:8, border:'0.5px solid #ddd', cursor:'pointer', fontSize:13,
+                  whiteSpace:'nowrap', flexShrink:0,
+                  fontWeight: nakyma === n.id ? 500 : 400,
+                  background: nakyma === n.id ? '#185FA5' : 'white',
+                  color: nakyma === n.id ? 'white' : '#555',
+                }}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {nakyma === 'tavoitteet' && (<>
 
         {/* Puuttuva sarake ei palauta nollaa vaan puutteen, ja puute näkyy
             tässä: nolla näyttäisi mitatulta tulokselta. */}
@@ -358,7 +496,6 @@ Generoi viesti:`
                       <th style={thStyle}>Provisio yht.</th>
                       <th style={thStyle}>Liitt teho</th>
                       <th style={thStyle}>Liitt+Kassa teho</th>
-                      <th style={thStyle}>Total teho</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -378,12 +515,11 @@ Generoi viesti:`
                           {eiTehoa(s.nimi) ? (
                             // Tyhjä, ei nollaa eikä selitystä: nolla näyttäisi
                             // mitatulta tulokselta ja värittyisi punaiseksi.
-                            <td style={tdStyle} colSpan={3} />
+                            <td style={tdStyle} colSpan={2} />
                           ) : (
                             <>
                               {tehoTd(s.myyntiTehoLiitt, 0, true)}
                               {tehoTd(s.myyntiTeho, 1)}
-                              {tehoTd(s.myyntiTehoTotal, 2)}
                             </>
                           )}
                         </tr>
@@ -400,7 +536,6 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
                       <td style={tehoTot(sellerTeho.liitt, true)}>{fmt(sellerTeho.liitt)} €/h</td>
                       <td style={tehoTot(sellerTeho.kassa)}>{fmt(sellerTeho.kassa)} €/h</td>
-                      <td style={tehoTot(sellerTeho.total)}>{fmt(sellerTeho.total)} €/h</td>
                     </tr>
                   </tbody>
                 </table>
@@ -530,6 +665,27 @@ Generoi viesti:`
               </div>
             )}
           </div>
+        )}
+
+        </>)}
+
+        {/* Uusmyynti ja Kassamyynti: siirretty Tavoitteet ja Run Rate -sivulta
+            sellaisenaan. Virhe erotetaan tyhjästä kuukaudesta — tyhjä taulukko
+            ilman selitystä näyttäisi siltä kuin myyntiä ei olisi ollut. */}
+        {!loading && nakyma !== 'tavoitteet' && (
+          targetsVirhe ? (
+            <div style={{background:'#FCEBEB', border:'0.5px solid #F09595', borderRadius:10, padding:12, fontSize:13, color:'#A32D2D'}}>
+              <strong>Virhe:</strong> {targetsVirhe}
+            </div>
+          ) : targetsLoading ? (
+            <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>
+          ) : targets.length === 0 ? (
+            <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ei tavoitedataa tälle kuukaudelle.</div>
+          ) : nakyma === 'uusmyynti' ? (
+            <UusmyyntiTaulukko rivit={targets} kuukausi={kuukausiLyhyt} />
+          ) : (
+            <KassamyyntiTaulukko rivit={targets} kuukausi={kuukausiLyhyt} rr={kassaRr} rrYhteensa={kassaRrYhteensa} />
+          )
         )}
 
       </div>

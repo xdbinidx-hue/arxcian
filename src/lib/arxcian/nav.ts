@@ -62,16 +62,20 @@ export function activeSection(pathname: string): SectionId | null {
  *
  * `id` on avustajan käyttämä tunniste, `label` sama teksti jonka käyttäjä
  * näkee palkissa.
+ *
+ * `yhteenveto` ja `tavoitteet` poistettiin 1.9.2026: sama data oli kahdessa
+ * paikassa, ja Tavoitteet ja Run Rate -sivun kolme näkymää siirtyivät
+ * Myyntiseurantaan näkymänapeiksi. Vanhat polut ohjautuvat sinne
+ * [next.config.js](next.config.js):n uudelleenohjauksilla, jotta kirjanmerkit
+ * ja PWA:n kotiruutukuvakkeet eivät päädy 404:ään.
  */
 export type RjMobPage = { id: string; label: string; href: string }
 
 export const RJMOB_PAGES: readonly RjMobPage[] = [
-  { id: 'yhteenveto', label: 'Yhteenveto', href: '/arxcian/rj-mob/yhteenveto' },
   { id: 'tuotto', label: 'Tuottoseuranta', href: '/arxcian/rj-mob/tuotto' },
   { id: 'trendit', label: 'Trendit', href: '/arxcian/rj-mob/trendit' },
   { id: 'kassamyynti', label: 'Kassamyynti', href: '/arxcian/rj-mob/kassamyynti' },
   { id: 'myyntiseuranta', label: 'Myyntiseuranta', href: '/arxcian/rj-mob/etela' },
-  { id: 'tavoitteet', label: 'Tavoitteet ja Run Rate', href: '/arxcian/rj-mob/tavoitteet' },
   { id: 'bonus', label: 'Päällikköbonus', href: '/arxcian/rj-mob/bonus' },
   { id: 'laskuri', label: 'Laskuri', href: '/arxcian/rj-mob/laskuri' },
   { id: 'tyovuorot', label: 'Työvuorot', href: '/arxcian/rj-mob/tyovuorot' },
