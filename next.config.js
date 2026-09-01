@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Rajaa buildin worker-määrän (oletus os.cpus().length - 1 = 63 tällä VPS:llä),
+  // ettei prosessi-/säiekaton 512 täyty sivudatan keruun aikana (EAGAIN).
+  experimental: { cpus: 4 },
   /**
    * Poistetut RJ-Mobin välilehdet (1.9.2026): Yhteenveto, Tavoitteet ja Run
    * Rate, Kassamyynti ja Päällikköbonus. Vanhat osoitteet ohjataan lähimpään
