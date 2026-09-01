@@ -1,6 +1,6 @@
 'use client'
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 import { RunRateTaulukko } from '@/components/rjmob/RunRateTaulukko'
 import { UusmyyntiTaulukko, KassamyyntiTaulukko, type TargetRow } from '@/components/rjmob/TavoiteTaulukot'
@@ -161,9 +161,12 @@ function EtelanHaratSivu() {
   // lukuja joita myymälälukujen lukupää ei tuota.
   const [targets, setTargets] = useState<TargetRow[]>([])
   const [targetsVirhe, setTargetsVirhe] = useState('')
-  const [targetsLoading, setTargetsLoading] = useState(false)
+  // Alkuarvo `true`: ennen ensimmäistä hakua tyhjä lista ei ole "ei dataa"
+  // vaan "ei vielä haettu", ja väärä tyhjä näyttäisi mitatulta tulokselta.
+  const [targetsLoading, setTargetsLoading] = useState(true)
 
   const router = useRouter()
+  const pathname = usePathname()
   const params = useSearchParams()
   const pyydetty = params.get('nakyma')
   const nakyma: Nakyma = NAKYMAT.some(n => n.id === pyydetty) ? (pyydetty as Nakyma) : 'tavoitteet'
@@ -175,7 +178,7 @@ function EtelanHaratSivu() {
     if (id === 'tavoitteet') p.delete('nakyma')
     else p.set('nakyma', id)
     const q = p.toString()
-    router.push(q ? `?${q}` : '?', { scroll: false })
+    router.push(q ? `${pathname}?${q}` : pathname, { scroll: false })
   }
 
   useEffect(() => {
@@ -285,8 +288,8 @@ function EtelanHaratSivu() {
   const tehoRivit = sellers.filter(s => !eiTehoa(s.nimi))
   // Total teho poistettiin myyjätaulukosta 1.9.2026: kaksi tehomittaria
   // riittää johtamiskeskusteluun, ja kolmas luku samalla rivillä hämärsi sen
-  // kumpaa katsotaan. Laskenta jää `laskeMyyja`an — Yhteenveto ja hubin
-  // tilannekatsaus lukevat sitä yhä.
+  // kumpaa katsotaan. Laskenta jää `laskeMyyja`an — `rjmobInsights` lukee
+  // `tehoTotal`ia yhä, eikä `rjmobTeho.test.mts` päästä sitä katoamaan.
   const sellerTeho = {
     liitt: yhteisTeho(tehoRivit, s => s.myyntiTehoLiitt, s => s.tunnit),
     kassa: yhteisTeho(tehoRivit, s => s.myyntiTeho, s => s.tunnit),

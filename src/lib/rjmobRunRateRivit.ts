@@ -4,8 +4,8 @@ import type { RunRateRivi } from '@/components/rjmob/RunRateTaulukko'
 /**
  * Toteumien ja tavoitteiden yhdistäminen run rate -riveiksi.
  *
- * Puhdas ja jaettu, koska sama yhdistely tarvitaan Myyntiseurannassa ja
- * Tavoitteet ja Run Rate -sivulla. Toteumat annetaan **valmiiksi
+ * Puhdas ja jaettu, koska sama yhdistely tarvitaan Myyntiseurannan run rate
+ * -näkymässä ja luku-API:ssa. Toteumat annetaan **valmiiksi
  * normalisoituna** (`RunRateToteuma`), koska sivut lukevat ne eri
  * rajapinnoista ja kassakate on niissä eri asteikossa: myymälärivin `kassa`
  * on jo kassakate (×10), myyjärivin `kassa` kassaprovisio (÷10). Kerroin

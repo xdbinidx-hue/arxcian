@@ -7,8 +7,9 @@ import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
  * Run rate -taulukko: tavoite, toteuma, ennuste ja % tavoitteesta jokaiselle
  * kolmelle mittarille.
  *
- * Yksi komponentti kahdelle sivulle (Myyntiseuranta ja Tavoitteet ja Run
- * Rate) ja kahdelle tasolle (myymälä ja myyjä). Sarakejärjestys on osa
+ * Yksi komponentti kahdelle tasolle (myymälä ja myyjä) — ja kahdelle sivulle
+ * 1.9.2026 asti, jolloin Tavoitteet ja Run Rate -välilehti poistettiin ja
+ * kaikki kolme näkymää siirtyivät Myyntiseurantaan. Sarakejärjestys on osa
  * määrittelyä eikä tyyliseikka — **Tavoite | Toteuma | Ennuste | %** —, ja
  * kahtena kopiona se ajautuisi erilleen ensimmäisen muutoksen kohdalla.
  *

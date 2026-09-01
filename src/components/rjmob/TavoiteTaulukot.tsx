@@ -12,7 +12,11 @@ import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
  * sivu kutsuu, jotta "% tavoitteesta" on yksi kaava eikä kaksi.
  */
 
-/** Rivi `/api/targets`-reitiltä. Vain ne kentät joita nämä taulukot lukevat. */
+/**
+ * Rivi `/api/targets`-reitiltä, siirretty sellaisenaan poistetulta Tavoitteet
+ * ja Run Rate -sivulta. Kaikkia kenttiä ei lueta täällä — muoto on reitin
+ * vastaus kokonaisuudessaan, jotta se pysyy yhtenä tunnistettavana tyyppinä.
+ */
 export interface TargetRow {
   nimi: string
   liittKpl: number; liittTavoite: number; liittRunrate: number; liittPerPaiva: number
