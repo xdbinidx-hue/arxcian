@@ -20,3 +20,12 @@ test('Oracle-ohje säilyttää kirjoitukset vahvistettavina ehdotuksina', () => 
   assert.match(instructions, /proposal/i)
   assert.match(instructions, /vain jos käyttäjä pyytää/i)
 })
+
+test('Oracle-ohje kertoo oikean runtime-identiteetin eikä salli mallipohjan arvaamista', () => {
+  const instructions = oracleUiInstructions()
+  assert.match(instructions, /Arxcianin komentokeskuksen Oracle-avustaja/i)
+  assert.match(instructions, /Hermes Agent/i)
+  assert.match(instructions, /Oracle-profiili/i)
+  assert.match(instructions, /älä (?:nimeä|arvaa).*malli/i)
+  assert.match(instructions, /metatietoa ei ole saatavilla/i)
+})
