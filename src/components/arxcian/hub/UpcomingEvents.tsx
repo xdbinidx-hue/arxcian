@@ -5,8 +5,8 @@ import { getCalendarStatus, upcomingEvents } from '@/lib/arxcian/personal/calend
 import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 import { Panel } from '@/components/arxcian/Panel'
 
-function requestOrigin(): string {
-  const h = headers()
+async function requestOrigin(): Promise<string> {
+  const h = await headers()
   const host = h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
   return `${proto}://${host}`
@@ -30,7 +30,7 @@ function dayLabel(ms: number): string {
 export async function UpcomingEvents({ delay }: { delay?: number }) {
   const owner = await currentOwner()
   const status = owner
-    ? await getCalendarStatus(owner, requestOrigin())
+    ? await getCalendarStatus(owner, await requestOrigin())
     : CALENDAR_DISCONNECTED
 
   if (status.state !== 'connected') {

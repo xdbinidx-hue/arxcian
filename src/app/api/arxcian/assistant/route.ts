@@ -428,7 +428,7 @@ export async function POST(req: NextRequest) {
 
   // Otsakkeet luetaan tässä, ei työkalun suorituksessa: suoratoistettu vastaus
   // jatkuu ReadableStreamin sisällä pyyntökäsittelijän palattua.
-  const ctx: ToolContext = { user, origin: requestOrigin(), canAct: wantsStream }
+  const ctx: ToolContext = { user, origin: await requestOrigin(), canAct: wantsStream }
 
   if (!wantsStream) {
     let text = ''

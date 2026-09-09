@@ -16,8 +16,8 @@ export const metadata = { title: 'Personal · arxcian' }
 export const dynamic = 'force-dynamic'
 
 /** OAuthin uudelleenohjaus vaatii saman originin kuin valtuutuspyyntö. */
-function requestOrigin(): string {
-  const h = headers()
+async function requestOrigin(): Promise<string> {
+  const h = await headers()
   const host = h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
   return `${proto}://${host}`
@@ -26,8 +26,9 @@ function requestOrigin(): string {
 export default async function PersonalPage({
   searchParams,
 }: {
-  searchParams: { kalenteri?: string }
+  searchParams: Promise<{ kalenteri?: string }>
 }) {
+  const resolvedSearchParams = await searchParams
   const owner = await currentOwner()
   const user = await currentUser()
 
@@ -37,7 +38,7 @@ export default async function PersonalPage({
     getNotes(user),
     getTodos(user),
     owner
-      ? getCalendarStatus(owner, requestOrigin())
+      ? getCalendarStatus(owner, await requestOrigin())
       : Promise.resolve(CALENDAR_DISCONNECTED),
   ])
 
@@ -49,7 +50,7 @@ export default async function PersonalPage({
       </header>
 
       <div className="mb-4">
-        <CalendarPanel status={calendar} notice={searchParams.kalenteri} />
+        <CalendarPanel status={calendar} notice={resolvedSearchParams.kalenteri} />
       </div>
 
       <div className="mb-4">{owner && <TodoList initialTodos={todos} currentUser={owner} />}</div>

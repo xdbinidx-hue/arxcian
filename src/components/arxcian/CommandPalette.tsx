@@ -10,6 +10,24 @@ import { createSpeechSplitter } from '@/lib/arxcian/speakable'
 import { SpeechQueue } from '@/lib/arxcian/speechQueue'
 import { createUnlockedAudio, type UnlockedAudio } from '@/lib/arxcian/voice/audio'
 import {
+  approveOraclePrompt,
+  cancelOraclePrompt,
+  isOracleTerminal,
+  oracleStatusLabel,
+  oracleUiEffect,
+  runOraclePrompt,
+  watchOraclePrompt,
+} from '@/lib/arxcian/oracleClient'
+import {
+  isOracleQueueEnabled,
+  oraclePendingStorageKey,
+  oracleSubmissionStorageKey,
+  parseOracleSubmissionDraft,
+  shouldRestoreOracleWatch,
+} from '@/lib/arxcian/oracleBrowserState'
+import type { OracleMessageView } from '@/lib/arxcian/oracleQueue'
+import { prepareOracleVoiceTurn } from '@/lib/arxcian/oracleVoiceTurn'
+import {
   createRecognition,
   isPermissionError,
   recognitionErrorMessage,
@@ -150,6 +168,7 @@ const GREETING_URL = '/api/arxcian/tts/greeting'
  * tietoisesti, ei jotain joka on päällä ensimmäisellä käynnillä.
  */
 const WAKE_STORAGE_KEY = 'arxcian:wake-word'
+const ORACLE_QUEUE_ENABLED = isOracleQueueEnabled(process.env.NEXT_PUBLIC_ORACLE_QUEUE_ENABLED)
 
 /**
  * Kuinka kauan käyttäjän vuoroa odotetaan ilman puhetta.
@@ -377,6 +396,8 @@ export function CommandPalette({ user }: { user: UserId }) {
   const [mode, setMode] = useState<Mode>('search')
   const [answer, setAnswer] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  /** Palvelinjonossa olevan Oracle-tehtävän tuorein tila. */
+  const [oracleMessage, setOracleMessage] = useState<OracleMessageView | null>(null)
   /** Selain tukee puheentunnistusta. */
   const [micAvailable, setMicAvailable] = useState(false)
   /** ...ja mikrofonilupa on voimassa. Erillään tuesta, jotta evätyn luvan
@@ -488,6 +509,8 @@ export function CommandPalette({ user }: { user: UserId }) {
 
   /** Ehdotus myös refissä: käsittelijät ovat vakaita eivätkä näe tuoreinta tilaa. */
   const proposalRef = useRef<ProposalCard | null>(null)
+  /** Estää pollauksen saman valmistuneen navigoinnin tai kortin toiston. */
+  const handledOracleUiRef = useRef<string | null>(null)
 
   /**
    * Tuoreimmat käsittelijät refissä. Puheentunnistuksen ja herätyssanan
@@ -711,7 +734,24 @@ export function CommandPalette({ user }: { user: UserId }) {
     }
   }, [])
 
-  const askAssistant = useCallback(
+  const applyOracleUi = useCallback((message: OracleMessageView) => {
+    const effect = oracleUiEffect(message, handledOracleUiRef.current)
+    if (!effect) return
+    handledOracleUiRef.current = effect.key
+
+    if (effect.action) {
+      setDocked(true)
+      router.push(effect.action.href)
+    }
+    if (effect.proposal) {
+      const card: ProposalCard = { ...effect.proposal, status: 'pending' }
+      proposalRef.current = card
+      setProposal(card)
+      setMode('answered')
+    }
+  }, [router])
+
+  const askLegacyAssistant = useCallback(
     async (prompt: string) => {
       // Edellinen kysymys vaikenee ja katkeaa ennen uuden aloittamista: sekä
       // puhejono että virta ovat renderöinnin ulkopuolista tilaa, joka jatkaisi
@@ -865,6 +905,168 @@ export function CommandPalette({ user }: { user: UserId }) {
     },
     [getSpeech, dropProposal, router],
   )
+
+  const askAssistant = useCallback(
+    async (prompt: string, idempotencyKey?: string) => {
+      if (!ORACLE_QUEUE_ENABLED) {
+        await askLegacyAssistant(prompt)
+        return
+      }
+      requestRef.current?.abort()
+      const speech = getSpeech()
+      prepareOracleVoiceTurn({
+        streaming: streamingRef,
+        stopCapture,
+        cancelSpeech: () => speech.cancel(),
+      })
+      dropProposal()
+
+      const controller = new AbortController()
+      requestRef.current = controller
+      setQuery(prompt)
+      setAnswer(null)
+      setErrorMessage(null)
+      setOracleMessage(null)
+      setMode('asking')
+      const pendingKey = oraclePendingStorageKey(String(user))
+      const submissionKey = oracleSubmissionStorageKey(String(user))
+
+      try {
+        const message = await runOraclePrompt({
+          prompt,
+          idempotencyKey,
+          signal: controller.signal,
+          onPrepared: requestKey => {
+            sessionStorage.setItem(submissionKey, JSON.stringify({ prompt, idempotencyKey: requestKey }))
+          },
+          onSubmitted: submitted => {
+            sessionStorage.removeItem(submissionKey)
+            localStorage.removeItem(submissionKey)
+            localStorage.setItem(pendingKey, submitted.id)
+          },
+          onStatus: message => {
+            setOracleMessage(message)
+            applyOracleUi(message)
+            if (isOracleTerminal(message.status)) {
+              localStorage.removeItem(pendingKey)
+              sessionStorage.removeItem(submissionKey)
+              localStorage.removeItem(submissionKey)
+            } else {
+              localStorage.setItem(pendingKey, message.id)
+            }
+          },
+        })
+        if (controller.signal.aborted) return
+
+        if (message.status === 'completed') {
+          const text = message.answer?.trim() || 'Tehtävä valmistui ilman tekstivastausta.'
+          setAnswer(text)
+          setMode('answered')
+          const splitter = createSpeechSplitter()
+          for (const piece of splitter.push(text)) speech.push(piece)
+          for (const piece of splitter.flush()) speech.push(piece)
+          return
+        }
+
+        setErrorMessage(message.error || (message.status === 'cancelled'
+          ? 'Oracle-tehtävä keskeytettiin.'
+          : 'Oracle-tehtävä epäonnistui.'))
+        setMode('error')
+      } catch (error) {
+        if (controller.signal.aborted) return
+        setErrorMessage(error instanceof Error ? error.message : 'Oracle-yhteys epäonnistui.')
+        setMode('error')
+      } finally {
+        if (requestRef.current === controller) {
+          requestRef.current = null
+          streamingRef.current = false
+          apiRef.current.maybeResume()
+        }
+      }
+    },
+    [applyOracleUi, askLegacyAssistant, dropProposal, getSpeech, stopCapture, user],
+  )
+
+  const cancelOracle = useCallback(async () => {
+    const message = oracleMessage
+    if (!message || message.status === 'cancelling' || isOracleTerminal(message.status)) return
+    try {
+      const cancelled = await cancelOraclePrompt(message.id)
+      setOracleMessage(cancelled)
+      if (isOracleTerminal(cancelled.status)) {
+        localStorage.removeItem(oraclePendingStorageKey(String(user)))
+        localStorage.removeItem(oracleSubmissionStorageKey(String(user)))
+        sessionStorage.removeItem(oracleSubmissionStorageKey(String(user)))
+        requestRef.current?.abort()
+        speechRef.current?.cancel()
+        setAnswer('Oracle-tehtävä keskeytettiin.')
+        setMode('answered')
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Tehtävän keskeytys epäonnistui.')
+      setMode('error')
+    }
+  }, [oracleMessage, user])
+
+  const decideOracle = useCallback(async (choice: 'once' | 'deny') => {
+    const message = oracleMessage
+    if (!message || message.status !== 'waiting_approval' || message.approvalDecision) return
+    try {
+      setOracleMessage(await approveOraclePrompt(message.id, choice))
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Hyväksynnän lähetys epäonnistui.')
+    }
+  }, [oracleMessage])
+
+  useEffect(() => {
+    const pendingKey = oraclePendingStorageKey(String(user))
+    const submissionKey = oracleSubmissionStorageKey(String(user))
+    localStorage.removeItem(submissionKey)
+    const pendingId = localStorage.getItem(pendingKey)
+    if (!open) return
+    if (!pendingId) {
+      const draft = parseOracleSubmissionDraft(sessionStorage.getItem(submissionKey))
+      if (draft) void askAssistant(draft.prompt, draft.idempotencyKey)
+      return
+    }
+    if (!shouldRestoreOracleWatch(open, pendingId, requestRef.current?.signal ?? null)) return
+
+    const controller = new AbortController()
+    requestRef.current = controller
+    streamingRef.current = true
+    setMode('asking')
+
+    void watchOraclePrompt(pendingId, {
+      signal: controller.signal,
+      onStatus: message => {
+        setOracleMessage(message)
+        applyOracleUi(message)
+        if (isOracleTerminal(message.status)) {
+          localStorage.removeItem(pendingKey)
+        }
+      },
+    }).then(message => {
+      if (controller.signal.aborted) return
+      if (message.status === 'completed') {
+        setAnswer(message.answer?.trim() || 'Tehtävä valmistui ilman tekstivastausta.')
+        setMode('answered')
+      } else {
+        setErrorMessage(message.error || 'Oracle-tehtävä ei valmistunut.')
+        setMode('error')
+      }
+    }).catch(error => {
+      if (controller.signal.aborted) return
+      setErrorMessage(error instanceof Error ? error.message : 'Oracle-tehtävän seuranta epäonnistui.')
+      setMode('error')
+    }).finally(() => {
+      if (requestRef.current === controller) {
+        requestRef.current = null
+        streamingRef.current = false
+      }
+    })
+
+    return () => controller.abort()
+  }, [applyOracleUi, askAssistant, open, user])
 
   /**
    * Esilataa tervehdyksen, jotta herätesanan jälkeen ei odoteta verkkoa.
@@ -1399,7 +1601,7 @@ export function CommandPalette({ user }: { user: UserId }) {
             // modaali. Väärä aria-modal kertoisi ruudunlukijalle että sivun
             // muu sisältö on piilossa vaikka se on käytettävissä.
             aria-modal={docked ? undefined : true}
-            aria-label="Komentopaletti"
+            aria-label="Oracle-komentokeskus"
             className="pointer-events-auto w-full max-w-lg overflow-hidden ax-glass rounded-xl shadow-2xl"
           >
             <div className="flex items-center gap-3 ax-glass-divide border-b px-4">
@@ -1410,7 +1612,7 @@ export function CommandPalette({ user }: { user: UserId }) {
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={onKeyDown}
                 disabled={mode === 'asking'}
-                placeholder="Siirry osioon…"
+                placeholder="Siirry osioon tai anna Oraclelle tehtävä…"
                 className="w-full bg-transparent py-3.5 text-sm text-ax-text outline-none placeholder:text-ax-faint disabled:opacity-50"
               />
               <kbd className="shrink-0 rounded border border-ax-line px-1.5 py-0.5 font-mono text-[10px] text-ax-faint">
@@ -1452,7 +1654,7 @@ export function CommandPalette({ user }: { user: UserId }) {
                       }`}
                     >
                       <IconSearch className="h-4 w-4 shrink-0 text-ax-accent" />
-                      <span className="text-sm">Kysy assistentilta: {query}</span>
+                      <span className="text-sm">Anna Oraclelle tehtävä: {query}</span>
                     </button>
                   </li>
                 )}
@@ -1460,11 +1662,62 @@ export function CommandPalette({ user }: { user: UserId }) {
             )}
 
             {mode === 'asking' && (
-              <div className="px-3 py-6 text-center text-[13px] text-ax-faint">Kysytään assistentilta…</div>
+              <div className="space-y-3 px-4 py-6 text-center">
+                <div className="text-[13px] font-medium text-ax-text">Oracle</div>
+                <div className="text-[12px] text-ax-faint" aria-live="polite">
+                  {oracleMessage ? oracleStatusLabel(oracleMessage.status) : 'Lähetetään tehtävää…'}
+                </div>
+                {oracleMessage?.status === 'waiting_approval' && oracleMessage.approval && (
+                  <div className="rounded-lg border border-ax-warn/40 bg-ax-warn/[0.06] p-3 text-left">
+                    <div className="font-mono text-[9px] uppercase tracking-wider text-ax-warn">
+                      Hyväksyntä vaaditaan
+                    </div>
+                    <div className="mt-2 text-[12px] text-ax-text">
+                      {oracleMessage.approval.description || oracleMessage.approval.tool || 'Oracle pyytää lupaa toimelle.'}
+                    </div>
+                    {oracleMessage.approval.command && (
+                      <code className="mt-2 block max-h-24 overflow-auto rounded bg-black/30 p-2 text-[11px] text-ax-dim">
+                        {oracleMessage.approval.command}
+                      </code>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={Boolean(oracleMessage.approvalDecision)}
+                        onClick={() => void decideOracle('once')}
+                        className="rounded-md border border-ax-accent/60 bg-ax-accent/15 px-3 py-1.5 text-[12px] text-ax-accent disabled:opacity-50"
+                      >
+                        {oracleMessage.approvalDecision === 'once' ? 'Hyväksytty' : 'Hyväksy kerran'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(oracleMessage.approvalDecision)}
+                        onClick={() => void decideOracle('deny')}
+                        className="rounded-md border border-ax-down/60 bg-ax-down/10 px-3 py-1.5 text-[12px] text-ax-down disabled:opacity-50"
+                      >
+                        {oracleMessage.approvalDecision === 'deny' ? 'Hylätty' : 'Hylkää'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {oracleMessage && !['completed', 'failed', 'cancelled'].includes(oracleMessage.status) && (
+                  <button
+                    type="button"
+                    onClick={() => void cancelOracle()}
+                    className="rounded-md border border-ax-line px-3 py-1.5 text-[12px] text-ax-dim transition-colors hover:bg-ax-panel-hi hover:text-ax-text"
+                  >
+                    Keskeytä tehtävä
+                  </button>
+                )}
+              </div>
             )}
 
             {mode === 'answered' && (
               <div className="max-h-72 overflow-y-auto p-4">
+                <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-ax-faint">
+                  <span>Oracle</span>
+                  {oracleMessage && <span>{oracleStatusLabel(oracleMessage.status)}</span>}
+                </div>
                 {/* Ehdotus voi tulla ennen ensimmäistä sanaa, joten vastaus
                     saa olla vielä tyhjä. */}
                 {answer && (

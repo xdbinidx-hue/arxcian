@@ -5,8 +5,8 @@ import { getCalendarStatus } from '@/lib/arxcian/personal/calendar/events'
 import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 import { Panel } from '@/components/arxcian/Panel'
 
-function requestOrigin(): string {
-  const h = headers()
+async function requestOrigin(): Promise<string> {
+  const h = await headers()
   const host = h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
   return `${proto}://${host}`
@@ -59,7 +59,7 @@ function buildMonth(now: Date) {
 
 export async function CalendarMonth({ delay }: { delay?: number }) {
   const owner = await currentOwner()
-  const status = owner ? await getCalendarStatus(owner, requestOrigin()) : CALENDAR_DISCONNECTED
+  const status = owner ? await getCalendarStatus(owner, await requestOrigin()) : CALENDAR_DISCONNECTED
 
   const now = new Date()
   const { cells, label } = buildMonth(now)

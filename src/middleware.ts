@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getIronSession } from 'iron-session'
 import { sessionOptions, sessionUser, type SessionData } from '@/lib/session'
+import { isOracleBridgePath } from '@/lib/arxcian/oracleRouteAccess'
 
 function isPublic(pathname: string) {
   return (
@@ -11,6 +12,9 @@ function isPublic(pathname: string) {
     // Cron-reitti todentaa itse CRON_SECRETilla. Istuntoa vaativa
     // middleware estäisi Vercelin ajastetut kutsut kokonaan.
     pathname.startsWith('/api/arxcian/cron') ||
+    // VPS-silta ei käytä selainistuntoa. Vain nämä täsmäreitit ohittavat
+    // middlewaren; kukin todentaa itse erillisellä bridge-salaisuudella.
+    isOracleBridgePath(pathname) ||
     // Drive-webhookit kutsutaan ilman istuntoa, mutta molemmat todentavat itse:
     // /api/webhook/drive on Googlen kutsuma ja tarkistaa x-goog-channel-token-
     // otsakkeen, /api/webhook/register ajetaan vercel.jsonin cronista ja

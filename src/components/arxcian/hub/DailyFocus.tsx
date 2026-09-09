@@ -6,8 +6,8 @@ import { getCalendarStatus } from '@/lib/arxcian/personal/calendar/events'
 import { CALENDAR_DISCONNECTED } from '@/lib/arxcian/personal/calendar/types'
 import { todayISOHelsinki } from '@/lib/arxcian/time'
 
-function requestOrigin(): string {
-  const h = headers()
+async function requestOrigin(): Promise<string> {
+  const h = await headers()
   const host = h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
   return `${proto}://${host}`
@@ -31,7 +31,7 @@ export async function DailyFocus() {
   const [habits, goals, calendar] = await Promise.all([
     getHabits(user),
     getGoals(user),
-    owner ? getCalendarStatus(owner, requestOrigin()) : Promise.resolve(CALENDAR_DISCONNECTED),
+    owner ? getCalendarStatus(owner, await requestOrigin()) : Promise.resolve(CALENDAR_DISCONNECTED),
   ])
 
   const habitsDone = habits.filter(h => h.completedDates.includes(today)).length

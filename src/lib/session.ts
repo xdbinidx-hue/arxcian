@@ -60,8 +60,8 @@ export function sessionUser(data: SessionData | null | undefined): SessionUser |
 }
 
 /** Istunto server componentissa tai route handlerissa. */
-export function getSession() {
-  return getIronSession<SessionData>(cookies(), sessionOptions())
+export async function getSession() {
+  return getIronSession<SessionData>(await cookies(), sessionOptions())
 }
 
 /** Kirjautunut käyttäjä server-puolella, tai null. */

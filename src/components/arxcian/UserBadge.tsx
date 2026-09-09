@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { clearOracleBrowserState } from '@/lib/arxcian/oracleBrowserState'
 import { IconLogout } from './icons'
 
 /** Kirjautunut käyttäjä ja uloskirjautuminen — tarvitaan Albinin ja Arbnorin vaihtoon. */
@@ -12,6 +13,7 @@ export function UserBadge({ user }: { user: string }) {
   const logout = async () => {
     setBusy(true)
     await fetch('/api/logout', { method: 'POST' })
+    clearOracleBrowserState(user, localStorage, sessionStorage)
     router.push('/login')
     router.refresh()
   }
