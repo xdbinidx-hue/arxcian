@@ -4,7 +4,7 @@ import { bridgeSecretMatches } from '@/lib/arxcian/oracleBridgeAuth'
 import { OracleQueueConflictError } from '@/lib/arxcian/oracleQueue'
 import { createRedisOracleBackend } from '@/lib/arxcian/oracleRedisBackend'
 import { finalizeOracleCompletion, type OracleRawInteraction } from '@/lib/arxcian/oracleCompletion'
-import { deleteProposal, prepareProposal, saveProposal } from '@/lib/arxcian/assistant/proposals'
+import { prepareProposal, saveProposal } from '@/lib/arxcian/assistant/proposals'
 
 type CompleteBody = {
   id?: unknown
@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
       now: () => Date.now(),
       prepareProposal,
       saveProposal,
-      deleteProposal,
     })
     return NextResponse.json({ message })
   } catch (error) {

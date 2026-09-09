@@ -251,6 +251,7 @@ test('Redis-terminaliskriptit hyväksyvät vain täsmällisen callback-uusinnan'
 
   assert.match(calls[0]?.script ?? '', /message\.terminalClaimToken == ARGV\[1\]/)
   assert.match(calls[0]?.script ?? '', /message\.answer == ARGV\[2\]/)
+  assert.match(calls[0]?.script ?? '', /ARGV\[4\] == '' and message\.sessionId == cjson\.null/)
   assert.match(calls[1]?.script ?? '', /message\.terminalClaimToken == ARGV\[1\]/)
   assert.match(calls[1]?.script ?? '', /message\.error == ARGV\[2\]/)
 })

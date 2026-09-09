@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@/lib/session'
 import { deleteProposal, executeProposal, loadProposal } from '@/lib/arxcian/assistant/proposals'
 import { appendAudit } from '@/lib/arxcian/assistant/audit'
+import { kv } from '@/lib/arxcian/kv'
+import { isOracleProposalActive } from '@/lib/arxcian/oracleCompletion'
+import { createRedisOracleBackend } from '@/lib/arxcian/oracleRedisBackend'
 
 /**
  * Avustajan ehdotuksen vahvistus ja peruutus.
@@ -42,6 +45,12 @@ export async function POST(req: NextRequest) {
   }
 
   const { proposal } = found
+  if (!await isOracleProposalActive(createRedisOracleBackend(kv()), proposal)) {
+    return NextResponse.json(
+      { error: 'Ehdotus ei kuulu valmistuneeseen Oracle-vastaukseen.' },
+      { status: 409 },
+    )
+  }
 
   // Ehdotus poistetaan ennen suoritusta, ei sen jälkeen: kaksoisnapautus tai
   // vahingossa toistettu pyyntö ei saa luoda samaa tietuetta kahdesti. Poisto

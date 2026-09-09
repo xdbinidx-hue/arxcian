@@ -62,7 +62,8 @@ local message = cjson.decode(raw)
 if message.status == 'completed' then
   if message.terminalClaimToken == ARGV[1] and message.answer == ARGV[2]
     and message.completionUiJson == ARGV[5]
-    and (ARGV[4] == '' or message.sessionId == ARGV[4]) then return raw end
+    and ((ARGV[4] == '' and message.sessionId == cjson.null)
+      or message.sessionId == ARGV[4]) then return raw end
   return nil
 end
 if (message.status ~= 'claimed' and message.status ~= 'running') or message.claimToken ~= ARGV[1] then

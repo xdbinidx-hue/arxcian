@@ -409,7 +409,7 @@ export function createMemoryOracleBackend(initial: OracleMessage[] = []) {
         && message.terminalClaimToken === claimToken
         && message.answer === answer
         && message.completionUiJson === completionUiJson
-        && (sessionId === null || message.sessionId === sessionId)) return { ...message }
+        && message.sessionId === sessionId) return { ...message }
       if (!message || message.claimToken !== claimToken || !['claimed', 'running'].includes(message.status)) return null
       message.status = 'completed'
       message.answer = answer

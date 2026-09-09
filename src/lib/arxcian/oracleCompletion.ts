@@ -35,12 +35,30 @@ type FinalizeDeps = {
   now(): number
   prepareProposal(tool: ProposalTool, input: unknown, user: OracleMessage['owner']): Promise<Prepared>
   saveProposal(proposal: Proposal): Promise<void>
-  deleteProposal(user: OracleMessage['owner'], id: string): Promise<void>
 }
 
-function proposalId(messageId: string, claimToken: string): string {
+export async function isOracleProposalActive(
+  backend: OracleQueueBackend,
+  proposal: Proposal,
+): Promise<boolean> {
+  if (!proposal.oracleMessageId) return true
+  const source = await backend.get(proposal.oracleMessageId)
+  return source?.owner === proposal.user
+    && source.status === 'completed'
+    && source.proposal?.id === proposal.id
+}
+
+function proposalId(messageId: string, claimToken: string, proposal: Proposal): string {
   const hex = createHash('sha256')
-    .update(`arxcian-oracle-proposal:${messageId}:${claimToken}`)
+    .update(JSON.stringify([
+      'arxcian-oracle-proposal',
+      messageId,
+      claimToken,
+      proposal.user,
+      proposal.tool,
+      proposal.args,
+      proposal.summary,
+    ]))
     .digest('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
@@ -97,8 +115,9 @@ export async function finalizeOracleCompletion(
       } else {
         savedProposal = {
           ...prepared.proposal,
-          id: proposalId(current.id, input.claimToken),
+          id: proposalId(current.id, input.claimToken, prepared.proposal),
           createdAt: completedAt,
+          oracleMessageId: current.id,
         }
         await deps.saveProposal(savedProposal)
         publicProposal = {

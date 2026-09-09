@@ -43,6 +43,8 @@ type ProposalBase = {
   summary: string
   /** Unix ms */
   createdAt: number
+  /** Oracle-ehdotus voidaan vahvistaa vain, kun tämä valmisviesti viittaa siihen. */
+  oracleMessageId?: string
 }
 
 export type Proposal =
