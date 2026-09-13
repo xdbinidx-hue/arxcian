@@ -242,6 +242,18 @@ local message = cjson.decode(raw)
 if message.claimToken ~= ARGV[1]
   or (message.status ~= 'claimed' and message.status ~= 'running' and message.status ~= 'waiting_approval') then return nil end
 local event = cjson.decode(ARGV[2])
+if event.type == 'message.delta' then
+  -- Kumulatiivinen vastausteksti kirjoitetaan omaan kenttäänsä eikä
+  -- events-renkaaseen, jotta työkalu-/aliagenttitapahtumien 100 kappaleen
+  -- katto ei koskaan häädä vastauksen alkua pois.
+  if type(event.preview) == 'string' and event.preview ~= message.liveAnswer then
+    message.liveAnswer = event.preview
+    message.updatedAt = tonumber(ARGV[3])
+  end
+  local updated = cjson.encode(message)
+  redis.call('SET', KEYS[1], updated, 'EX', ARGV[4])
+  return updated
+end
 if message.events == nil or message.events == cjson.null then message.events = {} end
 for _, existing in ipairs(message.events) do
   if existing.sourceId == event.sourceId then return raw end

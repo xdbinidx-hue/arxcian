@@ -469,9 +469,85 @@ test('bridge-tapahtumat saavat palvelimella monotonisen sequencen ja rajatun nä
   assert.equal(second.sequence, 2)
   assert.deepEqual(second.events?.map(event => event.sequence), [1, 2])
   assert.equal(second.events?.[0]?.tool, 'terminal')
+  // Työkalutapahtuman esikatselu (voi sisältää komentojen tulostetta) ei
+  // koskaan mene selaimeen, eikä message.delta enää kulje events-listan
+  // kautta lainkaan (ks. liveAnswer-testit alla).
   assert.deepEqual(oracleMessageView(second).events[0], {
     type: 'tool.started', tool: 'terminal', error: false, sequence: 1, createdAt: 2_200,
   })
+})
+
+test('message.delta päivittää oman liveAnswer-kentän eikä mene events-renkaaseen', async () => {
+  const backend = createMemoryOracleBackend()
+  await enqueueOracleMessage(
+    backend,
+    { owner: 'albin', prompt: 'Tee työ', idempotencyKey: 'request-delta001' },
+    { now: () => 1_000, id: () => 'message-delta' },
+  )
+  await claimNextOracleMessage(backend, { now: () => 2_000, id: () => 'claim-delta' })
+  await markOracleMessageRunning(backend, 'message-delta', 'claim-delta', 'run-delta', 2_100)
+
+  await recordOracleEvent(backend, 'message-delta', 'claim-delta', {
+    sourceId: 'run-delta:answer', type: 'message.delta', tool: null, preview: 'Hei', error: false,
+  }, 2_200)
+  await recordOracleEvent(backend, 'message-delta', 'claim-delta', {
+    sourceId: 'tool-1', type: 'tool.started', tool: 'terminal', preview: 'salainen komento', error: false,
+  }, 2_250)
+  const third = await recordOracleEvent(backend, 'message-delta', 'claim-delta', {
+    sourceId: 'run-delta:answer', type: 'message.delta', tool: null, preview: 'Hei maailma', error: false,
+  }, 2_300)
+
+  assert.equal(third.liveAnswer, 'Hei maailma')
+  // Vain tool.started jää events-listalle — message.delta ei koskaan mene
+  // sinne, joten se ei kilpaile renkaan 100 tapahtuman katon kanssa.
+  assert.deepEqual(third.events?.map(event => event.type), ['tool.started'])
+  assert.equal(oracleMessageView(third).liveAnswer, 'Hei maailma')
+})
+
+test('message.delta hyväksytään tapahtumatyyppinä', async () => {
+  const backend = createMemoryOracleBackend()
+  await enqueueOracleMessage(
+    backend,
+    { owner: 'albin', prompt: 'Tee työ', idempotencyKey: 'request-delta002' },
+    { now: () => 1_000, id: () => 'message-delta-type' },
+  )
+  await claimNextOracleMessage(backend, { now: () => 2_000, id: () => 'claim-delta-type' })
+  await markOracleMessageRunning(backend, 'message-delta-type', 'claim-delta-type', 'run-delta-type', 2_100)
+
+  const updated = await recordOracleEvent(backend, 'message-delta-type', 'claim-delta-type', {
+    sourceId: 'run-delta-type:answer', type: 'message.delta', tool: null, preview: 'osittainen vastaus', error: false,
+  }, 2_200)
+
+  assert.equal(updated.liveAnswer, 'osittainen vastaus')
+})
+
+test('message.delta selviää 100 tapahtuman renkaan häädöstä (ei häviä prefiksiä)', async () => {
+  const backend = createMemoryOracleBackend()
+  await enqueueOracleMessage(
+    backend,
+    { owner: 'albin', prompt: 'Tee työ', idempotencyKey: 'request-delta003' },
+    { now: () => 1_000, id: () => 'message-delta-ring' },
+  )
+  await claimNextOracleMessage(backend, { now: () => 2_000, id: () => 'claim-delta-ring' })
+  await markOracleMessageRunning(backend, 'message-delta-ring', 'claim-delta-ring', 'run-delta-ring', 2_100)
+
+  // Vastauksen ensimmäinen osa saapuu ennen kuin ajo tekee yli 100
+  // työkalutapahtumaa. Vanhassa mallissa nämä olisivat hävittäneet
+  // vastauksen alun events-renkaasta.
+  await recordOracleEvent(backend, 'message-delta-ring', 'claim-delta-ring', {
+    sourceId: 'run-delta-ring:answer', type: 'message.delta', tool: null, preview: 'Alku pysyy', error: false,
+  }, 2_200)
+  for (let index = 0; index < 150; index++) {
+    await recordOracleEvent(backend, 'message-delta-ring', 'claim-delta-ring', {
+      sourceId: `tool-${index}`, type: 'tool.started', tool: 'terminal', preview: null, error: false,
+    }, 2_200 + index)
+  }
+  const final = await recordOracleEvent(backend, 'message-delta-ring', 'claim-delta-ring', {
+    sourceId: 'run-delta-ring:answer', type: 'message.delta', tool: null, preview: 'Alku pysyy ja loppu tulee perään', error: false,
+  }, 3_000)
+
+  assert.equal(final.liveAnswer, 'Alku pysyy ja loppu tulee perään')
+  assert.equal(final.events?.length, 100)
 })
 
 test('vanhentunut hyväksyntää odottava lease voidaan lunastaa uudelleen', async () => {

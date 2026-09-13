@@ -282,3 +282,36 @@ test('Redis-tausta lisää tapahtuman atomisella monotonisella sequencella', asy
   assert.match(calls[0]?.script ?? '', /message\.sequence = \(message\.sequence or 0\) \+ 1/)
   assert.match(calls[0]?.script ?? '', /while #message\.events > 100/)
 })
+
+test('Redis-tausta kirjoittaa message.deltan omaan kenttään eikä 100 tapahtuman renkaaseen', async () => {
+  const calls: Array<{ script: string; keys: string[]; args: string[] }> = []
+  const updated = {
+    ...message,
+    status: 'running' as const,
+    claimToken: 'claim-1',
+    liveAnswer: 'Hei maailma',
+  }
+  const redis = {
+    async eval<T>(script: string, keys: string[], args: string[]): Promise<T> {
+      calls.push({ script, keys, args })
+      return JSON.stringify(updated) as T
+    },
+    async get<T>(): Promise<T | null> { return null },
+  }
+
+  const result = await createRedisOracleBackend(redis).appendEvent(
+    'message-1', 'claim-1',
+    { sourceId: 'run-1:answer', type: 'message.delta', tool: null, preview: 'Hei maailma', error: false },
+    2_200,
+  )
+
+  assert.equal(result?.liveAnswer, 'Hei maailma')
+  const script = calls[0]?.script ?? ''
+  assert.match(script, /event\.type == 'message\.delta'/)
+  assert.match(script, /message\.liveAnswer = event\.preview/)
+  // message.delta-haara palaa ennen renkaan koodia, jottei se koskaan
+  // kilpaile 100 tapahtuman katon kanssa tai häädä vastauksen alkua.
+  const deltaBranchIndex = script.indexOf("event.type == 'message.delta'")
+  const ringIndex = script.indexOf('while #message.events > 100')
+  assert.ok(deltaBranchIndex !== -1 && ringIndex !== -1 && deltaBranchIndex < ringIndex)
+})

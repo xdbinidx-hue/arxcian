@@ -1,5 +1,46 @@
 import type { OracleMessageStatus, OracleMessageView } from './oracleQueue.ts'
 
+const UI_TAG_OPEN = '<arxcian-ui>'
+const UI_TAG_PATTERN = /(?:\r?\n)?<arxcian-ui>[\s\S]*?<\/arxcian-ui>\s*$/
+
+/**
+ * Piilottaa <arxcian-ui>-koneellisen merkinnän myös silloin kun se on vasta
+ * osittain saapunut striimissä — muuten käyttäjä näkisi hetkeksi raakaa
+ * JSONia ennen kuin vastaus on valmis. Toimii koko siihenastiselle tekstille
+ * kerrallaan, joten merkinnän jakautuminen usean palan yli ei vaikuta.
+ *
+ * Avaava tunniste haetaan `indexOf`illa eikä `lastIndexOf`illa: JSON-rungon
+ * sisällä voi esiintyä `<`-merkkejä (esim. proposalin syötteessä), ja
+ * `lastIndexOf` osuisi niihin ennen varsinaista tagin alkua — jolloin koko
+ * kesken oleva JSON vuotaisi näkyviin siihen asti kun tagi sulkeutuu.
+ * Osittain saapunut tagin *alku* (esim. pelkkä "<arxc" viestin lopussa)
+ * tunnistetaan erikseen vertaamalla vain merkkijonon häntää, ei mitä tahansa
+ * sen sisällä olevaa `<`-merkkiä.
+ */
+function hideFragmentedUiTag(raw: string): string {
+  const withoutComplete = raw.replace(UI_TAG_PATTERN, '')
+  if (withoutComplete !== raw) return withoutComplete.trimEnd()
+  const openIndex = raw.indexOf(UI_TAG_OPEN)
+  if (openIndex !== -1) return raw.slice(0, openIndex).trimEnd()
+  for (let length = Math.min(UI_TAG_OPEN.length - 1, raw.length); length > 0; length--) {
+    const tail = raw.slice(raw.length - length)
+    if (UI_TAG_OPEN.startsWith(tail)) return raw.slice(0, raw.length - length).trimEnd()
+  }
+  return raw
+}
+
+/**
+ * Oraclen tähänastinen striimattu vastausteksti. Käytetään vain näyttämiseen
+ * kesken ajon (`running`, `waiting_approval`) — lopullinen totuus on aina
+ * valmistuneen viestin `answer`, joka korvaa tämän kokonaan. Teksti tulee
+ * omasta `liveAnswer`-kentästään (ks. oracleQueue.ts) eikä events-listalta,
+ * jottei sitä koskaan menetä työkalu-/aliagenttitapahtumien täyttäessä
+ * 100 tapahtuman renkaan.
+ */
+export function oracleLiveAnswer(message: OracleMessageView): string {
+  return hideFragmentedUiTag(message.liveAnswer ?? '')
+}
+
 const STATUS_LABELS: Record<OracleMessageStatus, string> = {
   queued: 'Jonossa',
   claimed: 'VPS käsittelee',

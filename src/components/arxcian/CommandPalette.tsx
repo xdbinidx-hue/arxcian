@@ -13,6 +13,7 @@ import {
   approveOraclePrompt,
   cancelOraclePrompt,
   isOracleTerminal,
+  oracleLiveAnswer,
   oracleStatusLabel,
   oracleUiEffect,
   runOraclePrompt,
@@ -1566,6 +1567,13 @@ export function CommandPalette({ user }: { user: UserId }) {
                 ? 'ready'
                 : 'idle'
 
+  /**
+   * Oraclen striimattu vastaus siihen mennessä saapuneista message.delta
+   * -tapahtumista. Vain näyttöä varten kesken ajon — lopullinen `answer`
+   * korvaa tämän kokonaan kun tehtävä valmistuu (ks. oracleClient.ts).
+   */
+  const liveAnswer = oracleMessage ? oracleLiveAnswer(oracleMessage) : ''
+
   return (
     <>
       <VoiceControls
@@ -1667,6 +1675,14 @@ export function CommandPalette({ user }: { user: UserId }) {
                 <div className="text-[12px] text-ax-faint" aria-live="polite">
                   {oracleMessage ? oracleStatusLabel(oracleMessage.status) : 'Lähetetään tehtävää…'}
                 </div>
+                {liveAnswer && (
+                  <div
+                    className="max-h-48 overflow-y-auto whitespace-pre-wrap text-left text-[13px] leading-relaxed text-ax-text"
+                    aria-live="polite"
+                  >
+                    {liveAnswer}
+                  </div>
+                )}
                 {oracleMessage?.status === 'waiting_approval' && oracleMessage.approval && (
                   <div className="rounded-lg border border-ax-warn/40 bg-ax-warn/[0.06] p-3 text-left">
                     <div className="font-mono text-[9px] uppercase tracking-wider text-ax-warn">

@@ -24,7 +24,8 @@ export type OracleApprovalRecord = OracleApproval & {
   decidedAt: number
 }
 
-export type OracleEventType = 'tool.started' | 'tool.completed' | 'subagent.start' | 'subagent.complete'
+export type OracleEventType =
+  | 'tool.started' | 'tool.completed' | 'subagent.start' | 'subagent.complete' | 'message.delta'
 
 export type OracleEventInput = {
   sourceId: string
@@ -67,6 +68,16 @@ export type OracleMessage = {
   approvalHistory?: OracleApprovalRecord[]
   sequence?: number
   events?: OracleEvent[]
+  /**
+   * Oraclen tähänastinen striimattu vastausteksti kumulatiivisena
+   * kokonaisuutena, ei tapahtumaketjuna. Oma kenttä eikä jaettu
+   * events-rengas juuri siksi ettei se koskaan häviä: rengas rajataan 100
+   * viimeisimpään tapahtumaan, ja työkalu-/aliagenttitapahtumat olisivat
+   * hävittäneet vastauksen alun kesken pitkän ajon (ks. bridge-lib.mjs:n
+   * delta-koalesointi, joka kirjoittaa tämän kentän aina kokonaisena eikä
+   * lisäyksenä).
+   */
+  liveAnswer?: string | null
   createdAt: number
   updatedAt: number
 }
@@ -76,7 +87,7 @@ export type OracleEventView = Omit<OracleEvent, 'sourceId' | 'preview'>
 export type OracleMessageView = Pick<
   OracleMessage,
   'id' | 'status' | 'answer' | 'error' | 'approval' | 'approvalDecision' | 'action' | 'proposal' | 'createdAt' | 'updatedAt'
-> & { sequence: number; events: OracleEventView[] }
+> & { sequence: number; events: OracleEventView[]; liveAnswer: string | null }
 
 export function oracleMessageView(message: OracleMessage): OracleMessageView {
   return {
@@ -89,6 +100,7 @@ export function oracleMessageView(message: OracleMessage): OracleMessageView {
     action: message.action ?? null,
     proposal: message.proposal ?? null,
     sequence: message.sequence ?? 0,
+    liveAnswer: message.liveAnswer ?? null,
     events: (message.events ?? []).map(({ sourceId: _sourceId, preview: _preview, ...event }) => event),
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
@@ -291,6 +303,12 @@ export async function recordOracleApprovalRequest(
   return waiting
 }
 
+// message.delta kantaa koko siihenastisen kumulatiivisen vastaustekstin, ei
+// yhtä tokenia — siksi sillä on oma, isompi katto kuin muiden tapahtumien
+// sisäisellä esikatselulla (ks. liveAnswer OracleMessage.ts:ssä).
+const LIVE_ANSWER_MAX_LENGTH = 20_000
+const EVENT_PREVIEW_MAX_LENGTH = 2_000
+
 export async function recordOracleEvent(
   backend: OracleQueueBackend,
   id: string,
@@ -298,10 +316,11 @@ export async function recordOracleEvent(
   event: OracleEventInput,
   updatedAt = Date.now(),
 ): Promise<OracleMessage> {
+  const previewMax = event.type === 'message.delta' ? LIVE_ANSWER_MAX_LENGTH : EVENT_PREVIEW_MAX_LENGTH
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(event.sourceId)
-    || !['tool.started', 'tool.completed', 'subagent.start', 'subagent.complete'].includes(event.type)
+    || !['tool.started', 'tool.completed', 'subagent.start', 'subagent.complete', 'message.delta'].includes(event.type)
     || (event.tool !== null && (typeof event.tool !== 'string' || event.tool.length > 256))
-    || (event.preview !== null && (typeof event.preview !== 'string' || event.preview.length > 2_000))
+    || (event.preview !== null && (typeof event.preview !== 'string' || event.preview.length > previewMax))
     || typeof event.error !== 'boolean') {
     throw new OracleQueueInputError('Oracle-tapahtuma on virheellinen.')
   }
@@ -512,6 +531,17 @@ export function createMemoryOracleBackend(initial: OracleMessage[] = []) {
       const message = messages.find(item => item.id === id)
       if (!message || message.claimToken !== claimToken
         || !['claimed', 'running', 'waiting_approval'].includes(message.status)) return null
+      if (event.type === 'message.delta') {
+        // Kumulatiivinen vastausteksti korvaa oman kenttänsä kokonaan eikä
+        // koskaan kulje 100 tapahtuman renkaan kautta — muuten pitkän ajon
+        // työkalutapahtumat häätäisivät vastauksen alun pois ennen kuin ajo
+        // valmistuu.
+        if (typeof event.preview === 'string' && event.preview !== message.liveAnswer) {
+          message.liveAnswer = event.preview
+          message.updatedAt = updatedAt
+        }
+        return { ...message, events: (message.events ?? []).map(item => ({ ...item })) }
+      }
       if ((message.events ?? []).some(item => item.sourceId === event.sourceId)) {
         return { ...message, events: (message.events ?? []).map(item => ({ ...item })) }
       }
