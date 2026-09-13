@@ -6,7 +6,7 @@ import { RjMobNav } from '@/components/rjmob/RjMobNav'
 import { RunRateTaulukko } from '@/components/rjmob/RunRateTaulukko'
 import { UusmyyntiTaulukko, KassamyyntiTaulukko, type TargetRow } from '@/components/rjmob/TavoiteTaulukot'
 import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso, runRateMittari } from '@/lib/rjmob'
-import { myymalaRivit, myyjaTavoiteRivit, yhteensaRivi, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
+import { myymalaRivit, myyjaTavoiteRivit, yhteensaRivi, tapahtumaYhteensa, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
 import type { RunRateData } from '@/lib/rjmobRunRate'
 import { tyopaivaTilanne } from '@/lib/rjmobWorkdays'
 
@@ -322,6 +322,9 @@ function EtelanHaratSivu() {
     nimi: s.nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa * KASSAKATE_KERROIN,
   }))
 
+  const myymalaEnnusteRivit = myymalaRivit(rrMyymalaToteumat, rrMyymalaTavoitteet, runrate?.tyopaivat ?? { paattyneet: 0, kaikki: 0 }, runrate?.tapahtumat?.myymalat)
+  const myyjaEnnusteRivit = myyjaTavoiteRivit(rrMyyjaToteumat, rrMyyjaTavoitteet, runrate?.myyjaVuorot ?? {}, runrate?.tapahtumat?.myyjat)
+
   // Kassamyynti-näkymän tavoite ja ennuste kulkevat samaa laskentaa kuin run
   // rate -taulukot: yksi "% tavoitteesta" sivulla, ei kahta eri kaavaa saman
   // otsikon alla. Toteuma tulee tässä `/api/targets`in `kassaKate`sta, joka on
@@ -464,12 +467,15 @@ Generoi viesti:`
               </div>
             )}
 
+            {myymalaEnnusteRivit.some(r => r.tapahtumaHuomautus) && (
+              <p style={{ fontSize: 12, color: '#854F0B' }}>Liittymäennuste huomioi Malmin 10.–12.9. tapahtuman. Toteumat ja tavoitteet säilyvät ennallaan. Viiva ennusteessa tarkoittaa, että tarvittava tapahtumaerittely tai vuorotieto puuttuu. F-Securen ja kassakatteen ennusteita ei ole tapahtumakorjattu.</p>
+            )}
             <RunRateTaulukko
               otsikko={`Myymälät — Run Rate ${runrate.kuukausi.replace('Myyntiseuranta ', '')}`}
               sarakeOtsikko="Myymälä"
               ikkuna={runrate.tyopaivat}
-              rivit={myymalaRivit(rrMyymalaToteumat, rrMyymalaTavoitteet, runrate.tyopaivat)}
-              yhteensa={yhteensaRivi(rrMyymalaToteumat, runrate.tavoitteet.yhteensa, runrate.tyopaivat)}
+              rivit={myymalaEnnusteRivit}
+              yhteensa={tapahtumaYhteensa(yhteensaRivi(rrMyymalaToteumat, runrate.tavoitteet.yhteensa, runrate.tyopaivat), myymalaEnnusteRivit)}
             />
 
             <RunRateTaulukko
@@ -477,12 +483,12 @@ Generoi viesti:`
               sarakeOtsikko="Myyjä"
               ikkuna={runrate.tyopaivat}
               naytaIkkunaSarake
-              rivit={myyjaTavoiteRivit(rrMyyjaToteumat, rrMyyjaTavoitteet, runrate.myyjaVuorot)}
-              yhteensa={yhteensaRivi(
+              rivit={myyjaEnnusteRivit}
+              yhteensa={tapahtumaYhteensa(yhteensaRivi(
                 rrMyyjaToteumat,
                 tavoiteSumma(Object.values(rrMyyjaTavoitteet)),
                 runrate.tyopaivat,
-              )}
+              ), myyjaEnnusteRivit)}
             />
           </>
         )}

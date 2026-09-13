@@ -2,7 +2,7 @@ import { listSeurantaFiles, monthOrder, SPREADSHEET_MIME } from '@/lib/rjmobDriv
 import { loadDashData, type DashData } from '@/lib/rjmobSheets'
 import { loadTargets } from '@/lib/rjmobTargets'
 import { loadRunRate } from '@/lib/rjmobRunRate'
-import { myymalaRivit, myyjaRivit, yhteensaRivi, type RunRateTavoite, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
+import { myymalaRivit, myyjaRivit, yhteensaRivi, tapahtumaYhteensa, type RunRateTavoite, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
 import { myymalanTehot, tehoaEiArvioida } from '@/lib/rjmob'
 import { mittari, setti, nimiAvaimet, myymalaPerMyyja, type Mittari, type MittariSetti } from './yhteenvetoRivit'
 import type { Ulkopuoliset } from '@/lib/rjmobMyymalaTaulukko'
@@ -187,14 +187,16 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
   // jokainen myyjä jäisi ilman myymälää ilman että mikään kertoo miksi.
   if (Object.keys(dash.storeHours).length === 0) puutteet.push('myyjan-myymala')
 
-  const myymalatUlos: MyymalaRivi[] = myymalaRivit(myymalaToteumat, myymalaTavoitteet, runrate.tyopaivat)
+  const myymalatUlos: MyymalaRivi[] = myymalaRivit(myymalaToteumat, myymalaTavoitteet, runrate.tyopaivat, runrate.tapahtumat?.myymalat)
     .map(r => {
       const s = dash.stores[r.nimi]
+      if (r.tapahtumaHuomautus) varoitukset.push(`${r.nimi}: ${r.tapahtumaHuomautus}`)
       return { nimi: r.nimi, ...setti(r), tunnit: s.tunnit, tehoEurPerH: teho(myymalanTehot(s).kassa, s.tunnit) }
     })
 
-  const myyjatUlos: MyyjaRivi[] = myyjaRivit(myyjaToteumat, myyjaTavoitteet, runrate.myyjaVuorot)
+  const myyjatUlos: MyyjaRivi[] = myyjaRivit(myyjaToteumat, myyjaTavoitteet, runrate.myyjaVuorot, runrate.tapahtumat?.myyjat)
     .map(r => {
+      if (r.tapahtumaHuomautus) varoitukset.push(`${r.nimi}: ${r.tapahtumaHuomautus}`)
       const s = myyjaLahde.get(r.nimi)!
       return {
         nimi: r.nimi,
@@ -213,7 +215,7 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
   //
   // Myymälärivien summa eikä myyjärivien: myymälätaulukko kattaa koko
   // alueen myynnin, myyjätaulukon rajaus on eri eikä niitä lasketa yhteen.
-  const yhteensa = setti(yhteensaRivi(myymalaToteumat, runrate.tavoitteet.yhteensa, runrate.tyopaivat))
+  const yhteensa = setti(tapahtumaYhteensa(yhteensaRivi(myymalaToteumat, runrate.tavoitteet.yhteensa, runrate.tyopaivat), myymalaRivit(myymalaToteumat, myymalaTavoitteet, runrate.tyopaivat, runrate.tapahtumat?.myymalat)))
 
   // --- Uusmyynti operaattoreittain ---
   //

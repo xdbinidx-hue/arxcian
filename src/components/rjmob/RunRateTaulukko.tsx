@@ -21,6 +21,7 @@ import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
 type NayttoMittari = Omit<RunRateMittari, 'toteuma'> & { toteuma: number | null }
 
 export type RunRateRivi = {
+  tapahtumaHuomautus?: string
   nimi: string
   /** Rivin oma työpäiväikkuna. Myymälöillä sama kaikilla, myyjillä omansa. */
   ikkuna?: { paattyneet: number; kaikki: number } | null
@@ -152,7 +153,9 @@ export function RunRateTaulukko({
               <tbody>
                 {rivit.map((r, i) => (
                   <tr key={r.nimi} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td style={tdL}>{r.nimi}</td>
+                    <td style={tdL}>{r.nimi}{r.tapahtumaHuomautus && (
+                      <div style={{ fontSize: 11, fontWeight: 400, whiteSpace: 'normal', minWidth: 180, maxWidth: 260, color: '#854F0B' }}>{r.tapahtumaHuomautus}</div>
+                    )}</td>
                     {naytaIkkunaSarake && (
                       <td style={{ ...td, color: '#888' }}>
                         {r.ikkuna ? `${r.ikkuna.paattyneet}/${r.ikkuna.kaikki}` : '–'}

@@ -1,4 +1,5 @@
-import { runRateMittari } from './rjmob.ts'
+import { tapahtumaMittari, type TapahtumaOikaisu } from './rjmobTapahtumaRunRate.ts'
+import { runRateMittari, pctTavoitteesta } from './rjmob.ts'
 import type { RunRateRivi, RunRateNayttoRivi } from '@/components/rjmob/RunRateTaulukko'
 
 /**
@@ -49,8 +50,9 @@ export function myymalaRivit(
   toteumat: RunRateToteuma[],
   tavoitteet: Record<string, RunRateTavoite>,
   ikkuna: Ikkuna,
+  tapahtumat: Record<string, TapahtumaOikaisu> = {},
 ): RunRateRivi[] {
-  return toteumat.map(t => rivi(t, tavoitteet[t.nimi] ?? EI_TAVOITETTA, ikkuna, false))
+  return toteumat.map(t => oikaise(rivi(t, tavoitteet[t.nimi] ?? EI_TAVOITETTA, ikkuna, false), ikkuna, tapahtumat[t.nimi]))
 }
 
 /**
@@ -66,9 +68,10 @@ export function myyjaRivit(
   toteumat: RunRateToteuma[],
   tavoitteet: Record<string, RunRateTavoite>,
   vuorot: Record<string, Ikkuna>,
+  tapahtumat: Record<string, TapahtumaOikaisu> = {},
 ): RunRateRivi[] {
   return toteumat.map(t =>
-    rivi(t, tavoitteet[t.nimi] ?? EI_TAVOITETTA, vuorot[t.nimi] ?? { paattyneet: 0, kaikki: 0 }, true),
+    oikaise(rivi(t, tavoitteet[t.nimi] ?? EI_TAVOITETTA, vuorot[t.nimi] ?? { paattyneet: 0, kaikki: 0 }, true), vuorot[t.nimi] ?? { paattyneet: 0, kaikki: 0 }, tapahtumat[t.nimi]),
   )
 }
 
@@ -77,8 +80,9 @@ export function myyjaTavoiteRivit(
   toteumat: RunRateToteuma[],
   tavoitteet: Record<string, RunRateTavoite>,
   vuorot: Record<string, Ikkuna>,
+  tapahtumat: Record<string, TapahtumaOikaisu> = {},
 ): RunRateNayttoRivi[] {
-  const rivit: RunRateNayttoRivi[] = myyjaRivit(toteumat, tavoitteet, vuorot)
+  const rivit: RunRateNayttoRivi[] = myyjaRivit(toteumat, tavoitteet, vuorot, tapahtumat)
   // Tallennettu tavoite näkyy myös ennen ensimmäistä myyntiriviä.
   // Puuttuvasta toteumasta ei päätellä nollamyyntiä tai ennustetta.
   const nimet = new Set(toteumat.map(t => t.nimi))
@@ -135,4 +139,22 @@ export function tavoiteSumma(tavoitteet: RunRateTavoite[]): RunRateTavoite {
     fsecure: summa(t => t.fsecure),
     kassakate: summa(t => t.kassakate),
   }
+}
+
+/** Vain liittymäennustetta oikaistaan vahvistetulla liittymäerittelyllä. */
+function oikaise(r: RunRateRivi, ikkuna: Ikkuna, tapahtuma?: TapahtumaOikaisu): RunRateRivi {
+  if (!tapahtuma) return r
+  const { huomautus, ...liittymat } = tapahtumaMittari(r.liittymat, ikkuna, tapahtuma)
+  return { ...r, liittymat, tapahtumaHuomautus: huomautus }
+}
+
+/** Tapahtumakorjatun taulukon liittymäennuste summataan riveistä. Puuttuva
+ * rivi tekee koko ennusteesta puuttuvan; osasummaa ei nimetä kokonaiseksi. */
+export function tapahtumaYhteensa(
+  yhteensa: Omit<RunRateRivi, 'nimi' | 'ikkuna'>, rivit: RunRateNayttoRivi[],
+): Omit<RunRateRivi, 'nimi' | 'ikkuna'> {
+  if (!rivit.some(r => r.tapahtumaHuomautus)) return yhteensa
+  const ennuste = rivit.some(r => r.liittymat.ennuste === null) ? null
+    : rivit.reduce((sum, r) => sum + r.liittymat.ennuste!, 0)
+  return { ...yhteensa, liittymat: { ...yhteensa.liittymat, ennuste, pct: pctTavoitteesta(ennuste, yhteensa.liittymat.tavoite) } }
 }

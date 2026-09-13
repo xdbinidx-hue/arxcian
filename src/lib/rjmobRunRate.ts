@@ -2,10 +2,11 @@ import { google } from 'googleapis'
 import { haeTavoitteet, type TavoiteHaku } from '@/lib/rjmobTavoiteDrive'
 import { monthOrder } from '@/lib/rjmobDrive'
 import { tyopaivaIkkuna, viimeinenPaattynytPaiva, type TyopaivaIkkuna } from '@/lib/rjmobWorkdays'
-import { laskeVuoroIkkuna } from '@/lib/shiftSchedule'
+import { laskeVuoroIkkuna, type DayInfo } from '@/lib/shiftSchedule'
 import { lueLista } from '@/lib/shifts/shiftStore'
 import { lueRuudukko } from '@/lib/shifts/tyovuoroDrive'
-import { jasennaLahtiVuorot, lahtiVuoroIkkuna, LAHTI_VALILEHTI } from '@/lib/shifts/lahtiVuorot'
+import { jasennaLahtiVuorot, lahtiVuoroIkkuna, LAHTI_VALILEHTI, type LahtiVuoro } from '@/lib/shifts/lahtiVuorot'
+import { tapahtumaOikaisut, type TapahtumaRunRate } from '@/lib/rjmobTapahtumaRunRate'
 import { todayISOHelsinki } from '@/lib/arxcian/time'
 
 /**
@@ -36,6 +37,7 @@ export type RunRateData = {
   tavoitteet: TavoiteHaku
   /** Myyjä → omat vuorot. Tyhjä kun kuukauden työvuorolistaa ei ole. */
   myyjaVuorot: Record<string, MyyjaIkkuna>
+  tapahtumat?: TapahtumaRunRate
   /** Näytettävät varoitukset, tavoitteiden omat mukaan lukien. */
   varoitukset: string[]
 }
@@ -95,10 +97,12 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
 
   const varoitukset: string[] = []
 
-  const [tavoitteet, myyjaVuorot] = await Promise.all([
+  const [tavoitteet, vuorot] = await Promise.all([
     haeTavoitteet(order, kuukausiNimi),
     lueVuorot(kuukausiAvain(order), viimeinenPaattynytPaiva(order, now), varoitukset),
   ])
+
+  const { myyjaVuorot, pk, lahti } = vuorot
 
   if (Object.keys(myyjaVuorot).length === 0) {
     varoitukset.push(`Kuukaudelle ${kuukausiNimi} ei ole työvuorolistaa — myyjien ennustetta ei voi laskea`)
@@ -110,6 +114,7 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
     tyopaivat: tyopaivaIkkuna(vuosi, kuukausiNro, now),
     tavoitteet,
     myyjaVuorot,
+    tapahtumat: tapahtumaOikaisut(order, viimeinenPaattynytPaiva(order, now), pk, lahti),
     varoitukset: [...tavoitteet.varoitukset, ...varoitukset],
   }
 }
@@ -135,24 +140,23 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
  */
 async function lueVuorot(
   kuukausi: string, viimeinen: string, varoitukset: string[],
-): Promise<Record<string, MyyjaIkkuna>> {
+): Promise<{ myyjaVuorot: Record<string, MyyjaIkkuna>; pk: DayInfo[]; lahti: LahtiVuoro[] }> {
   const [vuosi, kk] = kuukausi.split('-').map(Number)
 
   const pk = await lueLista('final', kuukausi)
-    .then(days => laskeVuoroIkkuna(days, viimeinen))
     .catch(e => {
       varoitukset.push(`PK-seudun työvuorolistaa ei voitu lukea: ${virhe(e)}`)
-      return {} as Record<string, MyyjaIkkuna>
+      return [] as DayInfo[]
     })
 
   const lahti = await lueRuudukko(vuosi, kk, LAHTI_VALILEHTI)
-    .then(({ rivit }) => lahtiVuoroIkkuna(jasennaLahtiVuorot(rivit, vuosi, kk), viimeinen))
+    .then(({ rivit }) => jasennaLahtiVuorot(rivit, vuosi, kk))
     .catch(e => {
       varoitukset.push(`Lahden työvuoroja ei voitu lukea: ${virhe(e)}`)
-      return {} as Record<string, MyyjaIkkuna>
+      return [] as LahtiVuoro[]
     })
 
-  return { ...pk, ...lahti }
+  return { myyjaVuorot: { ...laskeVuoroIkkuna(pk, viimeinen), ...lahtiVuoroIkkuna(lahti, viimeinen) }, pk, lahti }
 }
 
 function virhe(e: unknown): string {
