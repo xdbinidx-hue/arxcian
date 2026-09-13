@@ -169,7 +169,7 @@ test('Oracle-viestin tila näkyy vain omistajalle', async () => {
   assert.equal(visible.status, 200)
   const publicMessage = visible.body.message as Record<string, unknown>
   assert.deepEqual(Object.keys(publicMessage).sort(), [
-    'action', 'answer', 'approval', 'approvalDecision', 'createdAt', 'error', 'events', 'id', 'proposal', 'sequence', 'status', 'updatedAt',
+    'action', 'answer', 'approval', 'approvalDecision', 'createdAt', 'error', 'events', 'id', 'liveAnswer', 'proposal', 'sequence', 'status', 'updatedAt',
   ])
   assert.equal(publicMessage.id, 'message-1')
 })

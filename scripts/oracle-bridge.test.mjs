@@ -103,6 +103,113 @@ test('Hermes SSE -työkalutapahtumat välitetään rajattuina bridge-event-reiti
   })
 })
 
+test('Hermes SSE -message.delta-osat koalesoidaan yhdeksi kumulatiiviseksi lähetykseksi', async () => {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"event":"message.delta","run_id":"run-delta","timestamp":300,"text":"Hei"}\n\n'))
+      controller.enqueue(encoder.encode('data: {"event":"message.delta","run_id":"run-delta","timestamp":300,"text":" maailma"}\n\n'))
+      controller.enqueue(encoder.encode('data: {"event":"message.delta","run_id":"run-delta","timestamp":301,"text":""}\n\n'))
+      controller.close()
+    },
+  })
+  const posts = []
+  const fetchImpl = async (url, options = {}) => {
+    const target = String(url)
+    if (target.endsWith('/events')) return { ok: true, status: 200, body: stream }
+    posts.push({ url: target, body: JSON.parse(options.body) })
+    return response(200, { message: { sequence: posts.length } })
+  }
+
+  await forwardHermesRunEvents({
+    fetchImpl,
+    appBaseUrl: 'https://arxcian.test',
+    bridgeSecret: 'bridge-secret',
+    hermesBaseUrl: 'http://127.0.0.1:8642/p/oracle',
+    hermesApiKey: 'test-hermes-key',
+    runId: 'run-delta',
+    messageId: 'message-delta',
+    claimToken: 'claim-delta',
+  })
+
+  // Kaikki SSE-frameet saapuvat synkronisesti ennen kuin virran loppu
+  // pakottaa lopullisen lähetyksen (drain) — ei siis yhtä POSTia per token,
+  // vaan yksi kumulatiivinen lähetys jossa väli säilyy ("Hei maailma", ei
+  // "Heimaailma"). Tyhjä delta ei kanna näytettävää tekstiä eikä vaikuta.
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].body.event.type, 'message.delta')
+  assert.equal(posts[0].body.event.preview, 'Hei maailma')
+  assert.match(posts[0].body.event.sourceId, /^run-delta:/)
+})
+
+test('nopeat message.delta-osat eivät odota HTTP-vastausta ennen seuraavaa, ja hidas HTTP ei monista pyyntöjä', async () => {
+  const encoder = new TextEncoder()
+  const tokenCount = 20
+  const tokens = Array.from({ length: tokenCount }, (_unused, index) => `sana${index}`)
+  const stream = new ReadableStream({
+    async start(controller) {
+      // Kaksi purskausta simuloi mallia joka tuottaa tokeneita nopeasti:
+      // ensimmäinen erä saapuu heti, toinen pienen tauon jälkeen kun
+      // ensimmäinen hidas POST on jo ehtinyt käynnistyä mutta ei valmistua.
+      for (const token of tokens.slice(0, 12)) {
+        controller.enqueue(encoder.encode(
+          `data: {"event":"message.delta","run_id":"run-slow","timestamp":1,"text":" ${token}"}\n\n`,
+        ))
+      }
+      await new Promise(resolve => setTimeout(resolve, 150))
+      for (const token of tokens.slice(12)) {
+        controller.enqueue(encoder.encode(
+          `data: {"event":"message.delta","run_id":"run-slow","timestamp":1,"text":" ${token}"}\n\n`,
+        ))
+      }
+      controller.close()
+    },
+  })
+  const posts = []
+  const slowPostMs = 50
+  const fetchImpl = async (url, options = {}) => {
+    const target = String(url)
+    if (target.endsWith('/events')) return { ok: true, status: 200, body: stream }
+    await new Promise(resolve => setTimeout(resolve, slowPostMs))
+    posts.push({ url: target, body: JSON.parse(options.body) })
+    return response(200, { message: { sequence: posts.length } })
+  }
+
+  const startedAt = Date.now()
+  await forwardHermesRunEvents({
+    fetchImpl,
+    appBaseUrl: 'https://arxcian.test',
+    bridgeSecret: 'bridge-secret',
+    hermesBaseUrl: 'http://127.0.0.1:8642/p/oracle',
+    hermesApiKey: 'test-hermes-key',
+    runId: 'run-slow',
+    messageId: 'message-slow',
+    claimToken: 'claim-slow',
+    deltaCadenceMs: 5,
+  })
+  const elapsedMs = Date.now() - startedAt
+
+  const fullText = tokens.map(token => ` ${token}`).join('')
+
+  // 20 tokenia hitaalla (50ms) HTTP:llä veisi sarjallisena vähintään 1000ms.
+  // Koalesointi rajaa lähetysten määrän murto-osaan siitä, joten koko ajo
+  // pysyy selvästi alle sen.
+  assert.ok(posts.length >= 1 && posts.length < tokenCount, `odottamaton lähetysmäärä: ${posts.length}`)
+  assert.ok(elapsedMs < slowPostMs * tokenCount * 0.5, `kesti liian kauan: ${elapsedMs}ms`)
+
+  // Väliaikainen näkyvä teksti: ensimmäinen lähetys on aito prefiksi koko
+  // vastauksesta eikä vielä sisällä sitä kokonaan — todiste siitä että
+  // käyttäjä näkisi osittaisen tekstin ennen striimin loppua, ei vasta
+  // lopussa kerralla.
+  assert.ok(posts[0].body.event.preview.length < fullText.length, 'ensimmäinen lähetys ei ollut osittainen')
+  assert.ok(fullText.startsWith(posts[0].body.event.preview), 'ensimmäinen lähetys ei ollut prefiksi')
+
+  // Lopullinen lähetys sisältää koko tekstin oikeassa järjestyksessä,
+  // välilyönnit säilyneinä — ei pudonnutta prefiksiä eikä kadonnutta väliä.
+  const last = posts[posts.length - 1]
+  assert.equal(last.body.event.preview, fullText)
+})
+
 test('Hermes-eventin epäselvä verkkokatkos uusitaan samalla sourceId-tunnisteella', async () => {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({

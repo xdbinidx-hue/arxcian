@@ -4,11 +4,17 @@ import {
   approveOraclePrompt,
   cancelOraclePrompt,
   isOracleTerminal,
+  oracleLiveAnswer,
   oracleStatusLabel,
   oracleUiEffect,
   runOraclePrompt,
   watchOraclePrompt,
 } from './oracleClient.ts'
+import type { OracleEventView } from './oracleQueue.ts'
+
+function toolEvent(sequence: number): OracleEventView {
+  return { type: 'tool.started', tool: 'terminal', error: false, sequence, createdAt: sequence }
+}
 
 test('Oracle-käyttöliittymävaikutus suoritetaan yhdelle viestille vain kerran', () => {
   const message = {
@@ -125,4 +131,71 @@ test('Oracle-asiakas lähettää vain kertahyväksynnän tai hylkäyksen', async
     url: '/api/arxcian/oracle/messages/message-1/approval',
     body: JSON.stringify({ choice: 'once' }),
   }])
+})
+
+function messageWithLiveAnswer(liveAnswer: string | null, events: OracleEventView[] = []) {
+  return {
+    id: 'm', status: 'running' as const, answer: null, error: null, approval: null,
+    approvalDecision: null, sequence: events.length, createdAt: 1, updatedAt: 2, liveAnswer, events,
+  }
+}
+
+test('Oraclen osittainen vastaus tulee liveAnswer-kentästä', () => {
+  const message = messageWithLiveAnswer('Hei maailma')
+  assert.equal(oracleLiveAnswer(message), 'Hei maailma')
+})
+
+test('Oraclen osittainen vastaus ohittaa events-listan esikatselut kokonaan', () => {
+  // message.delta ei enää kulje events-listan kautta (ks. oracleQueue.ts) —
+  // vaikka listalla olisi jotain, liveAnswer on ainoa lähde.
+  const message = messageWithLiveAnswer('Hei maailma', [toolEvent(1)])
+  assert.equal(oracleLiveAnswer(message), 'Hei maailma')
+})
+
+test('Oraclen osittainen vastaus ei koskaan näytä valmista arxcian-ui-merkintää', () => {
+  const message = messageWithLiveAnswer(
+    'Avaan Trading-näkymän.\n<arxcian-ui>{"action":{"target":"trading"},"proposal":null}</arxcian-ui>',
+  )
+  assert.equal(oracleLiveAnswer(message), 'Avaan Trading-näkymän.')
+})
+
+test('Oraclen osittainen vastaus piilottaa merkinnän myös kesken pirstoutuneena', () => {
+  const cases = [
+    'Valmis.\n<',
+    'Valmis.\n<arxcian',
+    'Valmis.\n<arxcian-ui>',
+    'Valmis.\n<arxcian-ui>{"action":n',
+    'Valmis.\n<arxcian-ui>{"action":null,"prop',
+  ]
+  for (const raw of cases) {
+    assert.equal(oracleLiveAnswer(messageWithLiveAnswer(raw)), 'Valmis.', `epäonnistui: ${JSON.stringify(raw)}`)
+  }
+})
+
+test('Oraclen osittainen vastaus ei piilota tekstiin kuuluvaa < -merkkiä', () => {
+  const message = messageWithLiveAnswer('Ehto on x < 10 ja se pätee.')
+  assert.equal(oracleLiveAnswer(message), 'Ehto on x < 10 ja se pätee.')
+})
+
+test('kesken oleva arxcian-ui-JSON ei vuoda näkyviin vaikka sisältö sisältää < -merkin', () => {
+  // Regressio: lastIndexOf('<') osui aiemmin JSON-sisällön omaan
+  // <-merkkiin eikä tagin alkuun, jolloin koko kesken oleva JSON jäi
+  // näkyviin siihen asti kun tagi sulkeutuu.
+  const raw = 'Valmis.\n<arxcian-ui>{"action":{"target":"a<b"},"proposal":n'
+  assert.equal(oracleLiveAnswer(messageWithLiveAnswer(raw)), 'Valmis.')
+})
+
+test('Oraclen osittainen vastaus säilyy vaikka events-rengas olisi täynnä muita tapahtumia', () => {
+  // Regressio: message.delta oli aiemmin osa samaa 100 tapahtuman
+  // events-rengasta kuin työkalutapahtumat, joten pitkä ajo häätäisi
+  // vastauksen alun pois. liveAnswer on nyt oma kenttä, joten 150
+  // työkalutapahtumaa listalla ei vaikuta siihen mitään.
+  const manyToolEvents = Array.from({ length: 150 }, (_unused, index) => toolEvent(index))
+  const message = messageWithLiveAnswer('Alku pysyy ja loppu tulee perään', manyToolEvents)
+  assert.equal(oracleLiveAnswer(message), 'Alku pysyy ja loppu tulee perään')
+})
+
+test('Oraclen osittainen vastaus on tyhjä ilman liveAnsweria', () => {
+  const message = messageWithLiveAnswer(null)
+  assert.equal(oracleLiveAnswer(message), '')
 })

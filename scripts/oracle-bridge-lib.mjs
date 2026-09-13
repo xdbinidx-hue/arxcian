@@ -130,10 +130,14 @@ export function parseOracleOutput(output) {
   }
 }
 
+const STREAMED_EVENT_TYPES = new Set([
+  'tool.started', 'tool.completed', 'subagent.start', 'subagent.complete',
+])
+
 function normalizeHermesEvent(raw, runId) {
-  const allowed = new Set(['tool.started', 'tool.completed', 'subagent.start', 'subagent.complete'])
-  if (!raw || typeof raw !== 'object' || !allowed.has(raw.event)
+  if (!raw || typeof raw !== 'object' || !STREAMED_EVENT_TYPES.has(raw.event)
     || raw.run_id !== runId || !Number.isFinite(raw.timestamp)) return null
+
   const fingerprint = createHash('sha256').update(JSON.stringify([
     raw.run_id,
     raw.event,
@@ -152,6 +156,87 @@ function normalizeHermesEvent(raw, runId) {
   }
 }
 
+// Oikea Hermes-tapahtumavirta käyttää delta-kenttää (varmennettu integraatiokokeella).
+// text-kenttä säilyy yhteensopivana vaihtoehtona.
+function extractDeltaText(raw, runId) {
+  if (!raw || typeof raw !== 'object' || raw.event !== 'message.delta'
+    || raw.run_id !== runId || !Number.isFinite(raw.timestamp)) return null
+  const text = typeof raw.text === 'string' ? raw.text : (typeof raw.delta === 'string' ? raw.delta : null)
+  return text && text.length > 0 ? text : null
+}
+
+// Sama katto kuin palvelimen oracleQueue.ts:n message.delta-esikatselulla —
+// pidetään yhtä suurina ettei palvelin joudu katkaisemaan tätä uudelleen
+// lyhyemmäksi (jolloin prefiksi säilyisi mutta häntä katkeaisi kahdesti eri
+// kohdista).
+const LIVE_ANSWER_MAX_LENGTH = 20_000
+const DELTA_CADENCE_MS = 250
+
+/**
+ * Kokoaa peräkkäiset message.delta-osat yhdeksi kumulatiiviseksi
+ * lähetykseksi HTTP-edestakaisen sijaan per token. Korkeintaan yksi lähetys
+ * on kerrallaan matkalla; sen aikana kertyneet uudet osat lähtevät yhtenä
+ * uutena, ajantasaisena kokonaissnapshottina heti kun edellinen on valmis —
+ * ei kertaakaan yhtä HTTP-pyyntöä per token, eikä koskaan pudoteta alkua,
+ * koska jokainen lähetys kantaa koko siihenastisen tekstin eikä vain
+ * lisäystä.
+ */
+function createDeltaCoalescer(send, cadenceMs = DELTA_CADENCE_MS) {
+  let cumulative = ''
+  let dirty = false
+  let sending = null
+  let timer = null
+  let failure = null
+  let cancelled = false
+
+  function attempt() {
+    if (cancelled || sending || !dirty) return
+    dirty = false
+    const snapshot = cumulative
+    sending = send(snapshot)
+      .catch(error => { failure = failure ?? error })
+      .then(() => {
+        sending = null
+        if (!cancelled && dirty) attempt()
+      })
+  }
+
+  function scheduleTimer() {
+    if (cancelled || timer || sending) return
+    timer = setTimeout(() => {
+      timer = null
+      attempt()
+    }, cadenceMs)
+  }
+
+  return {
+    push(text) {
+      if (cancelled) return
+      cumulative += text
+      dirty = true
+      scheduleTimer()
+    },
+    // Ajon loppu ei saa jäädä odottamaan kadenssia — viimeinen pala on
+    // näytettävä heti, ei enintään cadenceMs myöhässä.
+    async drain() {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      if (dirty) attempt()
+      while (sending) await sending
+      if (failure) throw failure
+    },
+    cancel() {
+      cancelled = true
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+    },
+  }
+}
+
 export async function forwardHermesRunEvents({
   fetchImpl = fetch,
   appBaseUrl,
@@ -163,6 +248,7 @@ export async function forwardHermesRunEvents({
   claimToken,
   idleTimeoutMs = 75_000,
   requestTimeoutMs = 30_000,
+  deltaCadenceMs = DELTA_CADENCE_MS,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
 }) {
   fetchImpl = withRequestTimeout(fetchImpl, requestTimeoutMs)
@@ -179,16 +265,7 @@ export async function forwardHermesRunEvents({
   const decoder = new TextDecoder()
   let buffer = ''
 
-  const forwardFrame = async frame => {
-    const data = frame.split(/\r?\n/)
-      .filter(line => line.startsWith('data:'))
-      .map(line => line.slice(5).trimStart())
-      .join('\n')
-    if (!data) return
-    let raw
-    try { raw = JSON.parse(data) } catch { return }
-    const event = normalizeHermesEvent(raw, runId)
-    if (!event) return
+  const postEvent = async event => {
     const body = JSON.stringify({ id: messageId, claimToken, event })
     await retryAmbiguousNetwork(
       async () => jsonResponse(
@@ -206,33 +283,73 @@ export async function forwardHermesRunEvents({
       sleep,
     )
   }
-  while (true) {
-    let timer
-    let chunk
-    try {
-      chunk = await Promise.race([
-        reader.read(),
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error('Hermes-tapahtumavirta aikakatkaistiin.')),
-            idleTimeoutMs,
-          )
-        }),
-      ])
-    } catch (error) {
-      await reader.cancel().catch(() => {})
-      throw error
-    } finally {
-      clearTimeout(timer)
+
+  const deltaCoalescer = createDeltaCoalescer(snapshot => postEvent({
+    sourceId: `${runId}:answer`,
+    type: 'message.delta',
+    tool: null,
+    preview: boundedString(snapshot, LIVE_ANSWER_MAX_LENGTH),
+    error: false,
+  }), deltaCadenceMs)
+
+  const forwardFrame = async frame => {
+    const data = frame.split(/\r?\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trimStart())
+      .join('\n')
+    if (!data) return
+    let raw
+    try { raw = JSON.parse(data) } catch { return }
+    if (raw && raw.event === 'message.delta') {
+      const text = extractDeltaText(raw, runId)
+      // push() ei odota verkkoa — juuri tämä estää sitä ettei jokainen
+      // token lukitse SSE-lukijaa oman HTTP-kutsunsa ajaksi.
+      if (text) deltaCoalescer.push(text)
+      return
     }
-    const { done, value } = chunk
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
-    const frames = buffer.split(/\r?\n\r?\n/)
-    buffer = frames.pop() ?? ''
-    for (const frame of frames) await forwardFrame(frame)
-    if (done) break
+    const event = normalizeHermesEvent(raw, runId)
+    if (!event) return
+    await postEvent(event)
   }
-  if (buffer.trim()) await forwardFrame(buffer)
+  try {
+    while (true) {
+      let timer
+      let chunk
+      try {
+        chunk = await Promise.race([
+          reader.read(),
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Hermes-tapahtumavirta aikakatkaistiin.')),
+              idleTimeoutMs,
+            )
+          }),
+        ])
+      } catch (error) {
+        await reader.cancel().catch(() => {})
+        throw error
+      } finally {
+        clearTimeout(timer)
+      }
+      const { done, value } = chunk
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+      const frames = buffer.split(/\r?\n\r?\n/)
+      buffer = frames.pop() ?? ''
+      for (const frame of frames) await forwardFrame(frame)
+      if (done) break
+    }
+    if (buffer.trim()) await forwardFrame(buffer)
+    // Striimin loppu ei saa jäädä odottamaan valmista vastausta ilman että
+    // viimeisin kumulatiivinen pala on lähetetty — muuten näkyvä teksti
+    // jäisi jälkeen siitä mitä Hermes oikeasti tuotti.
+    await deltaCoalescer.drain()
+  } catch (error) {
+    // Kesken jäänyt lähetys ei saa jäädä roikkumaan taustalle sen jälkeen
+    // kun ajo on jo hylätty virheeseen (ei irrallista, odottamatonta
+    // verkkokutsua kesken olevan virheenkäsittelyn jälkeen).
+    deltaCoalescer.cancel()
+    throw error
+  }
 }
 
 export async function processOneOracleMessage({
