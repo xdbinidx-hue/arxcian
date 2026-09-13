@@ -170,18 +170,26 @@ export async function haeTavoitteet(kuukausiOrder: number, kuukausiNimi: string)
   if (!myymalaTiedosto) {
     varoitukset.push(`Kuukauden ${kuukausiNimi} myymälätavoitteita ei löytynyt Drivestä`)
   } else {
-    const tulos = parseMyymalaTavoitteet(await lueRivit(drive, sheets, myymalaTiedosto), kuukausiNimi)
-    myymalat = tulos.rivit
-    varoitukset.push(...tulos.varoitukset)
+    try {
+      const tulos = parseMyymalaTavoitteet(await lueRivit(drive, sheets, myymalaTiedosto), kuukausiNimi)
+      myymalat = tulos.rivit
+      varoitukset.push(...tulos.varoitukset)
+    } catch {
+      varoitukset.push(`Myymälätavoitteiden lukeminen epäonnistui (${myymalaTiedosto.name}). Muut saatavilla olevat tavoitteet näytetään.`)
+    }
   }
 
   let myyjat: MyyjaTavoiteRivi[] = []
   if (!myyjaTiedosto) {
     varoitukset.push(`Kuukauden ${kuukausiNimi} myyjäkohtaisia tavoitteita ei löytynyt Drivestä`)
   } else {
-    const tulos = parseMyyjaTavoitteet(await lueRivit(drive, sheets, myyjaTiedosto), RJ_MOB_SELLERS)
-    myyjat = tulos.rivit
-    varoitukset.push(...tulos.varoitukset)
+    try {
+      const tulos = parseMyyjaTavoitteet(await lueRivit(drive, sheets, myyjaTiedosto), RJ_MOB_SELLERS)
+      myyjat = tulos.rivit
+      varoitukset.push(...tulos.varoitukset)
+    } catch {
+      varoitukset.push(`Myyjätavoitteiden lukeminen epäonnistui (${myyjaTiedosto.name}). Muut saatavilla olevat tavoitteet näytetään.`)
+    }
   }
 
   return {

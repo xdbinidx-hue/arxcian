@@ -140,12 +140,12 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
     loadDashData(fileId),
     loadRunRate(fileId),
     loadTargets(fileId).catch(e => {
-      varoitukset.push(`Tavoitteet-välilehteä ei voitu lukea: ${virhe(e)}`)
+      varoitukset.push(`Myynti- ja tavoitetietoja ei voitu lukea: ${virhe(e)}`)
       return null
     }),
   ])
 
-  varoitukset.push(...runrate.varoitukset)
+  varoitukset.push(...runrate.varoitukset, ...(targets?.varoitukset ?? []))
   // Lähteen omat puutteet (esim. kadonnut sarake) kulkevat läpi asti:
   // puuttuvasta sarakkeesta ei palauteta nollaa, ja nolla ilman varoitusta
   // näyttäisi mitatulta tulokselta.
@@ -223,10 +223,10 @@ export async function buildYhteenveto(nyt: Date = new Date()): Promise<Yhteenvet
   // `null`, koska operaattorikohtaista tavoitetta ei ole missään lähteessä —
   // tavoitetaulukossa on vain liittymät, F-Secure ja kassakate.
   let uusmyynti: UusmyyntiRivi[] | null = null
-  if (targets) {
+  if (targets && targets.targets.length > 0 && targets.targets.every(t => t.dnaUusmyynti !== null && t.elisaUusmyynti !== null && t.teliaUusmyynti !== null)) {
     const rivit = targets.targets
-    const summa = (valitse: (t: (typeof rivit)[number]) => number) =>
-      rivit.reduce((s, t) => s + valitse(t), 0)
+    const summa = (valitse: (t: (typeof rivit)[number]) => number | null) =>
+      rivit.reduce((s, t) => s + (valitse(t) ?? 0), 0)
     uusmyynti = [
       { operaattori: 'DNA', kpl: summa(t => t.dnaUusmyynti), tavoite: null },
       { operaattori: 'Elisa', kpl: summa(t => t.elisaUusmyynti), tavoite: null },

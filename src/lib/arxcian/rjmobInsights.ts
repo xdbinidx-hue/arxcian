@@ -356,12 +356,12 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
   // Jos data-välilehteä ei ole, jokaisen myyjän työpäivät ovat nollia — silloin
   // osa-aikaisuuden vaimennus vaimentaisi kaiken. Tarkistetaan onko tietoa
   // ylipäätään olemassa ennen kuin sitä käytetään suodattimena.
-  const paivatSaatavilla = targetRows.some(t => t.paivat > 0)
+  const paivatSaatavilla = targetRows.some(t => (t.paivat ?? 0) > 0)
 
   // Tiimin mediaanipäivät vertailukohdaksi. Mediaani eikä keskiarvo, koska
   // yhden vuoron tehnyt vetäisi keskiarvoa alas ja nostaisi rimaa juuri
   // niille joita vaimennuksen pitäisi suojella.
-  const paivatJarjestetty = targetRows.map(t => t.paivat).filter(p => p > 0).sort((a, b) => a - b)
+  const paivatJarjestetty = targetRows.map(t => t.paivat).filter((p): p is number => p !== null && p > 0).sort((a, b) => a - b)
   const paivatMediaani = paivatJarjestetty.length > 0
     ? paivatJarjestetty[Math.floor(paivatJarjestetty.length / 2)]
     : 0
@@ -391,7 +391,7 @@ export async function buildRjMobInsights(): Promise<RjMobInsights> {
             const { toteuma, tavoite, saavutusPct } = mittarinLuvut(rivi, m.laji)
             // Ilman tavoitetta ei ole mitään mihin verrata — nollavertailu
             // näyttäisi jokaisen myyjän 0 %:ssa ja täyttäisi listan tyhjällä.
-            if (tavoite <= 0) return []
+            if (tavoite === null || tavoite <= 0 || toteuma === null || saavutusPct === null) return []
             const vauhtiEro = saavutusPct - kulunutPct
             return [{
               laji: m.laji,

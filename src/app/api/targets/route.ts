@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cachedJson } from '@/lib/apiCache'
 import { loadTargets, TavoitteetPuuttuu } from '@/lib/rjmobTargets'
 
 /**
@@ -15,10 +14,10 @@ export async function GET(req: NextRequest) {
   if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
 
   try {
-    return cachedJson(await loadTargets(fileId))
+    return NextResponse.json(await loadTargets(fileId), { headers: { 'Cache-Control': 'no-store' } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    // Puuttuva Tavoitteet-välilehti on väärä valinta, ei palvelinvirhe.
+    // Tunnistamaton kuukausi on virheellinen tiedostovalinta.
     const status = e instanceof TavoitteetPuuttuu ? 400 : 500
     return NextResponse.json({ error: msg }, { status })
   }

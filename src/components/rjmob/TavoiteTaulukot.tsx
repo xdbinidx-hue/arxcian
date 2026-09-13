@@ -17,19 +17,16 @@ import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
  * ja Run Rate -sivulta. Kaikkia kenttiä ei lueta täällä — muoto on reitin
  * vastaus kokonaisuudessaan, jotta se pysyy yhtenä tunnistettavana tyyppinä.
  */
-export interface TargetRow {
-  nimi: string
-  liittKpl: number; liittTavoite: number; liittRunrate: number; liittPerPaiva: number
-  fsecKpl: number; fsecTavoite: number; fsecRunrate: number
-  kassaKate: number; kassaTavoite: number; kassaRunrate: number
-  kassaMyynti: number; kassaPalautus: number; kassaAlennus: number; kassaKuitit: number; kassaPerPaiva: number
-  paivat: number; liittEur: number
-  dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
-  uusmyyntiYhteensa: number; uusmyyntiPerPaiva: number; uusmyyntiRunrate: number
+import type { TargetRow } from '@/lib/rjmobTargets'
+export type { TargetRow } from '@/lib/rjmobTargets'
+
+function fmt(n: number | null, dec = 0) {
+  return n === null ? '–' : n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 
-function fmt(n: number, dec = 0) {
-  return n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+function summa(rivit: TargetRow[], kentta: keyof TargetRow): number | null {
+  if (!rivit.length || rivit.some(r => r[kentta] === null)) return null
+  return rivit.reduce((s, r) => s + (r[kentta] as number), 0)
 }
 
 /**
@@ -73,12 +70,7 @@ function Kehys({ otsikko, children }: { otsikko: string; children: React.ReactNo
 }
 
 export function UusmyyntiTaulukko({ rivit, kuukausi }: { rivit: TargetRow[]; kuukausi: string }) {
-  const totals = rivit.reduce((acc, r) => ({
-    dna: acc.dna + r.dnaUusmyynti,
-    elisa: acc.elisa + r.elisaUusmyynti,
-    telia: acc.telia + r.teliaUusmyynti,
-    yhteensa: acc.yhteensa + r.uusmyyntiYhteensa,
-  }), { dna:0, elisa:0, telia:0, yhteensa:0 })
+  const totals = { dna: summa(rivit, 'dnaUusmyynti'), elisa: summa(rivit, 'elisaUusmyynti'), telia: summa(rivit, 'teliaUusmyynti'), yhteensa: summa(rivit, 'uusmyyntiYhteensa') }
 
   return (
     <Kehys otsikko={`Uusmyynti — ${kuukausi}`}>
@@ -124,16 +116,10 @@ export function UusmyyntiTaulukko({ rivit, kuukausi }: { rivit: TargetRow[]; kuu
 export function KassamyyntiTaulukko({ rivit, kuukausi, rr, rrYhteensa }: {
   rivit: TargetRow[]
   kuukausi: string
-  rr: (r: TargetRow) => RunRateMittari
-  rrYhteensa: RunRateMittari
+  rr: (r: TargetRow) => Pick<RunRateMittari, 'tavoite' | 'ennuste' | 'pct'>
+  rrYhteensa: Pick<RunRateMittari, 'tavoite' | 'ennuste' | 'pct'>
 }) {
-  const totals = rivit.reduce((acc, r) => ({
-    myynti: acc.myynti + r.kassaMyynti,
-    palautus: acc.palautus + r.kassaPalautus,
-    alennus: acc.alennus + r.kassaAlennus,
-    kuitit: acc.kuitit + r.kassaKuitit,
-    kate: acc.kate + r.kassaKate,
-  }), { myynti:0, palautus:0, alennus:0, kuitit:0, kate:0 })
+  const totals = { myynti: summa(rivit, 'kassaMyynti'), palautus: summa(rivit, 'kassaPalautus'), alennus: summa(rivit, 'kassaAlennus'), kuitit: summa(rivit, 'kassaKuitit'), kate: summa(rivit, 'kassaKate') }
 
   return (
     <Kehys otsikko={`Kassamyynti — ${kuukausi}`}>
@@ -162,7 +148,7 @@ export function KassamyyntiTaulukko({ rivit, kuukausi, rr, rrYhteensa }: {
               <td style={{...td, color:'#A32D2D'}}>{fmt(r.kassaAlennus)} €</td>
               <td style={{...td, color:'#888'}}>{fmt(r.kassaKuitit)}</td>
               <td style={{...td, fontWeight:500}}>{fmt(r.kassaKate)} €</td>
-              <td style={{...td, color:'#888'}}>{m.tavoite === null ? '–' : `${fmt(m.tavoite)} €`}</td>
+              <td style={{...td, color:'#888'}}>{m.tavoite === null ? 'Ei tavoitetta' : `${fmt(m.tavoite)} €`}</td>
               <td style={{...td, color:'#185FA5', fontWeight:500}}>{fmt(r.kassaPerPaiva, 2)} €</td>
               <td style={{...td, color:'#185FA5', fontWeight:500}}>{m.ennuste === null ? '–' : `${fmt(m.ennuste)} €`}</td>
               <PctCell pct={m.pct} />
@@ -176,7 +162,7 @@ export function KassamyyntiTaulukko({ rivit, kuukausi, rr, rrYhteensa }: {
           <td style={{...tot, color:'#A32D2D'}}>{fmt(totals.alennus)} €</td>
           <td style={{...tot, color:'#888'}}>{fmt(totals.kuitit)}</td>
           <td style={tot}>{fmt(totals.kate)} €</td>
-          <td style={{...tot, color:'#888'}}>{rrYhteensa.tavoite === null ? '–' : `${fmt(rrYhteensa.tavoite)} €`}</td>
+          <td style={{...tot, color:'#888'}}>{rrYhteensa.tavoite === null ? 'Ei tavoitetta' : `${fmt(rrYhteensa.tavoite)} €`}</td>
           <td style={tot}></td>
           <td style={{...tot, color:'#185FA5'}}>{rrYhteensa.ennuste === null ? '–' : `${fmt(rrYhteensa.ennuste)} €`}</td>
           <PctCell pct={rrYhteensa.pct} />

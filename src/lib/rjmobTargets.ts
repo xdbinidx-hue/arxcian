@@ -1,17 +1,12 @@
 import { google } from 'googleapis'
 import { isRJMobSeller, shouldSkip, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { haeTavoitteet } from '@/lib/rjmobTavoiteDrive'
+import { kuukausiTiedostonimesta } from '@/lib/rjmobTavoiteTaulukko'
+import { UUSI_LUKULAHDE_ALKAEN, KASSAKATE_KERROIN } from '@/lib/rjmobMyymalaTaulukko'
 
-/**
- * Yhden kuukauden tavoitteet ja niiden toteuma.
- *
- * Sama laskenta jota /api/targets tarjoili ennen suoraan reitin sisällä —
- * siirretty kirjastoon, jotta ajastettu työ pääsee siihen palvelimella ilman
- * istuntoa ja HTTP-kierrosta. Logiikkaa ei muutettu, ja kentät ovat samat kuin
- * ennen, joten tavoitteet-sivun oma rajapintatyyppi vastaa tätä.
- *
- * Neljä välilehteä yhdistetään: Tavoitteet määrittää rivit, Myyjät Yhteensä
- * antaa liittymä- ja F-Secure-toteuman, Kassakate kassaluvut ja data
- * toteutuneet työpäivät.
+/** Kuukauden myynnit ja tavoitteet. Tavoitteet eivät rajaa myyntirivejä.
+ * Elokuu 2026 alkaen käytetään samaa Drive-tavoitelähdettä kuin päätaulukko.
+ * Kassamyynnin erittely pysyy omassa lähteessään; sitä ei päätellä katteesta.
  */
 
 function getAuth() {
@@ -20,12 +15,6 @@ function getAuth() {
     credentials,
     scopes: ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/spreadsheets.readonly'],
   })
-}
-
-function parseNum(v: unknown): number {
-  if (v === null || v === undefined || v === '') return 0
-  const n = parseFloat(String(v).replace(',', '.').replace(/[^0-9.-]/g, ''))
-  return isNaN(n) ? 0 : n
 }
 
 function findCol(headers: string[], ...patterns: string[]): number {
@@ -74,27 +63,38 @@ function normalizeName(raw: string): string {
 
 export interface TargetRow {
   nimi: string
-  liittKpl: number; liittTavoite: number; liittRunrate: number; liittPerPaiva: number
-  fsecKpl: number; fsecTavoite: number; fsecRunrate: number
-  kassaKate: number; kassaTavoite: number; kassaRunrate: number
-  kassaMyynti: number; kassaPalautus: number; kassaAlennus: number; kassaKuitit: number; kassaPerPaiva: number
-  paivat: number; liittEur: number
-  dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
-  uusmyyntiYhteensa: number; uusmyyntiPerPaiva: number; uusmyyntiRunrate: number
+  liittKpl: number | null; liittTavoite: number | null; liittRunrate: number | null; liittPerPaiva: number | null
+  fsecKpl: number | null; fsecTavoite: number | null; fsecRunrate: number | null
+  kassaKate: number | null; kassaTavoite: number | null; kassaRunrate: number | null
+  kassaMyynti: number | null; kassaPalautus: number | null; kassaAlennus: number | null; kassaKuitit: number | null; kassaPerPaiva: number | null
+  paivat: number | null; liittEur: number | null
+  dnaUusmyynti: number | null; elisaUusmyynti: number | null; teliaUusmyynti: number | null
+  uusmyyntiYhteensa: number | null; uusmyyntiPerPaiva: number | null; uusmyyntiRunrate: number | null
 }
 
 export type TargetsData = {
   kuukausi: string
   targets: TargetRow[]
   sheetNames: string[]
+  varoitukset: string[]
 }
 
-/**
- * Tavoitteet-välilehden puuttuminen on käyttäjän korjattavissa oleva tilanne
- * (väärä tiedosto valittuna), ei palvelinvirhe — reitti vastaa tähän 400:lla.
- * Oma virhetyyppi säilyttää sen erottelun kun laskenta siirtyi kirjastoon.
- */
+/** Kuukautta ei tunnisteta: mitään toista kuukautta ei käytetä varalla. */
 export class TavoitteetPuuttuu extends Error {}
+
+// Erillinen tavoitekansio otettiin käyttöön elokuussa 2026.
+const DRIVE_TAVOITTEET_ALKAEN = 202608
+
+const summa = (a: number | null, b: number | null) => a === null || b === null ? null : a + b
+const suhde = (a: number | null, b: number | null, kerroin = 1) =>
+  a !== null && b !== null && b > 0 ? a / b * kerroin : null
+const solu = (row: string[], col: number): number | null => {
+  if (col < 0) return null
+  const raw = String(row[col] ?? '').trim()
+  if (!raw || raw === '-' || raw.includes('#')) return null
+  const n = Number(raw.replace(/\s|€/g, '').replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
 
 function findSheet(sheetNames: string[], ...patterns: string[]): string {
   for (const p of patterns) {
@@ -111,6 +111,10 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
 
   const meta = await drive.files.get({ fileId, fields: 'name' })
   const fileName = meta.data.name ?? 'Myyntiseuranta'
+  const kuukausi = kuukausiTiedostonimesta(fileName)
+  if (!kuukausi) throw new TavoitteetPuuttuu('Myyntitiedoston kuukautta ja vuotta ei tunnistettu')
+  const uusiLahde = kuukausi.order >= UUSI_LUKULAHDE_ALKAEN
+  const varoitukset: string[] = []
 
   const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: fileId })
   const sheetNames = sheetMeta.data.sheets?.map(s => s.properties?.title ?? '') ?? []
@@ -123,16 +127,23 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
   // -välilehdeltä. Järjestys on tarkoituksella tämä: kun valmis yhteenveto on
   // olemassa (heinäkuu ja vanhemmat), käytetään sitä eikä summata riveistä.
   // Sama tunnistus kuin rjmobSheets.ts:n loadDashDatassa.
-  const myyjatSheet = findSheet(sheetNames, 'myyjät yhteensä', 'myyjat yhteensa')
-    || findSheet(sheetNames, 'myyjät myymälöittäin', 'myyjat myymaloittain', 'myymäl', 'myymal')
+  const myymaloittain = findSheet(sheetNames, 'myyjät myymälöittäin', 'myyjat myymaloittain', 'myymäl', 'myymal')
+  const myyjatSheet = uusiLahde ? myymaloittain
+    : findSheet(sheetNames, 'myyjät yhteensä', 'myyjat yhteensa') || myymaloittain
 
-  if (!tavoitteetSheet) {
-    throw new TavoitteetPuuttuu(`Tavoitteet-välilehteä ei löytynyt (löytyi: ${sheetNames.join(', ')})`)
-  }
-
-  // ---- Tavoitteet: rivi 1 otsikko, rivi 2 headerit, rivi 3+ data ----
-  const targetsMap: Record<string, { nimi: string; liittTavoite: number; fsecTavoite: number; kassaTavoite: number }> = {}
-  {
+  const targetsMap: Record<string, { nimi: string; liittTavoite: number | null; fsecTavoite: number | null; kassaTavoite: number | null }> = {}
+  if (kuukausi.order >= DRIVE_TAVOITTEET_ALKAEN) {
+    try {
+      const tavoitteet = await haeTavoitteet(kuukausi.order, kuukausi.nimi)
+      varoitukset.push(...tavoitteet.varoitukset)
+      for (const t of tavoitteet.myyjat) {
+        const nimi = normalizeName(t.nimi)
+        targetsMap[nimi.toLowerCase()] = { nimi, liittTavoite: t.liittymat, fsecTavoite: t.fsecure, kassaTavoite: t.kassakate }
+      }
+    } catch {
+      varoitukset.push('Kuukauden tavoitteiden haku epäonnistui. Myyntitiedot näytetään ilman tavoitteita.')
+    }
+  } else if (tavoitteetSheet) {
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${tavoitteetSheet}'!A1:BZ200` })
     const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
     const headerRow = rows[1] ?? []
@@ -149,17 +160,17 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
       const nimi = normalizeName(rawNimi)
       targetsMap[nimi.toLowerCase()] = {
         nimi,
-        liittTavoite: idxLiitt >= 0 ? parseNum(row[idxLiitt]) : 0,
-        fsecTavoite: idxFsec >= 0 ? parseNum(row[idxFsec]) : 0,
-        kassaTavoite: idxKassa >= 0 ? parseNum(row[idxKassa]) : 0,
+        liittTavoite: solu(row, idxLiitt),
+        fsecTavoite: solu(row, idxFsec),
+        kassaTavoite: solu(row, idxKassa),
       }
     }
   }
 
   // ---- Myyjät Yhteensä: toteutuneet liittymät ja F-Secure ----
   const actualsMap: Record<string, {
-    liittKpl: number; liittEur: number; fsecKpl: number
-    dnaUusmyynti: number; elisaUusmyynti: number; teliaUusmyynti: number
+    liittKpl: number | null; liittEur: number | null; fsecKpl: number | null; kassaKate: number | null
+    dnaUusmyynti: number | null; elisaUusmyynti: number | null; teliaUusmyynti: number | null
   }> = {}
   if (myyjatSheet) {
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${myyjatSheet}'!A1:BZ200` })
@@ -185,11 +196,13 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
       const idxFsecKpl = findCol(headers, 'f-secure kpl', 'fsecure kpl', 'fsec kpl')
       // Uusmyynti operaattoreittain (Tavoitteet ja Run Rate -> Uusmyynti-välilehti). Elisan
       // uusmyynti näkyy datassa "ELISA Pakettiliittymät" -sarakkeena, ei omana uusmyynti-sarakkeena.
+      const idxKate = headers.findIndex(h => h === 'kassakate')
       const idxDnaUusmyynti = findCol(headers, 'dna uusmyynti')
       const idxElisaUusmyynti = findCol(headers, 'elisa pakettiliittymät', 'elisa paketti')
       const idxTeliaUusmyynti = findCol(headers, 'telia uusmyynti')
       const idxTeliaYritysUusmyynti = findCol(headers, 'telia yritysliittymä uusmyynti', 'telia yritys uusmyynti')
 
+      if ([idxDnaUusmyynti, idxElisaUusmyynti, idxTeliaUusmyynti].some(i => i < 0)) varoitukset.push('Uusmyynnin operaattorierittelyssä on puuttuvia sarakkeita.')
       for (let i = headerIdx + 1; i < rows.length; i++) {
         const row = rows[i]
         const rawNimi = row[idxNimi >= 0 ? idxNimi : 1]?.trim() ?? ''
@@ -197,9 +210,8 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
         const nimi = normalizeName(rawNimi)
         if (!isRJMobSeller(nimi)) continue
 
-        const fsecTotalKpl = idxFsecTotal >= 0 ? parseNum(row[idxFsecTotal]) : 0
-        const fsecInternetKpl = idxFsecInternet >= 0 ? parseNum(row[idxFsecInternet]) : 0
-        const fsecKpl = (fsecTotalKpl + fsecInternetKpl) > 0 ? fsecTotalKpl + fsecInternetKpl : (idxFsecKpl >= 0 ? parseNum(row[idxFsecKpl]) : 0)
+        const fsecKpl = idxFsecTotal >= 0 && idxFsecInternet >= 0
+          ? summa(solu(row, idxFsecTotal), solu(row, idxFsecInternet)) : solu(row, idxFsecKpl)
 
         // Summataan eikä korvata: "Myyjät Myymälöittäin" -välilehdellä sama
         // myyjä esiintyy kerran jokaisesta myymälästä jossa hän on myynyt.
@@ -207,23 +219,24 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
         // joten summaus käyttäytyy siellä täsmälleen kuin korvaus.
         const key = nimi.toLowerCase()
         const edell = actualsMap[key] ?? {
-          liittKpl: 0, liittEur: 0, fsecKpl: 0,
+          liittKpl: 0, liittEur: 0, fsecKpl: 0, kassaKate: 0,
           dnaUusmyynti: 0, elisaUusmyynti: 0, teliaUusmyynti: 0,
         }
         actualsMap[key] = {
-          liittKpl: edell.liittKpl + parseNum(row[idxLiittKpl]),
-          liittEur: edell.liittEur + parseNum(row[idxLiittEur]),
-          fsecKpl: edell.fsecKpl + fsecKpl,
-          dnaUusmyynti: edell.dnaUusmyynti + (idxDnaUusmyynti >= 0 ? parseNum(row[idxDnaUusmyynti]) : 0),
-          elisaUusmyynti: edell.elisaUusmyynti + (idxElisaUusmyynti >= 0 ? parseNum(row[idxElisaUusmyynti]) : 0),
-          teliaUusmyynti: edell.teliaUusmyynti + (idxTeliaUusmyynti >= 0 ? parseNum(row[idxTeliaUusmyynti]) : 0) + (idxTeliaYritysUusmyynti >= 0 ? parseNum(row[idxTeliaYritysUusmyynti]) : 0),
+          liittKpl: summa(edell.liittKpl, solu(row, idxLiittKpl)),
+          liittEur: summa(edell.liittEur, solu(row, idxLiittEur)),
+          fsecKpl: summa(edell.fsecKpl, fsecKpl),
+          kassaKate: summa(edell.kassaKate, solu(row, idxKate)),
+          dnaUusmyynti: summa(edell.dnaUusmyynti, solu(row, idxDnaUusmyynti)),
+          elisaUusmyynti: summa(edell.elisaUusmyynti, solu(row, idxElisaUusmyynti)),
+          teliaUusmyynti: summa(edell.teliaUusmyynti, summa(solu(row, idxTeliaUusmyynti), idxTeliaYritysUusmyynti >= 0 ? solu(row, idxTeliaYritysUusmyynti) : 0)),
         }
       }
     }
   }
 
   // ---- Kassakate: myynti / palautus / alennus / kuitit ----
-  const kassaMap: Record<string, { kassaMyynti: number; kassaPalautus: number; kassaAlennus: number; kassaKuitit: number; kassaKate: number }> = {}
+  const kassaMap: Record<string, { kassaMyynti: number | null; kassaPalautus: number | null; kassaAlennus: number | null; kassaKuitit: number | null; kassaKate: number | null }> = {}
   if (kassakateSheet) {
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${kassakateSheet}'!A1:BZ200` })
     const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
@@ -270,27 +283,27 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
         if (!rawNimi || shouldSkip(rawNimi)) continue
         const nimi = normalizeName(rawNimi)
 
-        const kassaMyynti = idxMyynti >= 0 ? parseNum(row[idxMyynti]) : 0
-        const kassaPalautus = idxPalautus >= 0 ? parseNum(row[idxPalautus]) : 0
-        const kassaAlennus = idxAlennus >= 0 ? parseNum(row[idxAlennus]) : 0
-        const kassaKuitit = idxKuitit >= 0 ? parseNum(row[idxKuitit]) : 0
-        const kassaKate = idxKate >= 0 ? parseNum(row[idxKate]) : (kassaMyynti - kassaPalautus - kassaAlennus)
+        const kassaMyynti = solu(row, idxMyynti)
+        const kassaPalautus = solu(row, idxPalautus)
+        const kassaAlennus = solu(row, idxAlennus)
+        const kassaKuitit = solu(row, idxKuitit)
+        const kassaKate = idxKate >= 0 ? solu(row, idxKate) : kassaMyynti !== null && kassaPalautus !== null && kassaAlennus !== null ? kassaMyynti - kassaPalautus - kassaAlennus : null
 
         const key = nimi.toLowerCase()
         const prev = kassaMap[key] ?? { kassaMyynti: 0, kassaPalautus: 0, kassaAlennus: 0, kassaKuitit: 0, kassaKate: 0 }
         kassaMap[key] = {
-          kassaMyynti: prev.kassaMyynti + kassaMyynti,
-          kassaPalautus: prev.kassaPalautus + kassaPalautus,
-          kassaAlennus: prev.kassaAlennus + kassaAlennus,
-          kassaKuitit: prev.kassaKuitit + kassaKuitit,
-          kassaKate: prev.kassaKate + kassaKate,
+          kassaMyynti: summa(prev.kassaMyynti, kassaMyynti),
+          kassaPalautus: summa(prev.kassaPalautus, kassaPalautus),
+          kassaAlennus: summa(prev.kassaAlennus, kassaAlennus),
+          kassaKuitit: summa(prev.kassaKuitit, kassaKuitit),
+          kassaKate: summa(prev.kassaKate, kassaKate),
         }
       }
     }
   }
 
   // ---- data: kuluneet työpäivät myyjää kohden ----
-  const paivatMap: Record<string, number> = {}
+  const paivatMap: Record<string, number | null> = {}
   if (dataSheet) {
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: `'${dataSheet}'!A1:BZ200` })
     const rows = (res.data.values ?? []).map((r: unknown[]) => r.map((c: unknown) => String(c ?? '')))
@@ -304,46 +317,53 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
         const rawNimi = row[idxNimi]?.trim() ?? ''
         if (!rawNimi) continue
         const nimi = normalizeName(rawNimi)
-        paivatMap[nimi.toLowerCase()] = parseNum(row[idxPaivat])
+        paivatMap[nimi.toLowerCase()] = solu(row, idxPaivat)
       }
     }
   }
 
-  // ---- Yhdistetään: Tavoitteet-välilehti määrittää rivit ----
-  const targets: TargetRow[] = Object.entries(targetsMap).map(([key, t]) => {
-    const actual = actualsMap[key] ?? { liittKpl: 0, liittEur: 0, fsecKpl: 0, dnaUusmyynti: 0, elisaUusmyynti: 0, teliaUusmyynti: 0 }
-    const kassa = kassaMap[key] ?? { kassaMyynti: 0, kassaPalautus: 0, kassaAlennus: 0, kassaKuitit: 0, kassaKate: 0 }
-    const paivat = paivatMap[key] ?? 0
-    const uusmyyntiYhteensa = actual.dnaUusmyynti + actual.elisaUusmyynti + actual.teliaUusmyynti
+  if (!myyjatSheet || Object.keys(actualsMap).length === 0) varoitukset.push('Myyntitietoja ei löytynyt valitulta kuukaudelta.')
+  if (!kassakateSheet) varoitukset.push('Kassamyynnin erittely puuttuu valitulta kuukaudelta.')
+  if (!Object.keys(paivatMap).length) varoitukset.push('Toteutuneita työpäiviä ei löytynyt. Päiväkohtaisia lukuja ei lasketa.')
+
+  // Myynti näkyy myös ilman tavoitetta, tavoite myös ilman myyntiriviä.
+  const nimet = new Set([...Object.keys(targetsMap), ...Object.keys(actualsMap), ...Object.keys(kassaMap)])
+  const targets: TargetRow[] = Array.from(nimet).filter(key => isRJMobSeller(key)).map(key => {
+    const t = targetsMap[key] ?? { nimi: normalizeName(key), liittTavoite: null, fsecTavoite: null, kassaTavoite: null }
+    const actual = actualsMap[key] ?? { liittKpl: null, liittEur: null, fsecKpl: null, kassaKate: null, dnaUusmyynti: null, elisaUusmyynti: null, teliaUusmyynti: null }
+    const kassa = kassaMap[key] ?? { kassaMyynti: null, kassaPalautus: null, kassaAlennus: null, kassaKuitit: null, kassaKate: null }
+    const kate = uusiLahde ? actual.kassaKate === null ? null : actual.kassaKate * KASSAKATE_KERROIN : kassa.kassaKate
+    const paivat = paivatMap[key] ?? null
+    const uusmyyntiYhteensa = summa(summa(actual.dnaUusmyynti, actual.elisaUusmyynti), actual.teliaUusmyynti)
 
     return {
       nimi: t.nimi,
       liittKpl: actual.liittKpl,
       liittTavoite: t.liittTavoite,
-      liittRunrate: t.liittTavoite > 0 ? (actual.liittKpl / t.liittTavoite) * 100 : 0,
-      liittPerPaiva: paivat > 0 ? actual.liittKpl / paivat : 0,
+      liittRunrate: suhde(actual.liittKpl, t.liittTavoite, 100),
+      liittPerPaiva: suhde(actual.liittKpl, paivat),
       fsecKpl: actual.fsecKpl,
       fsecTavoite: t.fsecTavoite,
-      fsecRunrate: t.fsecTavoite > 0 ? (actual.fsecKpl / t.fsecTavoite) * 100 : 0,
-      kassaKate: kassa.kassaKate,
+      fsecRunrate: suhde(actual.fsecKpl, t.fsecTavoite, 100),
+      kassaKate: kate,
       kassaTavoite: t.kassaTavoite,
-      kassaRunrate: t.kassaTavoite > 0 ? (kassa.kassaKate / t.kassaTavoite) * 100 : 0,
+      kassaRunrate: suhde(kate, t.kassaTavoite, 100),
       kassaMyynti: kassa.kassaMyynti,
       kassaPalautus: kassa.kassaPalautus,
       kassaAlennus: kassa.kassaAlennus,
       kassaKuitit: kassa.kassaKuitit,
-      kassaPerPaiva: paivat > 0 ? kassa.kassaKate / paivat : 0,
+      kassaPerPaiva: suhde(kate, paivat),
       paivat,
       liittEur: actual.liittEur,
       dnaUusmyynti: actual.dnaUusmyynti,
       elisaUusmyynti: actual.elisaUusmyynti,
       teliaUusmyynti: actual.teliaUusmyynti,
       uusmyyntiYhteensa,
-      uusmyyntiPerPaiva: paivat > 0 ? uusmyyntiYhteensa / paivat : 0,
-      uusmyyntiRunrate: t.liittTavoite > 0 ? (uusmyyntiYhteensa / t.liittTavoite) * 100 : 0,
+      uusmyyntiPerPaiva: suhde(uusmyyntiYhteensa, paivat),
+      uusmyyntiRunrate: suhde(uusmyyntiYhteensa, t.liittTavoite, 100),
     }
   }).filter(t => t.nimi !== 'Albin Rashica')
-    .sort((a, b) => b.liittRunrate - a.liittRunrate)
+    .sort((a, b) => (b.liittRunrate ?? -1) - (a.liittRunrate ?? -1))
 
-  return { kuukausi: fileName, targets, sheetNames }
+  return { kuukausi: fileName, targets, sheetNames, varoitukset }
 }

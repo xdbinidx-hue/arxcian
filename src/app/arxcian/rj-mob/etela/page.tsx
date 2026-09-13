@@ -148,6 +148,7 @@ export default function EtelanHaratPage() {
 
 function EtelanHaratSivu() {
   const [files, setFiles] = useState<DriveFile[]>([])
+  const [filesVirhe, setFilesVirhe] = useState('')
   const [selectedFile, setSelectedFile] = useState('')
   const [sellers, setSellers] = useState<SellerResult[]>([])
   const [stores, setStores] = useState<Record<string, StoreData>>({})
@@ -163,6 +164,7 @@ function EtelanHaratSivu() {
   // lukuja joita myymälälukujen lukupää ei tuota.
   const [targets, setTargets] = useState<TargetRow[]>([])
   const [targetsVirhe, setTargetsVirhe] = useState('')
+  const [targetsVaroitukset, setTargetsVaroitukset] = useState<string[]>([])
   // Alkuarvo `true`: ennen ensimmäistä hakua tyhjä lista ei ole "ei dataa"
   // vaan "ei vielä haettu", ja väärä tyhjä näyttäisi mitatulta tulokselta.
   const [targetsLoading, setTargetsLoading] = useState(true)
@@ -184,22 +186,31 @@ function EtelanHaratSivu() {
   }
 
   useEffect(() => {
+    let active = true
     fetch('/api/files')
-      .then(r => r.json())
+      .then(async r => {
+        const d = await r.json()
+        if (!r.ok || d.error) throw new Error(d.error ?? 'Kuukausien haku epäonnistui.')
+        return d
+      })
       .then(d => {
+        if (!active) return
         const sheets = (d.files ?? []).filter((f: DriveFile) =>
           f.mimeType === 'application/vnd.google-apps.spreadsheet'
         ).sort((a: DriveFile, b: DriveFile) => (kuukausiTiedostonimesta(b.name)?.order ?? 0) - (kuukausiTiedostonimesta(a.name)?.order ?? 0))
         setFiles(sheets)
         if (sheets.length > 0) setSelectedFile(sheets[0].id)
+        else { setFilesVirhe('Myyntiseurannan kuukausitiedostoja ei löytynyt.'); setTargetsLoading(false) }
       })
+      .catch(() => { if (active) { setFilesVirhe('Kuukausien haku epäonnistui. Lataa sivu uudelleen.'); setTargetsLoading(false) } })
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
     if (!selectedFile) return
     let active = true
     setLoading(true)
-    setSellers([]); setStores({}); setKuukausi(''); setPuutteet([])
+    setSellers([]); setStores({}); setKuukausi(''); setPuutteet([]); setLahde(''); setUlkopuoliset(null)
     fetch(`/api/sheets?fileId=${selectedFile}`)
       .then(r => r.json())
       .then(d => {
@@ -245,10 +256,10 @@ function EtelanHaratSivu() {
   useEffect(() => {
     if (!selectedFile) return
     let active = true
-    setTargets([]); setTargetsVirhe(''); setTargetsLoading(true)
+    setTargets([]); setTargetsVirhe(''); setTargetsVaroitukset([]); setTargetsLoading(true)
     fetch(`/api/targets?fileId=${selectedFile}`)
       .then(r => r.json())
-      .then(d => { if (!active) return; if (d.error) setTargetsVirhe(d.error); else setTargets(d.targets ?? []) })
+      .then(d => { if (!active) return; if (d.error) setTargetsVirhe(d.error); else { setTargets(d.targets ?? []); setTargetsVaroitukset(d.varoitukset ?? []) } })
       .catch(e => { if (active) setTargetsVirhe(String(e)) })
       .finally(() => { if (active) setTargetsLoading(false) })
     return () => { active = false }
@@ -333,10 +344,10 @@ function EtelanHaratSivu() {
   const myyjaIkkuna = (nimi: string) => runrate?.myyjaVuorot[nimi] ?? { paattyneet: 0, kaikki: 0 }
   const kassaRr = (r: TargetRow) => {
     const { paattyneet, kaikki } = myyjaIkkuna(r.nimi)
-    return runRateMittari(r.kassaKate, rrMyyjaTavoitteet[r.nimi]?.kassakate ?? null, paattyneet, kaikki)
+    return r.kassaKate === null ? { tavoite: rrMyyjaTavoitteet[r.nimi]?.kassakate ?? null, toteuma: null, ennuste: null, pct: null } : runRateMittari(r.kassaKate, rrMyyjaTavoitteet[r.nimi]?.kassakate ?? null, paattyneet, kaikki)
   }
-  const kassaRrYhteensa = runRateMittari(
-    targets.reduce((sum, r) => sum + r.kassaKate, 0),
+  const kassaRrYhteensa = targets.some(r => r.kassaKate === null) ? { tavoite: tavoiteSumma(Object.values(rrMyyjaTavoitteet)).kassakate, toteuma: null, ennuste: null, pct: null } : runRateMittari(
+    targets.reduce((sum, r) => sum + (r.kassaKate ?? 0), 0),
     tavoiteSumma(Object.values(rrMyyjaTavoitteet)).kassakate,
     runrate?.tyopaivat.paattyneet ?? 0,
     runrate?.tyopaivat.kaikki ?? 0,
@@ -422,6 +433,7 @@ Generoi viesti:`
 
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 
+        {filesVirhe && <div role="alert" style={{padding:12, color:'#A32D2D'}}>{filesVirhe}</div>}
         {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
 
         {/* Tilarivi ja näkymänapit ovat kaikkien kolmen näkymän yläpuolella:
@@ -688,6 +700,9 @@ Generoi viesti:`
         {/* Uusmyynti ja Kassamyynti: siirretty Tavoitteet ja Run Rate -sivulta
             sellaisenaan. Virhe erotetaan tyhjästä kuukaudesta — tyhjä taulukko
             ilman selitystä näyttäisi siltä kuin myyntiä ei olisi ollut. */}
+        {!loading && nakyma !== 'tavoitteet' && targetsVaroitukset.length > 0 && (
+          <div role="status" style={{padding:12, marginBottom:12, background:'#fff8e6', fontSize:13}}>{targetsVaroitukset.join(' ')}</div>
+        )}
         {!loading && nakyma !== 'tavoitteet' && (
           targetsVirhe ? (
             <div style={{background:'#FCEBEB', border:'0.5px solid #F09595', borderRadius:10, padding:12, fontSize:13, color:'#A32D2D'}}>
@@ -696,7 +711,7 @@ Generoi viesti:`
           ) : targetsLoading ? (
             <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>
           ) : targets.length === 0 ? (
-            <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ei tavoitedataa tälle kuukaudelle.</div>
+            <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ei myynti- tai tavoitetietoja tälle kuukaudelle.</div>
           ) : nakyma === 'uusmyynti' ? (
             <UusmyyntiTaulukko rivit={targets} kuukausi={kuukausiLyhyt} />
           ) : (
