@@ -1,5 +1,5 @@
-import { runRateMittari } from '@/lib/rjmob'
-import type { RunRateRivi } from '@/components/rjmob/RunRateTaulukko'
+import { runRateMittari } from './rjmob.ts'
+import type { RunRateRivi, RunRateNayttoRivi } from '@/components/rjmob/RunRateTaulukko'
 
 /**
  * Toteumien ja tavoitteiden yhdistäminen run rate -riveiksi.
@@ -70,6 +70,30 @@ export function myyjaRivit(
   return toteumat.map(t =>
     rivi(t, tavoitteet[t.nimi] ?? EI_TAVOITETTA, vuorot[t.nimi] ?? { paattyneet: 0, kaikki: 0 }, true),
   )
+}
+
+/** Tavoitenäkymä sisältää myös myyjät joilta puuttuu myyntirivi. */
+export function myyjaTavoiteRivit(
+  toteumat: RunRateToteuma[],
+  tavoitteet: Record<string, RunRateTavoite>,
+  vuorot: Record<string, Ikkuna>,
+): RunRateNayttoRivi[] {
+  const rivit: RunRateNayttoRivi[] = myyjaRivit(toteumat, tavoitteet, vuorot)
+  // Tallennettu tavoite näkyy myös ennen ensimmäistä myyntiriviä.
+  // Puuttuvasta toteumasta ei päätellä nollamyyntiä tai ennustetta.
+  const nimet = new Set(toteumat.map(t => t.nimi))
+  const ilmanToteumaa = (tavoite: number | null) => ({ tavoite, toteuma: null, ennuste: null, pct: null })
+  for (const [nimi, tavoite] of Object.entries(tavoitteet)) {
+    if (nimet.has(nimi)) continue
+    rivit.push({
+      nimi,
+      ikkuna: vuorot[nimi] ?? null,
+      liittymat: ilmanToteumaa(tavoite.liittymat),
+      fsecure: ilmanToteumaa(tavoite.fsecure),
+      kassakate: ilmanToteumaa(tavoite.kassakate),
+    })
+  }
+  return rivit
 }
 
 /**

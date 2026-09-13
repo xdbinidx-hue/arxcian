@@ -1,11 +1,12 @@
 'use client'
+import { kuukausiTiedostonimesta } from '@/lib/rjmobTavoiteTaulukko'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { RjMobNav } from '@/components/rjmob/RjMobNav'
 import { RunRateTaulukko } from '@/components/rjmob/RunRateTaulukko'
 import { UusmyyntiTaulukko, KassamyyntiTaulukko, type TargetRow } from '@/components/rjmob/TavoiteTaulukot'
 import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso, runRateMittari } from '@/lib/rjmob'
-import { myymalaRivit, myyjaRivit, yhteensaRivi, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
+import { myymalaRivit, myyjaTavoiteRivit, yhteensaRivi, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
 import type { RunRateData } from '@/lib/rjmobRunRate'
 import { tyopaivaTilanne } from '@/lib/rjmobWorkdays'
 
@@ -156,6 +157,7 @@ function EtelanHaratSivu() {
   const [ulkopuoliset, setUlkopuoliset] = useState<Ulkopuoliset | null>(null)
   const [loading, setLoading] = useState(false)
   const [runrate, setRunrate] = useState<RunRateData | null>(null)
+  const [runrateVirhe, setRunrateVirhe] = useState('')
   // Uusmyynti- ja Kassamyynti-näkymien rivit. Oma reittinsä (`/api/targets`)
   // eikä /api/sheets, koska ne ovat myyntiseurantataulukon myyjäkohtaisia
   // lukuja joita myymälälukujen lukupää ei tuota.
@@ -185,14 +187,9 @@ function EtelanHaratSivu() {
     fetch('/api/files')
       .then(r => r.json())
       .then(d => {
-        const parsePrefix = (name: string) => {
-          const match = name.match(/([0-9]{1,3})\./)
-          return match ? Number(match[1]) : 0
-        }
-
         const sheets = (d.files ?? []).filter((f: DriveFile) =>
           f.mimeType === 'application/vnd.google-apps.spreadsheet'
-        ).sort((a: DriveFile, b: DriveFile) => parsePrefix(b.name) - parsePrefix(a.name))
+        ).sort((a: DriveFile, b: DriveFile) => (kuukausiTiedostonimesta(b.name)?.order ?? 0) - (kuukausiTiedostonimesta(a.name)?.order ?? 0))
         setFiles(sheets)
         if (sheets.length > 0) setSelectedFile(sheets[0].id)
       })
@@ -200,10 +197,14 @@ function EtelanHaratSivu() {
 
   useEffect(() => {
     if (!selectedFile) return
+    let active = true
     setLoading(true)
+    setSellers([]); setStores({}); setKuukausi(''); setPuutteet([])
     fetch(`/api/sheets?fileId=${selectedFile}`)
       .then(r => r.json())
       .then(d => {
+        if (!active) return
+        if (d.error) setPuutteet([d.error])
         if (d.sellers) {
           const sorted = [...d.sellers]
             .filter((s: SellerResult) => s.tyyppi !== 'standi')
@@ -221,29 +222,36 @@ function EtelanHaratSivu() {
         }
         setLoading(false)
       })
+      .catch(() => { if (active) { setPuutteet(['Myyntitietojen haku epäonnistui. Lataa sivu uudelleen.']); setLoading(false) } })
+    return () => { active = false }
   }, [selectedFile])
 
   // Tavoitteet ja työpäivät omasta reitistään: ne luetaan Drivestä ilman
   // välimuistia, kun taas /api/sheets saa yhä cachettaa toteumat.
   useEffect(() => {
     if (!selectedFile) return
+    let active = true
     setRunrate(null)
+    setRunrateVirhe('')
     fetch(`/api/runrate?fileId=${selectedFile}`)
       .then(r => r.json())
-      .then(d => setRunrate(d.error ? null : d))
-      .catch(() => setRunrate(null))
+      .then(d => { if (active) { setRunrate(d.error ? null : d); setRunrateVirhe(d.error ?? '') } })
+      .catch(() => { if (active) { setRunrate(null); setRunrateVirhe('Tavoitteiden haku epäonnistui. Vaihda kuukautta tai lataa sivu uudelleen.') } })
+    return () => { active = false }
   }, [selectedFile])
 
   // Haetaan kuukauden vaihtuessa eikä näkymän: näkymän vaihto ei saa tehdä
   // uutta hakua eikä jättää edellisen kuukauden rivejä näkyviin.
   useEffect(() => {
     if (!selectedFile) return
+    let active = true
     setTargets([]); setTargetsVirhe(''); setTargetsLoading(true)
     fetch(`/api/targets?fileId=${selectedFile}`)
       .then(r => r.json())
-      .then(d => { if (d.error) setTargetsVirhe(d.error); else setTargets(d.targets ?? []) })
-      .catch(e => setTargetsVirhe(String(e)))
-      .finally(() => setTargetsLoading(false))
+      .then(d => { if (!active) return; if (d.error) setTargetsVirhe(d.error); else setTargets(d.targets ?? []) })
+      .catch(e => { if (active) setTargetsVirhe(String(e)) })
+      .finally(() => { if (active) setTargetsLoading(false) })
+    return () => { active = false }
   }, [selectedFile])
 
   const fmt = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2})
@@ -446,6 +454,8 @@ Generoi viesti:`
           </div>
         )}
 
+        {runrateVirhe && <div role="alert" style={{ padding: 14, color: '#A32D2D' }}>{runrateVirhe}</div>}
+
         {!loading && runrate && (
           <>
             {runrate.varoitukset.length > 0 && (
@@ -467,7 +477,7 @@ Generoi viesti:`
               sarakeOtsikko="Myyjä"
               ikkuna={runrate.tyopaivat}
               naytaIkkunaSarake
-              rivit={myyjaRivit(rrMyyjaToteumat, rrMyyjaTavoitteet, runrate.myyjaVuorot)}
+              rivit={myyjaTavoiteRivit(rrMyyjaToteumat, rrMyyjaTavoitteet, runrate.myyjaVuorot)}
               yhteensa={yhteensaRivi(
                 rrMyyjaToteumat,
                 tavoiteSumma(Object.values(rrMyyjaTavoitteet)),

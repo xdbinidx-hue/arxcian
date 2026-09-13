@@ -128,7 +128,7 @@ test('myyjätavoitteet luetaan litteästä taulukosta', () => {
   assert.match(varoitukset[0], /Tuntematon Tyyppi/)
 })
 
-test('yhteensä-rivi päättää myyjätaulukon eikä päädy myyjäksi', () => {
+test('yhteensä-rivi ei päädy myyjäksi', () => {
   const { rivit: r } = parseMyyjaTavoitteet(rivit([
     'Myyjä|Liittymätavoite|F-Secure Tavoite|Kassakate Tavoite',
     'Hamza Hanif|260|40|1 500,00 €',
@@ -141,4 +141,55 @@ test('otsikkorivin puuttuminen on virhe eikä tyhjä tulos', () => {
   const { rivit: r, varoitukset } = parseMyyjaTavoitteet(rivit(['Jotain muuta|1|2|3']), RJ_MOB_SELLERS)
   assert.deepEqual(r, [])
   assert.match(varoitukset[0], /otsikkoriviä/)
+})
+
+// Syyskuun 2026 rakenne tarkistettu Drivestä 13.9.2026. Välisummat eivät
+// saa katkaista lukua, eikä roolisarakkeen sana Myyjä saa olla nimi.
+test('syyskuun ryhmitellyt myyjätavoitteet luetaan kaikkien välisummien yli', () => {
+  const rows = rivit([
+    'MYYJÄKOHTAISET TAVOITTEET',
+    'Kuukausi:|Syyskuu',
+    'Vuosi:|2026',
+    '',
+    'Myymälä|Rooli|Nimi|Liittymä kpl|F-Secure kpl|Kassakate €|Onnenpäivät / Tapahtumat',
+    'Holma|Myymäläpäällikkö|Joni Viljamaa|150|25|1 200 €|-',
+    'Holma|Myyjä|Steven Sainio|-|-|-|-',
+    'Holma||Myymälä yhteensä|150|25|1 200 €|0',
+    '',
+    'Syke|Myymäläpäällikkö|Leo Rossi|-|-|-|-',
+    'Syke|Myyjä|Daniel Miettinen|100|40|1 100 €|10',
+    'Syke||Myymälä yhteensä|100|40|1 100 €|10',
+    'Malmi|Myyjä|Lauri Ukkonen|125|25|2 000 €|40',
+    'Malmi||Myymälä yhteensä|125|25|2 000 €|40',
+    'Easton|Myyjä|Hamza Hanif|450|80|2 000 €|50',
+    'Easton||Myymälä yhteensä|450|80|2 000 €|50',
+    'Kivistö|Myyjä|Antti Kiljala|50|8|200 €|0',
+    'Kivistö||Myymälä yhteensä|50|8|200 €|0',
+  ])
+  const result = parseMyyjaTavoitteet(rows, RJ_MOB_SELLERS)
+  assert.deepEqual(result.varoitukset, [])
+  assert.equal(result.rivit.length, 7)
+  assert.deepEqual(result.rivit[0], { nimi: 'Joni Viljamaa', liittymat: 150, fsecure: 25, kassakate: 1200 })
+  assert.deepEqual(result.rivit.at(-1), { nimi: 'Antti Kiljala', liittymat: 50, fsecure: 8, kassakate: 200 })
+  for (const nimi of ['Steven Sainio', 'Leo Rossi']) {
+    assert.deepEqual(result.rivit.find(r => r.nimi === nimi), { nimi, liittymat: null, fsecure: null, kassakate: null })
+  }
+})
+
+test('nolla säilyy tavoitteena ja puuttuva yksittäinen mittari nullina', () => {
+  const result = parseMyyjaTavoitteet(rivit([
+    'Myymälä|Rooli|Nimi|Liittymä kpl|F-Secure kpl|Kassakate €',
+    'Holma|Myyjä|Jami Tonteri|0||-',
+  ]), RJ_MOB_SELLERS)
+  assert.deepEqual(result.rivit, [{ nimi: 'Jami Tonteri', liittymat: 0, fsecure: null, kassakate: null }])
+})
+
+test('tavoitetiedoston kuukausi ja vuosi erottuvat myös syyskuun jälkeen', () => {
+  for (const [name, order] of [
+    ['Myyjäkohtaiset Tavoitteet 9. Syyskuu 2026', 202609],
+    ['Myyjäkohtaiset Tavoitteet 10. Lokakuu 2026', 202610],
+    ['Myyjäkohtaiset Tavoitteet 12. Joulukuu 2026', 202612],
+    ['Myyjäkohtaiset Tavoitteet 1. Tammikuu 2027', 202701],
+    ['Myyjäkohtaiset Tavoitteet 9. Syyskuu 2027', 202709],
+  ] as const) assert.equal(kuukausiTiedostonimesta(name)?.order, order)
 })

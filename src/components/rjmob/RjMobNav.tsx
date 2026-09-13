@@ -58,7 +58,7 @@ export function RjMobNav({ activePage, files = [], selectedFile = '', onFileChan
         >
           {files.map(f => (
             <option key={f.id} value={f.id} className="bg-ax-panel text-ax-text">
-              {f.name.replace('Myyntiseuranta ','').replace(' 2026','')}
+              {f.name.replace('Myyntiseuranta ','')}
             </option>
           ))}
         </select>

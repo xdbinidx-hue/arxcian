@@ -18,6 +18,8 @@ import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
  * huomioi ajan kulumisen jo itse.
  */
 
+type NayttoMittari = Omit<RunRateMittari, 'toteuma'> & { toteuma: number | null }
+
 export type RunRateRivi = {
   nimi: string
   /** Rivin oma työpäiväikkuna. Myymälöillä sama kaikilla, myyjillä omansa. */
@@ -25,6 +27,12 @@ export type RunRateRivi = {
   liittymat: RunRateMittari
   fsecure: RunRateMittari
   kassakate: RunRateMittari
+}
+
+export type RunRateNayttoRivi = Omit<RunRateRivi, 'liittymat' | 'fsecure' | 'kassakate'> & {
+  liittymat: NayttoMittari
+  fsecure: NayttoMittari
+  kassakate: NayttoMittari
 }
 
 const MITTARIT: { avain: 'liittymat' | 'fsecure' | 'kassakate'; otsikko: string; yksikko: 'kpl' | '€' }[] = [
@@ -83,10 +91,10 @@ function PctSolu({ pct, pohja }: { pct: number | null; pohja: typeof td }) {
   )
 }
 
-function MittariSolut({ m, yksikko, pohja }: { m: RunRateMittari; yksikko: 'kpl' | '€'; pohja: typeof td }) {
+function MittariSolut({ m, yksikko, pohja }: { m: NayttoMittari; yksikko: 'kpl' | '€'; pohja: typeof td }) {
   return (
     <>
-      <td style={{ ...pohja, color: '#888', borderLeft: '1px solid #e5e5e5' }}>{arvo(m.tavoite, yksikko)}</td>
+      <td style={{ ...pohja, color: '#888', borderLeft: '1px solid #e5e5e5' }}>{m.tavoite === null ? 'Ei tavoitetta' : arvo(m.tavoite, yksikko)}</td>
       <td style={pohja}>{arvo(m.toteuma, yksikko)}</td>
       <td style={{ ...pohja, color: '#185FA5', fontWeight: 500 }}>{arvo(m.ennuste, yksikko)}</td>
       <PctSolu pct={m.pct} pohja={pohja} />
@@ -100,7 +108,7 @@ export function RunRateTaulukko({
   otsikko: string
   /** Ensimmäisen sarakkeen otsikko, esim. "Myymälä" tai "Myyjä". */
   sarakeOtsikko: string
-  rivit: RunRateRivi[]
+  rivit: RunRateNayttoRivi[]
   /** Yhteensä-rivi. Jätetään pois kun summa ei ole mielekäs. */
   yhteensa?: Omit<RunRateRivi, 'nimi' | 'ikkuna'> | null
   /** Taulukon tason työpäiväikkuna otsikkoriville. */

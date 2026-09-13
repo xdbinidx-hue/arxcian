@@ -257,9 +257,12 @@ export type MyyjaTavoiteRivi = {
  * Myymälätavoitteet ovat kolmen aluejohtajan yhteisessä .xlsx-työkirjassa,
  * jossa on kaksitasoiset otsikot ja kuukausi sarakkeessa; myyjätavoitteet
  * ovat omassa natiivissa Sheets-taulukossaan kuukausikansiossa
- * ("Myyjäkohtaiset Tavoitteet 9. Syyskuu 2026"), yksi litteä taulukko:
+ * ("Myyjäkohtaiset Tavoitteet 9. Syyskuu 2026"). Elokuun rakenne:
  *
  *   Myyjä | Liittymätavoite | F-Secure Tavoite | Kassakate Tavoite
+ *
+ * Syyskuusta 2026 rakenne on Myymälä | Rooli | Nimi | Liittymä kpl |
+ * F-Secure kpl | Kassakate €, ja myyjien välissä on myymälävälisummia.
  *
  * Kuukausi on siis **tiedostossa**, ei sarakeotsikossa — siksi tämä ei ota
  * kuukautta parametrina lainkaan, toisin kuin `parseMyymalaTavoitteet`.
@@ -278,10 +281,10 @@ export function parseMyyjaTavoitteet(
   const varoitukset: string[] = []
 
   const otsikkoIdx = rows.findIndex(r =>
-    r.some(c => /^myyj/.test(norm(c))) && r.some(c => norm(c).includes('liittym')),
+    r.some(c => ['myyjä', 'myyja', 'nimi'].includes(norm(c))) && r.some(c => norm(c).includes('liittym')),
   )
   if (otsikkoIdx < 0) {
-    return { rivit: [], varoitukset: ['Myyjätavoitetaulukosta ei löytynyt otsikkoriviä (Myyjä + Liittymätavoite)'] }
+    return { rivit: [], varoitukset: ['Myyjätavoitetaulukosta ei löytynyt otsikkoriviä (Myyjä tai Nimi + Liittymät)'] }
   }
 
   const otsikot = rows[otsikkoIdx].map(norm)
@@ -309,7 +312,8 @@ export function parseMyyjaTavoitteet(
   for (let i = otsikkoIdx + 1; i < rows.length; i++) {
     const raaka = String(rows[i]?.[idxNimi >= 0 ? idxNimi : 0] ?? '').trim()
     const eka = norm(raaka)
-    if (eka.includes('yhteensä') || eka.includes('yhteenveto')) break
+    // Syyskuusta alkaen myymäläkohtaiset välisummat ovat myyjien välissä.
+    if (eka.includes('yhteensä') || eka.includes('yhteenveto')) continue
     if (eka === '') continue
 
     const nimi = kanoninen[eka]
