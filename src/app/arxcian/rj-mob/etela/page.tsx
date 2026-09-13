@@ -103,7 +103,7 @@ const ULKOPUOLISET_RIVIT: { avain: 'vieraatMyymaloissa' | 'omatMuualla' | 'stand
 type Nakyma = 'tavoitteet' | 'uusmyynti' | 'kassamyynti'
 
 const NAKYMAT: { id: Nakyma; label: string }[] = [
-  { id: 'tavoitteet', label: 'Tavoitteet & Runrate' },
+  { id: 'tavoitteet', label: 'myynti & Runrate' },
   { id: 'uusmyynti', label: 'Uusmyynti' },
   { id: 'kassamyynti', label: 'Kassamyynti' },
 ]
