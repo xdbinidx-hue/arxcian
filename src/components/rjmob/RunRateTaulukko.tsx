@@ -153,9 +153,7 @@ export function RunRateTaulukko({
               <tbody>
                 {rivit.map((r, i) => (
                   <tr key={r.nimi} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td style={tdL}>{r.nimi}{r.tapahtumaHuomautus && (
-                      <div style={{ fontSize: 11, fontWeight: 400, whiteSpace: 'normal', minWidth: 180, maxWidth: 260, color: '#854F0B' }}>{r.tapahtumaHuomautus}</div>
-                    )}</td>
+                    <td style={tdL}>{r.nimi}</td>
                     {naytaIkkunaSarake && (
                       <td style={{ ...td, color: '#888' }}>
                         {r.ikkuna ? `${r.ikkuna.paattyneet}/${r.ikkuna.kaikki}` : '–'}

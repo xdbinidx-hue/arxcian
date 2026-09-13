@@ -467,9 +467,6 @@ Generoi viesti:`
               </div>
             )}
 
-            {myymalaEnnusteRivit.some(r => r.tapahtumaHuomautus) && (
-              <p style={{ fontSize: 12, color: '#854F0B' }}>Liittymäennuste huomioi Malmin 10.–12.9. tapahtuman. Toteumat ja tavoitteet säilyvät ennallaan. Viiva ennusteessa tarkoittaa, että tarvittava tapahtumaerittely tai vuorotieto puuttuu. F-Securen ja kassakatteen ennusteita ei ole tapahtumakorjattu.</p>
-            )}
             <RunRateTaulukko
               otsikko={`Myymälät — Run Rate ${runrate.kuukausi.replace('Myyntiseuranta ', '')}`}
               sarakeOtsikko="Myymälä"
