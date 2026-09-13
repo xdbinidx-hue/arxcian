@@ -48,28 +48,6 @@ interface DriveFile {
 }
 
 /**
- * Rivit joita myymälätaulukko ei näytä, ja se osa jonka se näyttää mutta
- * myyjätaulukko ei. Palvelimen `Ulkopuoliset` sellaisenaan — kentät ovat
- * valinnaisia, koska /api/sheets on CDN-välimuistissa ja vanha vastaus voi
- * yhä olla ilman niitä.
- */
-interface Era {
-  liittKpl: number
-  liittEur: number
-  fsecKpl: number
-  fsecEur: number
-  kassa: number
-  tunnit: number
-}
-interface Ulkopuoliset {
-  standi: Era
-  omatMuualla: Era
-  muut: Era
-  vieraatMyymaloissa: Era
-  paikat: { nimi: string; liittKpl: number; kassa: number; tunnit: number }[]
-}
-
-/**
  * Myyjän `kassa` on kassaprovisio, myymälän `kassa` valmiiksi kassakate.
  * Run rate vertaa molempia samaan tavoitteeseen (kassakate, alv 0), joten
  * myyjärivi kerrotaan takaisin. Sama luku kuin `KASSAKATE_JAKAJA`
@@ -77,19 +55,6 @@ interface Ulkopuoliset {
  * menevät tarkoituksella eri suuntiin, ks. CLAUDE.md.
  */
 const KASSAKATE_KERROIN = 10
-
-/**
- * Myymälätaulukon alle listattavat erät. Järjestys on selitysjärjestys:
- * ensin se mikä on myymälän luvussa mukana muttei myyjätaulukossa, sitten se
- * mikä on myyjätaulukossa muttei myymälän luvussa, ja lopuksi se mikä ei ole
- * kummassakaan.
- */
-const ULKOPUOLISET_RIVIT: { avain: 'vieraatMyymaloissa' | 'omatMuualla' | 'standi' | 'muut'; label: string; selite: string }[] = [
-  { avain: 'vieraatMyymaloissa', label: 'Muut myyjät myymälöissämme', selite: 'sisältyy yllä oleviin myymälälukuihin, ei myyjätaulukkoon' },
-  { avain: 'omatMuualla', label: 'Omat myyjät muualla', selite: 'tapahtumat ym. — myyjätaulukossa mukana, myymälärivillä ei' },
-  { avain: 'standi', label: 'Ständimyynti', selite: 'poistetaan aina myymälän tuloksesta' },
-  { avain: 'muut', label: 'Muut myymälät', selite: 'muun organisaation myynti, ei RJ-Mobia' },
-]
 
 /**
  * Sivun kolme näkymää. Siirtyivät tänne 1.9.2026 kun Tavoitteet ja Run Rate
@@ -155,7 +120,6 @@ function EtelanHaratSivu() {
   const [kuukausi, setKuukausi] = useState('')
   const [lahde, setLahde] = useState('')
   const [puutteet, setPuutteet] = useState<string[]>([])
-  const [ulkopuoliset, setUlkopuoliset] = useState<Ulkopuoliset | null>(null)
   const [loading, setLoading] = useState(false)
   const [runrate, setRunrate] = useState<RunRateData | null>(null)
   const [runrateVirhe, setRunrateVirhe] = useState('')
@@ -210,7 +174,7 @@ function EtelanHaratSivu() {
     if (!selectedFile) return
     let active = true
     setLoading(true)
-    setSellers([]); setStores({}); setKuukausi(''); setPuutteet([]); setLahde(''); setUlkopuoliset(null)
+    setSellers([]); setStores({}); setKuukausi(''); setPuutteet([]); setLahde('')
     fetch(`/api/sheets?fileId=${selectedFile}`)
       .then(r => r.json())
       .then(d => {
@@ -229,7 +193,6 @@ function EtelanHaratSivu() {
           setKuukausi(d.kuukausi ?? '')
           setLahde(d.lahde ?? '')
           setPuutteet(d.puutteet ?? [])
-          setUlkopuoliset(d.ulkopuoliset ?? null)
         }
         setLoading(false)
       })
@@ -266,7 +229,6 @@ function EtelanHaratSivu() {
   }, [selectedFile])
 
   const fmt = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2})
-  const fmtN = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 0, maximumFractionDigits: 0})
 
   /**
    * Yhteensä-rivin teho on painotettu: Σ(provisio) / Σ(tunnit).
@@ -624,40 +586,6 @@ Generoi viesti:`
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
                       <td style={tehoTot(storeTeho.total)}>{fmt(storeTeho.total)} €/h</td>
                     </tr>
-
-                    {/* Rajauksen ulkopuoliset rivit. Nämä EIVÄT ole mukana
-                        Yhteensä-rivissä — ne ovat tässä siksi, ettei mikään
-                        katoaisi hiljaa jos suodatin joskus menee rikki, ja
-                        koska juuri ne selittävät miksi myyjätaulukon summa on
-                        eri kuin myymälätaulukon. */}
-                    {ulkopuoliset && ULKOPUOLISET_RIVIT.map(({ avain, label, selite }) => {
-                      const e = ulkopuoliset[avain]
-                      if (!e || (e.liittKpl === 0 && e.kassa === 0 && e.fsecKpl === 0)) return null
-                      return (
-                        <tr key={avain} style={{background:'#fbfbf9', color:'#777'}}>
-                          <td style={{...tdLStyle, color:'#bbb'}}>·</td>
-                          <td style={{...tdLStyle, fontWeight:400}}>
-                            {label}
-                            <span style={{display:'block', fontSize:11, color:'#aaa'}}>{selite}</span>
-                          </td>
-                          <td style={tdStyle}>{fmt(e.liittEur)} €</td>
-                          <td style={tdStyle}>{e.liittKpl}</td>
-                          <td style={tdStyle}>{fmt(e.fsecEur)} €</td>
-                          <td style={tdStyle}>{e.fsecKpl}</td>
-                          <td style={tdStyle}>{fmt(e.kassa)} €</td>
-                          <td style={tdStyle}>{fmt(e.tunnit)}</td>
-                          <td style={tdStyle} colSpan={3} />
-                        </tr>
-                      )
-                    })}
-                    {ulkopuoliset && ulkopuoliset.paikat.length > 0 && (
-                      <tr>
-                        <td colSpan={11} style={{...tdStyle, textAlign:'left', fontSize:11, color:'#aaa', padding:'6px 10px 10px 40px'}}>
-                          Tapahtumat ja muut paikat: {ulkopuoliset.paikat
-                            .map(pk => `${pk.nimi} ${fmtN(pk.liittKpl)} kpl`).join(' · ')}
-                        </td>
-                      </tr>
-                    )}
 
                   </tbody>
                 </table>
