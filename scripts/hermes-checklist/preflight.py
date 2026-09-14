@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 from pathlib import Path
 
 EXPECTED_GATEWAY = '3a7e5f62f74f090df750d9c81c1ae8c0fd31987e29e7302d7badf54affcb7547'
@@ -16,7 +17,7 @@ def fingerprint(path):
 
 
 def audit():
-    result = {'read_only': True, 'gateway_source': {}, 'processes': [], 'databases': [], 'existing_implementations': [], 'config_summaries': []}
+    result = {'report_version': 2, 'python_executable': sys.executable, 'read_only': True, 'gateway_source': {}, 'processes': [], 'databases': [], 'existing_implementations': [], 'config_summaries': []}
     source = Path('/opt/hermes/gateway/run.py')
     sha = fingerprint(source)
     result['gateway_source'] = {'path': str(source), 'sha256': sha, 'matches_reviewed': sha == EXPECTED_GATEWAY}
@@ -90,16 +91,21 @@ def audit():
                 summary['multiplex_profiles'] = multiplex if isinstance(multiplex, bool) else None
                 platforms = gateway.get('platforms', config.get('platforms', {})) or {}
                 telegram = platforms.get('telegram') or {}
+                extra = telegram.get('extra') or {}
+                summary['enabled_platform_count'] = sum(1 for v in platforms.values() if isinstance(v, dict) and v.get('enabled') is True)
+                summary['profile_route_count'] = len(gateway.get('profile_routes', [])) if isinstance(gateway.get('profile_routes', []), list) else None
                 summary['telegram_configured'] = bool(telegram)
                 for key in ('allow_from', 'group_allow_from', 'allowed_users'):
-                    entries = telegram.get(key)
+                    entries = telegram.get(key, extra.get(key))
                     summary['yaml_' + key + '_count'] = len(entries) if isinstance(entries, list) else None
                 # Politiikoista vain tunnetut enum-arvot, ei vapaata asetustekstiä.
                 for key in ('dm_policy', 'group_policy'):
-                    value = telegram.get(key)
+                    value = telegram.get(key, extra.get(key))
                     summary['yaml_' + key] = value if value in ('open', 'disabled', 'pairing', 'allowlist') else None
-            except Exception:
+            except Exception as exc:
                 summary['yaml_summary_unavailable'] = True
+                # Vain virheluokka. Poikkeusviesti voi sisältää asetuksen arvon.
+                summary['yaml_error_type'] = type(exc).__name__ if type(exc).__name__ in ('ModuleNotFoundError', 'ImportError', 'PermissionError', 'ParserError', 'ScannerError', 'AttributeError', 'TypeError') else 'OtherError'
         result['config_summaries'].append(summary)
         for path in (root / 'kanban.db', root / 'kanban/boards/arxcian/kanban.db'):
             if not path.is_file():

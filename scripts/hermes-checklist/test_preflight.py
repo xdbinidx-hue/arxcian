@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 import preflight
@@ -16,6 +17,7 @@ class PreflightTests(unittest.TestCase):
                 return root / str(path).lstrip('/') if str(path).startswith(('/opt/', '/proc')) else path
             data = mapped('/opt/data')
             data.mkdir(parents=True)
+            (data / 'config.yaml').write_text('private-config-content')
             (data / '.env').write_text('API_SERVER_KEY=private-secret-value\nTELEGRAM_ALLOWED_USERS=9988776655\nTELEGRAM_ALLOW_ALL_USERS=false\n')
             pairing = data / 'platforms/pairing'
             pairing.mkdir(parents=True)
@@ -31,15 +33,23 @@ class PreflightTests(unittest.TestCase):
             (proc / 'environ').write_bytes(b'API_SERVER_KEY=another-private-secret\0TELEGRAM_ALLOWED_USERS=9988776655\0')
             before = {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
             with patch.object(preflight, 'Path', side_effect=mapped):
-                report = preflight.audit()
+                with patch.dict('sys.modules', {'yaml': None}):
+                    report = preflight.audit()
+                fake_yaml = SimpleNamespace(safe_load=lambda _: {'gateway': {'platforms': {'telegram': {'enabled': True, 'extra': {'allow_from': ['9988776655'], 'dm_policy': 'allowlist'}}}}})
+                with patch.dict('sys.modules', {'yaml': fake_yaml}):
+                    parsed = preflight.audit()
+                self.assertEqual(parsed['config_summaries'][0]['yaml_allow_from_count'], 1)
+                self.assertEqual(parsed['config_summaries'][0]['yaml_dm_policy'], 'allowlist')
             after = {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
             self.assertEqual(before, after)
             serialized = json.dumps(report)
-            for value in ('private-secret-value', 'another-private-secret', '9988776655', 'private-person-name', 'private-conversation-text'):
+            for value in ('private-secret-value', 'another-private-secret', '9988776655', 'private-person-name', 'private-conversation-text', 'private-config-content'):
                 self.assertNotIn(value, serialized)
+                self.assertNotIn(value, json.dumps(parsed))
             self.assertEqual(report['databases'][0]['task_count'], 1)
             self.assertFalse(report['gateway_source']['matches_reviewed'])
             self.assertIsNone(report['processes'][0]['gateway_allow_all'])
+            self.assertEqual(report['config_summaries'][0]['yaml_error_type'], 'ModuleNotFoundError')
 
 
 if __name__ == '__main__':
