@@ -49,6 +49,9 @@ export default async function PersonalPage({
         <p className="mt-1 text-[13px] text-ax-dim">Päivän tehtävät, kalenteri, tavoitteet ja rutiinit</p>
       </header>
 
+      {owner === 'albin' && process.env.ARXCIAN_CHECKLIST_ENABLED === 'true' && (
+        <a href="/arxcian/personal/checklist" className="mb-4 block rounded-xl border border-white/10 p-4">Käyttötestilista · jatka Telegramissa aloitettua tehtävää →</a>
+      )}
       <div className="mb-4">
         <CalendarPanel status={calendar} notice={resolvedSearchParams.kalenteri} />
       </div>

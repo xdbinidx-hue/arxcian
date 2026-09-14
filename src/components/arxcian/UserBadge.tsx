@@ -14,6 +14,7 @@ export function UserBadge({ user }: { user: string }) {
     setBusy(true)
     await fetch('/api/logout', { method: 'POST' })
     clearOracleBrowserState(user, localStorage, sessionStorage)
+    sessionStorage.removeItem('arxcian:albin:checklist:submission')
     router.push('/login')
     router.refresh()
   }

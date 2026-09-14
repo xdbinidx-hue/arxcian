@@ -1,4 +1,5 @@
 const ORACLE_BRIDGE_PATHS = new Set([
+  '/api/arxcian/oracle/bridge/checklist',
   '/api/arxcian/oracle/bridge/claim',
   '/api/arxcian/oracle/bridge/state',
   '/api/arxcian/oracle/bridge/running',
