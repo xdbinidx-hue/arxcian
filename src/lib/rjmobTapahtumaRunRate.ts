@@ -23,7 +23,11 @@ export const IISALMI_SYYSKUU_2026 = {
   myyjat: { 'Hamza Hanif': 127, 'Alec Fambro': 82 } as Record<string, number>,
 }
 
+export const TAPAHTUMA_LIITTYMAT_PER_PAIVA = 20
+
 export type TapahtumaOikaisu = {
+  /** Tulevat tapahtumapäivät ennustetaan erikseen, kerran per päivä. */
+  tulevatPaivat?: number
   /** Tapahtumatoteuma on jo kuukauden toteumassa. */
   toteuma: number
   paattyneet: number
@@ -86,17 +90,17 @@ export function tapahtumaOikaisut(
     }
     const aiemmat = muut.filter(v => v.date <= viimeinen)
     if (aiemmat.length) syyt.push(`Muiden tapahtumien toteumaerittely puuttuu (${Array.from(new Set(aiemmat.map(v => v.date))).join(', ')})`)
-    // Albinin päätös 14.9.2026: tulevat tapahtumavuorot ennustetaan
-    // normaalitahdilla ilman erillistä arviota. Ne jäävät koko vuoroikkunaan,
-    // eivät vähennettäviin tapahtumapäiviin. Tuntematon mennyt tapahtuma
-    // estää edelleen normaalitahdin laskennan.
-    if (tapahtumaVuorot.some(v => omat.filter(o => o.date === v.date).length > 1)) syyt.push('Samalla päivällä on useita vuoroja; tapahtuma-aika on eriteltävä')
+    // Albinin uusin päätös 14.9.2026: 20 liittymää / myyjä / tuleva
+    // tapahtumapäivä. Päivä poistetaan normaalitahdin loppuennusteesta.
+    const tulevat = muut.filter(v => v.date > viimeinen)
+    if ([...tapahtumaVuorot, ...tulevat].some(v => omat.filter(o => o.date === v.date).length > 1)) syyt.push('Samalla päivällä on useita vuoroja; tapahtuma-aika on eriteltävä')
     const toteuma = (e.myyjat[nimi] ?? 0) + (iisalmi.myyjat[nimi] ?? 0)
     result.myyjat[nimi] = {
       toteuma,
+      tulevatPaivat: new Set(tulevat.map(v => v.date)).size,
       paattyneet: tapahtumaVuorot.filter(v => v.date <= viimeinen).length,
       kaikki: tapahtumaVuorot.length,
-      selite: `Vahvistettu tapahtumamyynti: ${toteuma} liittymää, ${tapahtumaVuorot.length} tapahtumavuoroa. Loppukuun vuorot, myös tulevat tapahtumat, ennustetaan normaalitahdilla.`,
+      selite: `Vahvistettu tapahtumamyynti: ${toteuma} liittymää, ${tapahtumaVuorot.length} tapahtumavuoroa. Tulevat tapahtumapäivät: ${new Set(tulevat.map(v => v.date)).size} × ${TAPAHTUMA_LIITTYMAT_PER_PAIVA} liittymää. Muut jäljellä olevat vuorot ennustetaan normaalitahdilla.`,
       ...(syyt.length ? { puute: syyt.join('. ') } : {}),
     }
   }
@@ -115,7 +119,13 @@ export function tapahtumaMittari(
   if (o.puute) return tyhja(o.puute)
   const paattyneet = ikkuna.paattyneet - o.paattyneet
   const kaikki = ikkuna.kaikki - o.kaikki
-  if (paattyneet <= 0 || kaikki < paattyneet || o.paattyneet > ikkuna.paattyneet || o.kaikki > ikkuna.kaikki) return tyhja('Normaalivuorojen myyntitahtia ei voi vielä laskea työvuorolistasta.')
-  const ennuste = mittari.toteuma + (mittari.toteuma - o.toteuma) / paattyneet * (kaikki - paattyneet)
+  const tulevat = o.tulevatPaivat ?? 0
+  const normaalejaJaljella = kaikki - paattyneet - tulevat
+  if (!Number.isInteger(tulevat) || tulevat < 0 || normaalejaJaljella < 0 || paattyneet < 0
+    || (paattyneet === 0 && normaalejaJaljella > 0) || o.paattyneet > ikkuna.paattyneet || o.kaikki > ikkuna.kaikki) {
+    return tyhja('Normaalivuorojen myyntitahtia ei voi vielä laskea työvuorolistasta.')
+  }
+  const normaaliEnnuste = normaalejaJaljella === 0 ? 0 : (mittari.toteuma - o.toteuma) / paattyneet * normaalejaJaljella
+  const ennuste = mittari.toteuma + normaaliEnnuste + tulevat * TAPAHTUMA_LIITTYMAT_PER_PAIVA
   return { ...mittari, ennuste, pct: pctTavoitteesta(ennuste, mittari.tavoite), huomautus: o.selite }
 }

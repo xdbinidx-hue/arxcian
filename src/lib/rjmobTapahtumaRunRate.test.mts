@@ -43,8 +43,8 @@ test('Lahden x-vuorot yhdistetään vahvistettuun osallistujaan ja sairauspoissa
   assert.equal(o.myyjat['Daniel Miettinen'], undefined)
   assert.equal(o.myyjat['Steven Sainio'], undefined)
 })
-test('tuleva tapahtuma käyttää normaalitahtia mutta tuntematon mennyt tapahtuma estää ennusteen', () => {
-  for (const [date, expected] of [['2026-09-03', null], ['2026-09-20', 125]] as const) {
+test('tuleva tapahtuma käyttää 20 liittymän päiväoletusta mutta tuntematon mennyt tapahtuma estää ennusteen', () => {
+  for (const [date, expected] of [['2026-09-03', null], ['2026-09-20', 140]] as const) {
     const o = tapahtumaOikaisut(202609, '2026-09-12', [
       paiva('2026-09-10', 'Krenar Bajqinovci', 'Malmi'),
       paiva('2026-09-12', 'Krenar Bajqinovci', 'Malmi'),
@@ -53,10 +53,10 @@ test('tuleva tapahtuma käyttää normaalitahtia mutta tuntematon mennyt tapahtu
     assert.equal(tapahtumaMittari(runRateMittari(60, 150, 10, 23), { paattyneet: 10, kaikki: 23 }, o).ennuste, expected)
   }
 })
-test('Iisalmi ja Malmi vähennetään vain normaalitahdista, tulevat tapahtumat saavat normaalitahdin', () => {
+test('Iisalmi ja Malmi vähennetään vain normaalitahdista, tuleville tapahtumille lisätään 20 normaalipäivän sijasta', () => {
   for (const [nimi, total, malmiDates, past, expected] of [
-    ['Hamza Hanif', 296, ['10', '11', '12'], 11, 435.2],
-    ['Alec Fambro', 160, ['10', '12'], 10, 232.8],
+    ['Hamza Hanif', 296, ['10', '11', '12'], 11, 443.6],
+    ['Alec Fambro', 160, ['10', '12'], 10, 247.2],
   ] as const) {
     const pk = [...['04', '05', '06'].map(day => paiva(`2026-09-${day}`, nimi, 'Tapahtuma')),
       ...malmiDates.map(day => paiva(`2026-09-${day}`, nimi, 'Malmi')),
@@ -74,7 +74,7 @@ test('pelkkä tuleva tapahtuma ei estä Leon tai Jamin ennustetta', () => {
     const o = tapahtumaOikaisut(202609, '2026-09-13', [], [{ seller, date: '2026-09-24', paikka: 'x', tunnit: 8 }]).myyjat[seller]
     assert.equal(o.puute, undefined)
     const m = runRateMittari(49, 150, 9, 23)
-    assert.equal(tapahtumaMittari(m, { paattyneet: 9, kaikki: 23 }, o).ennuste, m.ennuste)
+    assert.equal(tapahtumaMittari(m, { paattyneet: 9, kaikki: 23 }, o).ennuste, 49 + 49 / 9 * 13 + 20)
   }
 })
 test('Iisalmen keskeneräinen tai puutteellinen vuoroerittely ei tuota ennustetta', () => {
@@ -119,4 +119,21 @@ test('muiden myymälöiden luvut säilyvät ja yhteisennuste on korjattujen rivi
   assert.equal(sum.liittymat.ennuste, 791 + 156 / 11 * 26)
   jalkeen[0].liittymat.ennuste = null
   assert.equal(tapahtumaYhteensa(sum, jalkeen).liittymat.ennuste, null)
+})
+
+test('tapahtumaennuste koskee vain tulevia päiviä ja myyjää kerran päivässä', () => {
+ const p = paiva('2026-09-24', 'Leo Rossi', 'Tapahtuma')
+ p.shifts.push({...p.shifts[0]})
+ const o = tapahtumaOikaisut(202609, '2026-09-13', [p], []).myyjat['Leo Rossi']
+ assert.equal(o.tulevatPaivat, 1)
+ assert.match(o.puute!, /useita vuoroja/)
+ const past = tapahtumaOikaisut(202609, '2026-09-24', [paiva('2026-09-24','Leo Rossi','Tapahtuma')], []).myyjat['Leo Rossi']
+ assert.equal(past.tulevatPaivat, 0)
+ assert.match(past.puute!, /Muiden tapahtumien/)
+})
+test('pelkät tulevat tapahtumat eivät tarvitse normaalipäivän tahtia, virheellinen päiväluku estetään', () => {
+ const m = runRateMittari(0, 100, 0, 3)
+ const base = {toteuma:0,paattyneet:0,kaikki:0,selite:'testi'}
+ assert.equal(tapahtumaMittari(m,{paattyneet:0,kaikki:3},{...base,tulevatPaivat:3}).ennuste,60)
+ for(const days of [-1,4,1.5,NaN]) assert.equal(tapahtumaMittari(m,{paattyneet:0,kaikki:3},{...base,tulevatPaivat:days}).ennuste,null)
 })
