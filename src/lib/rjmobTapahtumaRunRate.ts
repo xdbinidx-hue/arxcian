@@ -16,6 +16,13 @@ export const MALMI_SYYSKUU_2026 = {
   } as Record<string, number>,
 }
 
+/** Albin vahvisti 14.9.2026: nämä Iisalmen myynnit kuuluvat kokonaan
+ * 4.–6.9. tapahtumaan ja sisältyvät jo myyjien kuukausitoteumiin. */
+export const IISALMI_SYYSKUU_2026 = {
+  alku: '2026-09-04', loppu: '2026-09-06',
+  myyjat: { 'Hamza Hanif': 127, 'Alec Fambro': 82 } as Record<string, number>,
+}
+
 export type TapahtumaOikaisu = {
   /** Tapahtumatoteuma on jo kuukauden toteumassa. */
   toteuma: number
@@ -38,7 +45,7 @@ export function tapahtumaOikaisut(
   order: number, viimeinen: string, pk: DayInfo[], lahti: LahtiVuoro[],
 ): TapahtumaRunRate {
   const result: TapahtumaRunRate = { myymalat: {}, myyjat: {} }
-  // Tämä vahvistettu erittely koskee vain yhtä tapahtumaa. Muiden kuukausien
+  // Nämä vahvistetut erittelyt koskevat syyskuun 2026 tapahtumia. Muiden kuukausien
   // toteumaa tai tapahtuman tavoitetta ei lainata sen tilalle.
   if (order !== 202609) return result
   const e = MALMI_SYYSKUU_2026
@@ -58,28 +65,38 @@ export function tapahtumaOikaisut(
     seller: v.seller, date: v.date, paikka: v.paikka,
     tapahtuma: v.paikka.trim() !== '' && !normaaliPaikka.test(v.paikka.trim()),
   })))
-  const nimet = new Set([...Object.keys(e.myyjat), ...vuorot.filter(v => v.tapahtuma).map(v => v.seller)])
+  const iisalmi = IISALMI_SYYSKUU_2026
+  const nimet = new Set([...Object.keys(e.myyjat), ...Object.keys(iisalmi.myyjat), ...vuorot.filter(v => v.tapahtuma).map(v => v.seller)])
   for (const nimi of Array.from(nimet)) {
     const omat = vuorot.filter(v => v.seller === nimi)
-    const kuuluu = (v: Vuoro) => nimi in e.myyjat && v.date >= e.alku && v.date <= e.loppu
+    const kuuluuMalmiin = (v: Vuoro) => nimi in e.myyjat && v.date >= e.alku && v.date <= e.loppu
       && (v.paikka.toLowerCase() === 'malmi' || v.paikka.toLowerCase() === 'm' || v.tapahtuma)
-    const tapahtumaVuorot = omat.filter(kuuluu)
-    const muut = omat.filter(v => v.tapahtuma && !kuuluu(v))
+    const kuuluuIisalmeen = (v: Vuoro) => nimi in iisalmi.myyjat && v.date >= iisalmi.alku && v.date <= iisalmi.loppu
+      && v.tapahtuma
+    const malmiVuorot = omat.filter(kuuluuMalmiin)
+    const iisalmiVuorot = omat.filter(kuuluuIisalmeen)
+    const tapahtumaVuorot = [...malmiVuorot, ...iisalmiVuorot]
+    const muut = omat.filter(v => v.tapahtuma && !kuuluuMalmiin(v) && !kuuluuIisalmeen(v))
     const syyt: string[] = []
     if (!valmis && nimi in e.myyjat) syyt.push('Malmin tapahtuman erittely ei ole vielä päättynyt')
-    if (nimi in e.myyjat && tapahtumaVuorot.length === 0) syyt.push('Malmin tapahtumamyynti on tiedossa, mutta tapahtumavuoro puuttuu työvuorolistasta')
+    if (nimi in e.myyjat && malmiVuorot.length === 0) syyt.push('Malmin tapahtumamyynti on tiedossa, mutta tapahtumavuoro puuttuu työvuorolistasta')
+    if (nimi in iisalmi.myyjat) {
+      if (viimeinen < iisalmi.loppu) syyt.push('Iisalmen tapahtuman erittely ei ole vielä päättynyt')
+      if (new Set(iisalmiVuorot.map(v => v.date)).size !== 3) syyt.push('Iisalmen 4.–6.9. tapahtumavuorojen erittely puuttuu työvuorolistasta')
+    }
     const aiemmat = muut.filter(v => v.date <= viimeinen)
-    const tulevat = muut.filter(v => v.date > viimeinen)
     if (aiemmat.length) syyt.push(`Muiden tapahtumien toteumaerittely puuttuu (${Array.from(new Set(aiemmat.map(v => v.date))).join(', ')})`)
-    if (tulevat.length) syyt.push(`Tulevien tapahtumavuorojen myyntiarvio puuttuu (${Array.from(new Set(tulevat.map(v => v.date))).join(', ')})`)
-    // Kaksi vuoroa saman päivän aikana ei kerro ajankäytön jakoa. Älä
-    // vähennä koko päivää normaalimyynnistä ilman tarkempaa erittelyä.
+    // Albinin päätös 14.9.2026: tulevat tapahtumavuorot ennustetaan
+    // normaalitahdilla ilman erillistä arviota. Ne jäävät koko vuoroikkunaan,
+    // eivät vähennettäviin tapahtumapäiviin. Tuntematon mennyt tapahtuma
+    // estää edelleen normaalitahdin laskennan.
     if (tapahtumaVuorot.some(v => omat.filter(o => o.date === v.date).length > 1)) syyt.push('Samalla päivällä on useita vuoroja; tapahtuma-aika on eriteltävä')
+    const toteuma = (e.myyjat[nimi] ?? 0) + (iisalmi.myyjat[nimi] ?? 0)
     result.myyjat[nimi] = {
-      toteuma: e.myyjat[nimi] ?? 0,
+      toteuma,
       paattyneet: tapahtumaVuorot.filter(v => v.date <= viimeinen).length,
       kaikki: tapahtumaVuorot.length,
-      selite: `Malmin tapahtuma: ${e.myyjat[nimi] ?? 0} liittymää, ${tapahtumaVuorot.length} tapahtumavuoroa. Ennuste käyttää normaalivuorojen tahtia.`,
+      selite: `Vahvistettu tapahtumamyynti: ${toteuma} liittymää, ${tapahtumaVuorot.length} tapahtumavuoroa. Loppukuun vuorot, myös tulevat tapahtumat, ennustetaan normaalitahdilla.`,
       ...(syyt.length ? { puute: syyt.join('. ') } : {}),
     }
   }
