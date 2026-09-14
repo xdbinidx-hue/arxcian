@@ -170,12 +170,25 @@ function EtelanHaratSivu() {
     return () => { active = false }
   }, [])
 
+  const [paivitys, setPaivitys] = useState(0)
+  useEffect(() => {
+    const paivita = () => { if (document.visibilityState === 'visible') setPaivitys(n => n + 1) }
+    const timer = window.setInterval(paivita, 60_000)
+    window.addEventListener('focus', paivita)
+    document.addEventListener('visibilitychange', paivita)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', paivita)
+      document.removeEventListener('visibilitychange', paivita)
+    }
+  }, [])
+
   useEffect(() => {
     if (!selectedFile) return
     let active = true
     setLoading(true)
     setSellers([]); setStores({}); setKuukausi(''); setPuutteet([]); setLahde('')
-    fetch(`/api/sheets?fileId=${selectedFile}`)
+    fetch(`/api/sheets?fileId=${selectedFile}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (!active) return
@@ -198,7 +211,7 @@ function EtelanHaratSivu() {
       })
       .catch(() => { if (active) { setPuutteet(['Myyntitietojen haku epäonnistui. Lataa sivu uudelleen.']); setLoading(false) } })
     return () => { active = false }
-  }, [selectedFile])
+  }, [selectedFile, paivitys])
 
   // Tavoitteet ja työpäivät omasta reitistään: ne luetaan Drivestä ilman
   // välimuistia, kun taas /api/sheets saa yhä cachettaa toteumat.
@@ -212,7 +225,7 @@ function EtelanHaratSivu() {
       .then(d => { if (active) { setRunrate(d.error ? null : d); setRunrateVirhe(d.error ?? '') } })
       .catch(() => { if (active) { setRunrate(null); setRunrateVirhe('Tavoitteiden haku epäonnistui. Vaihda kuukautta tai lataa sivu uudelleen.') } })
     return () => { active = false }
-  }, [selectedFile])
+  }, [selectedFile, paivitys])
 
   // Haetaan kuukauden vaihtuessa eikä näkymän: näkymän vaihto ei saa tehdä
   // uutta hakua eikä jättää edellisen kuukauden rivejä näkyviin.
@@ -226,7 +239,7 @@ function EtelanHaratSivu() {
       .catch(e => { if (active) setTargetsVirhe(String(e)) })
       .finally(() => { if (active) setTargetsLoading(false) })
     return () => { active = false }
-  }, [selectedFile])
+  }, [selectedFile, paivitys])
 
   const fmt = (n: number) => n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2})
 

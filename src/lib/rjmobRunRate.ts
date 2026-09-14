@@ -2,29 +2,15 @@ import { google } from 'googleapis'
 import { haeTavoitteet, type TavoiteHaku } from '@/lib/rjmobTavoiteDrive'
 import { monthOrder } from '@/lib/rjmobDrive'
 import { tyopaivaIkkuna, viimeinenPaattynytPaiva, type TyopaivaIkkuna } from '@/lib/rjmobWorkdays'
-import { laskeVuoroIkkuna, type DayInfo } from '@/lib/shiftSchedule'
-import { lueLista } from '@/lib/shifts/shiftStore'
+import { myyjaSarakkeet } from '@/lib/shifts/tyovuoroExcel'
+import { toteutuneetPaivat, toteumaIkkunat, yhdistaVuorot } from '@/lib/rjmobToteutuneetPaivat'
 import { lueRuudukko } from '@/lib/shifts/tyovuoroDrive'
-import { jasennaLahtiVuorot, lahtiVuoroIkkuna, LAHTI_VALILEHTI, type LahtiVuoro } from '@/lib/shifts/lahtiVuorot'
+import { jasennaLahtiVuorot, LAHTI_VALILEHTI, type LahtiVuoro } from '@/lib/shifts/lahtiVuorot'
 import { tapahtumaOikaisut, type TapahtumaRunRate } from '@/lib/rjmobTapahtumaRunRate'
 import { todayISOHelsinki } from '@/lib/arxcian/time'
 
-/**
- * Run rate -näkymän palvelinpuolen kokoaja.
- *
- * Kolme lähdettä, kolme eri syytä olla erikseen:
- *
- * | Lähde | Antaa |
- * |---|---|
- * | Drive `Tavoitteet (kopio)` | kuukauden tavoitteet myymälöittäin ja myyjittäin |
- * | `rjmobWorkdays` | myymälän aukiolopäivät, raja eilisessä |
- * | työvuorolista (KV) | myyjän omat vuorot, raja eilisessä |
- *
- * Toteumat **eivät** kulje tästä: ne tulevat sivulle jo `/api/sheets`istä ja
- * `/api/targets`ista. Kahdesti luettuina ne voisivat olla eri kuukaudelta
- * kuin tavoitteet, ja lisäksi tämä reitti luetaan ilman välimuistia — sama
- * työ tehtäisiin turhaan uudelleen.
- */
+/** Ennuste käyttää tehtyjä päiviä myyntiseurannasta ja tulevia vuoroja
+ * ajantasaisesta Drive-taulukosta. Toteumamyynti tulee /api/sheetsistä. */
 
 export type MyyjaIkkuna = { paattyneet: number; kaikki: number }
 
@@ -45,7 +31,7 @@ export type RunRateData = {
 function getAuth() {
   return new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!),
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+    scopes: ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/spreadsheets.readonly'],
   })
 }
 
@@ -97,15 +83,24 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
 
   const varoitukset: string[] = []
 
-  const [tavoitteet, vuorot] = await Promise.all([
+  const [tavoitteet, vuorot, toteumaPaivat] = await Promise.all([
     haeTavoitteet(order, kuukausiNimi),
-    lueVuorot(kuukausiAvain(order), viimeinenPaattynytPaiva(order, now), varoitukset),
+    lueVuorot(kuukausiAvain(order)).catch(() => {
+      varoitukset.push('Ajantasaista työvuorolistaa ei voitu lukea — myyjien ennuste puuttuu')
+      return null
+    }),
+    google.sheets({ version: 'v4', auth: getAuth() }).spreadsheets.values.get({
+      spreadsheetId: fileId, range: "'data'!A1:AZ200",
+    }).then(r => toteutuneetPaivat((r.data.values ?? []).map(row => row.map(String)))).catch(() => {
+      varoitukset.push('Toteutuneita työpäiviä ei voitu lukea — myyjien ennuste puuttuu')
+      return {} as Record<string, number>
+    }),
   ])
 
-  const { myyjaVuorot, pk, lahti } = vuorot
+  const myyjaVuorot = vuorot === null ? {} : toteumaIkkunat(vuorot, toteumaPaivat, viimeinenPaattynytPaiva(order, now))
 
   if (Object.keys(myyjaVuorot).length === 0) {
-    varoitukset.push(`Kuukaudelle ${kuukausiNimi} ei ole työvuorolistaa — myyjien ennustetta ei voi laskea`)
+    varoitukset.push(`Kuukaudelle ${kuukausiNimi} ei löytynyt riittäviä työpäivätietoja — myyjien ennustetta ei voi laskea`)
   }
 
   return {
@@ -114,51 +109,17 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
     tyopaivat: tyopaivaIkkuna(vuosi, kuukausiNro, now),
     tavoitteet,
     myyjaVuorot,
-    tapahtumat: tapahtumaOikaisut(order, viimeinenPaattynytPaiva(order, now), pk, lahti),
+    tapahtumat: tapahtumaOikaisut(order, viimeinenPaattynytPaiva(order, now), [], vuorot ?? []),
     varoitukset: [...tavoitteet.varoitukset, ...varoitukset],
   }
 }
 
-/**
- * Myyjien vuoroikkunat kahdesta lähteestä yhdistettynä.
- *
- * | Lähde | Kattaa | Miksi erikseen |
- * |---|---|---|
- * | KV `shifts:final:<kk>` | Malmi, Easton, Kivistö | generaattorin tuottama ja Vahvista-napilla lukittu lista |
- * | Drive, `LAHTI`-välilehti | Holma, Syke | käsin täytetty, generaattori ei koske siihen |
- *
- * **Lahti voittaa päällekkäisyydessä.** Albin ja Arbnor esiintyvät molemmilla
- * välilehdillä, ja LAHTI-välilehti on käsin ylläpidetty — se on tuoreempi
- * tieto kuin generoitu lista. Käytännössä päällekkäisyys koskee vain heitä
- * kahta.
- *
- * **Toisen lähteen kaatuminen ei vie toista.** Lahden luku on Drive-kutsu,
- * joka voi kaatua verkkoon tai puuttuvaan välilehteen; silloin PK-myyjät
- * saavat silti ikkunansa ja Lahden myyjille näytetään viiva. Päinvastoin
- * sama. Hiljaa nielty tyhjä olisi tässä pahempi kuin puolikas tulos, joten
- * kaatuminen kerrotaan varoituksena.
- */
-async function lueVuorot(
-  kuukausi: string, viimeinen: string, varoitukset: string[],
-): Promise<{ myyjaVuorot: Record<string, MyyjaIkkuna>; pk: DayInfo[]; lahti: LahtiVuoro[] }> {
+/** Ajantasaiset vuorot luetaan suoraan kuukauden Drive-taulukosta. */
+async function lueVuorot(kuukausi: string): Promise<LahtiVuoro[]> {
   const [vuosi, kk] = kuukausi.split('-').map(Number)
-
-  const pk = await lueLista('final', kuukausi)
-    .catch(e => {
-      varoitukset.push(`PK-seudun työvuorolistaa ei voitu lukea: ${virhe(e)}`)
-      return [] as DayInfo[]
-    })
-
-  const lahti = await lueRuudukko(vuosi, kk, LAHTI_VALILEHTI)
-    .then(({ rivit }) => jasennaLahtiVuorot(rivit, vuosi, kk))
-    .catch(e => {
-      varoitukset.push(`Lahden työvuoroja ei voitu lukea: ${virhe(e)}`)
-      return [] as LahtiVuoro[]
-    })
-
-  return { myyjaVuorot: { ...laskeVuoroIkkuna(pk, viimeinen), ...lahtiVuoroIkkuna(lahti, viimeinen) }, pk, lahti }
-}
-
-function virhe(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
+  const [pk, lahti] = await Promise.all([
+    lueRuudukko(vuosi, kk).then(({ rivit }) => jasennaLahtiVuorot(rivit, vuosi, kk, myyjaSarakkeet(vuosi, kk))),
+    lueRuudukko(vuosi, kk, LAHTI_VALILEHTI).then(({ rivit }) => jasennaLahtiVuorot(rivit, vuosi, kk)),
+  ])
+  return yhdistaVuorot(pk, lahti)
 }

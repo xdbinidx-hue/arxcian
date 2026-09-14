@@ -113,6 +113,7 @@ function teksti(rivi: string[] | undefined, sarake: number): string {
  */
 export function jasennaLahtiVuorot(
   rivit: string[][], vuosi: number, kuukausi: number,
+  sarakkeet = LAHTI_MYYJA_SARAKKEET,
 ): LahtiVuoro[] {
   const paivia = new Date(vuosi, kuukausi, 0).getDate()
   const viimeinen = viimeinenPaivarivi(vuosi, kuukausi)
@@ -124,14 +125,14 @@ export function jasennaLahtiVuorot(
     const rivi = rivit[riviNro - 1]
     const date = `${vuosi}-${String(kuukausi).padStart(2, '0')}-${String(paiva).padStart(2, '0')}`
 
-    for (const s of LAHTI_MYYJA_SARAKKEET) {
+    for (const s of sarakkeet) {
       const vuoroSolu = teksti(rivi, s.vuoro)
       const tunnitSolu = teksti(rivi, s.tunnit)
       if (!onVuoro(vuoroSolu, tunnitSolu)) continue
       vuorot.push({
         seller: s.seller,
         date,
-        paikka: teksti(rivi, s.myymala),
+        paikka: teksti(rivi, s.myymala) || (/^[a-zäö]+$/i.test(vuoroSolu) ? vuoroSolu : ''),
         tunnit: Number(tunnitSolu.replace(',', '.')),
       })
     }
