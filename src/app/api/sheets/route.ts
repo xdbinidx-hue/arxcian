@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cachedJson } from '@/lib/apiCache'
 import { loadDashData } from '@/lib/rjmobSheets'
 
 /**
@@ -15,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 })
 
   try {
-    return cachedJson(await loadDashData(fileId))
+    return NextResponse.json(await loadDashData(fileId), { headers: { 'Cache-Control': 'no-store' } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })

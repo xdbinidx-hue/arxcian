@@ -56,7 +56,7 @@ export function myymalaRivit(
 }
 
 /**
- * Myyjärivit. Ikkuna on **myyjän omat vuorot** työvuorolistasta, ei myymälän
+ * Myyjärivit. Ikkuna yhdistää tehdyt päivät ja jäljellä olevat vuorot, ei myymälän
  * aukiolopäivät: myyjä joka tekee kolme vuoroa viikossa ei ole jäljessä
  * siksi että myymälä on auki kuutena päivänä.
  *

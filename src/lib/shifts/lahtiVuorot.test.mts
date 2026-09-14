@@ -73,7 +73,7 @@ test('tapahtumakoodi on työpäivä, sairauspoissaolo ei — vaikka molemmilla o
   ), 2026, 8)
 
   assert.deepEqual(v, [
-    { seller: 'Steven Sainio', date: '2026-08-01', paikka: '', tunnit: 11 },
+    { seller: 'Steven Sainio', date: '2026-08-01', paikka: 'YLÖ', tunnit: 11 },
   ])
 })
 
