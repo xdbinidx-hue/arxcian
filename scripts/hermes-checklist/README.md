@@ -63,6 +63,18 @@ Niitä ei ole luettu, muutettu tai korvattu. Tämä paikallinen toteutus on eri 
 ja eri poluissa. Ennen käyttöönottoa varmista, ettei vanhaa kokeilua oteta yhtä aikaa
 käyttöön. Älä poista keskeneräisiä tiedostoja automaattisesti.
 
+## Nykytilan tarkistus ennen julkaisupäätöstä
+
+VPS:n root-terminaalissa `bash /home/arxcian-codex/arxcian/ops/checklist-preflight.sh`
+ tekee vain rajatun lukutarkistuksen kontissa käyttäjänä 10000:10000 ja tallentaa
+ raportin Codexin työtilaan `arxcian-work/checklist-preflight.json`. Se ei asenna,
+ käynnistä uudelleen, luo tehtävää tai muuta tuotantoasetuksia. Raportissa on
+ lähdekoodin SHA, tietokantojen polut/lukumäärät ja auth-asetusten yhteenveto;
+ ei salaisuuksia, käyttäjätunnisteita, keskusteluja tai tehtäväsisältöjä.
+ Puuttuva tieto merkitään tuntemattomaksi, ei turvalliseksi oletukseksi.
+ Alkuperäinen prosessiympäristö tai tämä staattinen yhteenveto eivät yksin todista
+ koko dynaamisen profiilireitityksen ja dashboardin oikeuksia.
+
 ## Julkaisua varten valmisteltu, EI suoritettu
 
 Tarvitaan erillinen julkaisulupa sekä Arxcianille että Hermes-liitokselle.
