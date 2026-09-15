@@ -1,3 +1,13 @@
+# Oracle-bridge julkaistu tuotantoon, sivustojulkaisu käynnistetään — 15.9.2026
+
+- **Julkaistu ja varmennettu raportista:** production-oracle-service-release.json bridge_updated=true, supervisor_restarted=true, bridge_process_verified=true. Uusi libSHA73e62d9727872792efcb035a3cfade35cf8d9d4c7329bf74cd2c806a84b9ba27; palautuskopio /opt/data/private/arxcian/oracle-production/bridge-rollback-20260915T214353Z. gateway_changed=false, checklist_activated=false. Oikeaa Oracle-vastausta ei vielä varmennettu.
+- **Sivustojulkaisu:** sovelluslähde f8ef88d testattu ja rakennettu, myöhemmät commitit vain ops/docs. Remote main44fdf009dff2f9812927ffcaa4a80bf3c388c5c7 sisältyy julkaisuhaaraan; käyttäjän koko julkaisulupa voimassa. Main-push käynnistää Vercelin. Ei suoraa vercel--prod. Lopullinen Vercel-tulos ja tuotanto-HTTP kirjataan niiden valmistuessa.
+- **Toimintarajaus:** checklist ei aktivoida tuotannossa ennen owner/dashboard/Telegram-hyväksyntää; lähdekoodi mukana mutta lippu suljettu. Testiavaimia/Redis/snapshotia ei julkaista tuotantoasetuksiksi. Oracle koko sivuston/webhaku edelleen seuraava kokonaisuus.
+- **Avoin:** oikea Oracle–Drive-vastaus, Telegram-ketju, käyttäjäkohtaiset Hermes/dashboard-rajat, täysi palvelupalautus ja Leo4.9. tapahtumaerittely. Älä väitä koko alkuperäistä hyväksymiskokonaisuutta valmiiksi sivustojulkaisun perusteella.
+- **Sijainti/seuraava:** /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, release/acceptance-20260915. Seuraava main-push, Vercelin onnistumisvarmennus ja tuotannon lukutarkistus. Muiden töiden tiedot säilyvät alla.
+
+---
+
 # Korjattu päivitys pysähtyi supervisor-esitarkistukseen — 15.9.2026
 
 - **Todellinen käyttäjätulos:** Expected one current supervisor; refuse. Tämä tapahtui ennen backupin luontia, tiedostojen vaihtoa tai SIGTERM:iä; tässä ajossa ei live-muutoksia. Aiempi diagnoosi supervisor1/bridge1 on vanhempi eikä todista nykyistä prosessitilaa.

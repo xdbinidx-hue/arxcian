@@ -1,3 +1,13 @@
+# Oracle-bridge julkaistu tuotantoon, sivustojulkaisu käynnistetään — 15.9.2026
+
+- **Julkaistu ja varmennettu raportista:** production-oracle-service-release.json bridge_updated=true, supervisor_restarted=true, bridge_process_verified=true. Uusi libSHA73e62d9727872792efcb035a3cfade35cf8d9d4c7329bf74cd2c806a84b9ba27; palautuskopio /opt/data/private/arxcian/oracle-production/bridge-rollback-20260915T214353Z. gateway_changed=false, checklist_activated=false. Oikeaa Oracle-vastausta ei vielä varmennettu.
+- **Sivustojulkaisu:** sovelluslähde f8ef88d testattu ja rakennettu, myöhemmät commitit vain ops/docs. Remote main44fdf009dff2f9812927ffcaa4a80bf3c388c5c7 sisältyy julkaisuhaaraan; käyttäjän koko julkaisulupa voimassa. Main-push käynnistää Vercelin. Ei suoraa vercel--prod. Lopullinen Vercel-tulos ja tuotanto-HTTP kirjataan niiden valmistuessa.
+- **Toimintarajaus:** checklist ei aktivoida tuotannossa ennen owner/dashboard/Telegram-hyväksyntää; lähdekoodi mukana mutta lippu suljettu. Testiavaimia/Redis/snapshotia ei julkaista tuotantoasetuksiksi. Oracle koko sivuston/webhaku edelleen seuraava kokonaisuus.
+- **Avoin:** oikea Oracle–Drive-vastaus, Telegram-ketju, käyttäjäkohtaiset Hermes/dashboard-rajat, täysi palvelupalautus ja Leo4.9. tapahtumaerittely. Älä väitä koko alkuperäistä hyväksymiskokonaisuutta valmiiksi sivustojulkaisun perusteella.
+- **Sijainti/seuraava:** /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, release/acceptance-20260915. Seuraava main-push, Vercelin onnistumisvarmennus ja tuotannon lukutarkistus. Muiden töiden tiedot säilyvät alla.
+
+---
+
 # Epäonnistuneen julkaisun palautus varmennettu ja readiness korjattu — 15.9.2026
 
 - **Varmennettu oikeasta diagnoosista:** supervisor1,bridge1, enabled-portti olemassa, config_valid=true, hermes_oracle_scope=true. Live-tiedostot vastaavat viimeistä palautuskopiota /opt/data/private/arxcian/oracle-production/bridge-rollback-20260915T214030Z. Live-libSHA827e38a530ec988f6d05f3a33ec415152df651465be3c9c0111495eab545bfec (vanha), ei uusi73e62d... . Palautus siis todettu tiedostoista ja prosesseista, ei oikeasta Oracle-vastauksesta.
