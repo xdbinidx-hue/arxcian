@@ -1,3 +1,13 @@
+# API-profiilien ajonaikainen avainerottelu läpäisi — 15.9.2026
+
+- **Testattu oikeassa ajossa:** käyttäjän root-komento check-api-auth.sh tuotti acceptance-api-auth-read.json. default /v1/models ja oracle /p/oracle/v1/models: anonymous401,invalid401,own200,other_profile401. Molemmat rejects_unauthorized_and_accepts_own_key=true. Ei malliajoja/tehtäviä, credential_values_exported=false. Tämä sulkee profiilien API-avainerottelun esteen; owner_isolation_verified=false ja dashboard_access_verified=false edelleen, ei laajempaa oikeusväitettä.
+- **Valmisteltu:** erillinen gateway-kopio /home/arxcian-codex/arxcian-work/release-f8ef88d-gateway, alkuperäinen SHA tarkistettu prepare_gateway.py:llä, kaikki3 Python-tiedostoa AST-validit. run.py uusiSHA29c82cee22c850711f40c36d2140c1ca884f27887b96ae299f3430ec8df133fc. Ei tuotantotiedostojen korvausta/restarttia.
+- **Seuraava konkreettinen pääsy:** nykyisen Oracle-supervisorin käynnistysrakenteen lähde tarvitaan yhteensopivaan asennukseen; aiemmat tiedot vain SHA/polut. Valmisteltu ops/acceptance/inspect-service-launch.sh root-webconsoleen. GET/verkkokutsuja ei tee, lukee vain supervisor.py AST:n, peittää muut tekstiarvot, raportoi prosessikutsujen rakenne/polut; raportti arxcian-work/acceptance-service-launch.json. Python/bash-syntaksi ja salaisuuksien peittävät fixturet läpäisivät; oikea suoritus odottaa käyttäjää. Ei aiempien testien/backup-drillin uusintaa.
+- **Julkaistu:** tuotantoon ei vielä mitään; koko julkaisulupa voimassa. Lähde f8ef88d testattu previewssä, paketti valmisteltu. Owner/dashboard, oikea Oracle–Drive, Telegram ja täysi palvelupalautus edelleen avoinna; Leo4.9. erittely puuttuu. Älä nimeä koko Hermes-oikeusporttia läpäisseeksi pelkän models-authin perusteella.
+- **Työ/sijainti:** release/acceptance-20260915, /home/arxcian-codex/arxcian-release/docs/HANDOFF.md yhteinen jatkomuistio. Muiden keskeneräisten töiden tiedot säilyvät alla.
+
+---
+
 # Käyttäjä määräsi koko tuotantojulkaisun nyt — 15.9.2026
 
 - **Lupa:** käyttäjä vahvisti jälleen "julkaise kaikki nyt tuotantoon". Voimassa koko nykyiselle julkaisukokonaisuudelle, ei uutta lupakysymystä. Oracle koko sivuston toiminnot/verkkohaku edelleen seuraava kokonaisuus.
