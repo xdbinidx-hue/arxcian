@@ -59,7 +59,7 @@ test('Iisalmi ja Malmi vähennetään vain normaalitahdista, tuleville tapahtumi
     ['Hamza Hanif', 296, ['10', '11', '12'], 11, 443.6],
     ['Alec Fambro', 160, ['10', '12'], 10, 247.2],
   ] as const) {
-    const pk = [...['04', '05', '06'].map(day => paiva(`2026-09-${day}`, nimi, 'Tapahtuma')),
+    const pk = [...['03', '04', '05'].map(day => paiva(`2026-09-${day}`, nimi, 'Tapahtuma')),
       ...malmiDates.map(day => paiva(`2026-09-${day}`, nimi, 'Malmi')),
       paiva('2026-09-24', nimi, 'Tapahtuma')]
     const o = tapahtumaOikaisut(202609, '2026-09-13', pk, []).myyjat[nimi]
@@ -79,7 +79,7 @@ test('pelkkä tuleva tapahtuma ei estä Leon tai Jamin ennustetta', () => {
   }
 })
 test('Iisalmen keskeneräinen tai puutteellinen vuoroerittely ei tuota ennustetta', () => {
-  for (const [last, days] of [['2026-09-05', ['04', '05', '06']], ['2026-09-13', ['04']]] as const) {
+  for (const [last, days] of [['2026-09-04', ['03', '04', '05']], ['2026-09-13', ['04']]] as const) {
     const pk = [...days.map(d => paiva(`2026-09-${d}`, 'Hamza Hanif', 'Tapahtuma')), paiva('2026-09-10', 'Hamza Hanif', 'Malmi')]
     const o = tapahtumaOikaisut(202609, last, pk, []).myyjat['Hamza Hanif']
     assert.match(o.puute!, /Iisalmen/)
@@ -147,4 +147,18 @@ test('tapahtumapäivä: minimi20, hyvä25, erittäin hyvä vasta yli30', () => {
   assert.equal(tapahtumaPaivanTaso(30),'hyva')
   assert.equal(tapahtumaPaivanTaso(31),'erinomainen')
   assert.equal(tapahtumaPaivanTaso(null),'tuntematon')
+})
+
+ test('Joona: Ylöjärvi4.9. ja Malmi eivät kertaannu kuukausitoteumaan', () => {
+  const pk = [paiva('2026-09-04','Joona Huttunen','Tapahtuma'),
+    paiva('2026-09-10','Joona Huttunen','Malmi'), paiva('2026-09-12','Joona Huttunen','Malmi')]
+  const o = tapahtumaOikaisut(202609,'2026-09-15',pk,[]).myyjat['Joona Huttunen']
+  assert.equal(o.toteuma,39)
+  assert.equal(o.paattyneet,3)
+  assert.equal(o.puute,undefined)
+  const r = tapahtumaMittari(runRateMittari(63,150,10,22),{paattyneet:10,kaikki:22},o)
+  assert.equal(r.toteuma,63)
+  assert.equal(r.ennuste,63 + (63-39)/7*12)
+  const missing = tapahtumaOikaisut(202609,'2026-09-15',pk.slice(1),[]).myyjat['Joona Huttunen']
+  assert.match(missing.puute!,/Ylöjärven/)
 })

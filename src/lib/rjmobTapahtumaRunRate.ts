@@ -16,11 +16,17 @@ export const MALMI_SYYSKUU_2026 = {
   } as Record<string, number>,
 }
 
-/** Albin vahvisti 14.9.2026: nämä Iisalmen myynnit kuuluvat kokonaan
- * 4.–6.9. tapahtumaan ja sisältyvät jo myyjien kuukausitoteumiin. */
+/** Albin vahvisti kuvista ja päivistä 15.9.2026: Iisalmen myynnit kuuluvat kokonaan
+ * 3.–5.9. tapahtumaan ja sisältyvät jo myyjien kuukausitoteumiin. */
 export const IISALMI_SYYSKUU_2026 = {
-  alku: '2026-09-04', loppu: '2026-09-06',
+  alku: '2026-09-03', loppu: '2026-09-05',
   myyjat: { 'Hamza Hanif': 127, 'Alec Fambro': 82 } as Record<string, number>,
+}
+
+// Käyttäjän Ylöjärven kuva: Joona 20 liittymää 4.9., jo kuukausitoteumassa.
+export const YLOJARVI_SYYSKUU_2026 = {
+  alku: '2026-09-04', loppu: '2026-09-04',
+  myyjat: { 'Joona Huttunen': 20 } as Record<string, number>,
 }
 
 export const TAPAHTUMA_LIITTYMAT_PER_PAIVA = 20
@@ -79,23 +85,30 @@ export function tapahtumaOikaisut(
     tapahtuma: v.paikka.trim() !== '' && !normaaliPaikka.test(v.paikka.trim()),
   })))
   const iisalmi = IISALMI_SYYSKUU_2026
-  const nimet = new Set([...Object.keys(e.myyjat), ...Object.keys(iisalmi.myyjat), ...vuorot.filter(v => v.tapahtuma).map(v => v.seller)])
+  const ylojarvi = YLOJARVI_SYYSKUU_2026
+  const nimet = new Set([...Object.keys(e.myyjat), ...Object.keys(iisalmi.myyjat), ...Object.keys(ylojarvi.myyjat), ...vuorot.filter(v => v.tapahtuma).map(v => v.seller)])
   for (const nimi of Array.from(nimet)) {
     const omat = vuorot.filter(v => v.seller === nimi)
     const kuuluuMalmiin = (v: Vuoro) => nimi in e.myyjat && v.date >= e.alku && v.date <= e.loppu
       && (v.paikka.toLowerCase() === 'malmi' || v.paikka.toLowerCase() === 'm' || v.tapahtuma)
     const kuuluuIisalmeen = (v: Vuoro) => nimi in iisalmi.myyjat && v.date >= iisalmi.alku && v.date <= iisalmi.loppu
       && v.tapahtuma
+    const kuuluuYlojarveen = (v: Vuoro) => nimi in ylojarvi.myyjat && v.date === ylojarvi.alku && v.tapahtuma
     const malmiVuorot = omat.filter(kuuluuMalmiin)
     const iisalmiVuorot = omat.filter(kuuluuIisalmeen)
-    const tapahtumaVuorot = [...malmiVuorot, ...iisalmiVuorot]
-    const muut = omat.filter(v => v.tapahtuma && !kuuluuMalmiin(v) && !kuuluuIisalmeen(v))
+    const ylojarviVuorot = omat.filter(kuuluuYlojarveen)
+    const tapahtumaVuorot = [...malmiVuorot, ...iisalmiVuorot, ...ylojarviVuorot]
+    const muut = omat.filter(v => v.tapahtuma && !kuuluuMalmiin(v) && !kuuluuIisalmeen(v) && !kuuluuYlojarveen(v))
     const syyt: string[] = []
     if (!valmis && nimi in e.myyjat) syyt.push('Malmin tapahtuman erittely ei ole vielä päättynyt')
     if (nimi in e.myyjat && malmiVuorot.length === 0) syyt.push('Malmin tapahtumamyynti on tiedossa, mutta tapahtumavuoro puuttuu työvuorolistasta')
     if (nimi in iisalmi.myyjat) {
       if (viimeinen < iisalmi.loppu) syyt.push('Iisalmen tapahtuman erittely ei ole vielä päättynyt')
-      if (new Set(iisalmiVuorot.map(v => v.date)).size !== 3) syyt.push('Iisalmen 4.–6.9. tapahtumavuorojen erittely puuttuu työvuorolistasta')
+      if (new Set(iisalmiVuorot.map(v => v.date)).size !== 3) syyt.push('Iisalmen 3.–5.9. tapahtumavuorojen erittely puuttuu työvuorolistasta')
+    }
+    if (nimi in ylojarvi.myyjat) {
+      if (viimeinen < ylojarvi.loppu) syyt.push('Ylöjärven tapahtuman erittely ei ole vielä päättynyt')
+      if (new Set(ylojarviVuorot.map(v => v.date)).size !== 1) syyt.push('Ylöjärven 4.9. tapahtumavuoro puuttuu työvuorolistasta')
     }
     const aiemmat = muut.filter(v => v.date <= viimeinen)
     if (aiemmat.length) syyt.push(`Muiden tapahtumien toteumaerittely puuttuu (${Array.from(new Set(aiemmat.map(v => v.date))).join(', ')})`)
@@ -103,7 +116,7 @@ export function tapahtumaOikaisut(
     // tapahtumapäivä. Päivä poistetaan normaalitahdin loppuennusteesta.
     const tulevat = muut.filter(v => v.date > viimeinen)
     if ([...tapahtumaVuorot, ...tulevat].some(v => omat.filter(o => o.date === v.date).length > 1)) syyt.push('Samalla päivällä on useita vuoroja; tapahtuma-aika on eriteltävä')
-    const toteuma = (e.myyjat[nimi] ?? 0) + (iisalmi.myyjat[nimi] ?? 0)
+    const toteuma = (e.myyjat[nimi] ?? 0) + (iisalmi.myyjat[nimi] ?? 0) + (ylojarvi.myyjat[nimi] ?? 0)
     result.myyjat[nimi] = {
       toteuma,
       tulevatPaivat: new Set(tulevat.map(v => v.date)).size,

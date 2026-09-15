@@ -1,3 +1,14 @@
+# Tapahtumapäivät ja puuttuneet ennusteet korjattu — 15.9.2026
+
+- **Vahvistettu käyttäjältä:** Iisalmi Alec/Hamza 3.–5.9.2026, liittymät 82/127; Ylöjärvi Joona 4.9.2026, liittymät20. Kuvien toteumat sisältyvät kuukausimyyntiin. Tämä korvaa aiemman Iisalmi4.–6.9.-päiväyksen ja ratkaisee alla mainitun puuttuvan erittelyn; tavalliseen ennusteeseen vaihtamista ei tarvita.
+- **Toteutettu:** oikeat tapahtumapäivät, Joonan Ylöjärvi-erittely ja työvuorojen tarkistus. Malmi mukaan lukien Joona39/3pv, Alec132/5pv, Hamza238/6pv. Toteumaa ei lisätä toistamiseen. Tulevat tapahtumat edelleen20/pv; tuntematon mennyt tapahtuma, puuttuva vuoro ja kaksoisvuoro estävät epäluotettavan ennusteen.
+- **Testattu:**19 kohdennettua tapahtuma/rivitestiä, typecheck sekä uusi oikea Drive-luku (36 readonly-vastausta, kaikki kolme lukijaa onnistuneet, kuukausilähteen modifiedTime muuttumaton). HTTP/React-testi läpäisi kaikki kolme näkymäfingerprintiä, yhteisen latauksen molemmat järjestykset, focus-päivityksen ja käyttörajat;15 GET-datapyyntöä, kirjautumiskirjoitukset vain previewn omaan Redis-palveluun. Ei tuotantokirjoituksia tai oikeaa Oracle-malliajoa. Lokit arxcian-work/event-dates-{tests,typecheck,drive-capture,ui-check}.log.
+- **Testiversiossa nyt:** Joona liittymäennuste104,14 (69,43%), Alec220,57 (68,93%), Hamza473,14 (105,14%) tämän lukutilanteen perusteella. Oma readonly watcher käynnistetty uudelleen; Next-build edelleen62c3bfc, lukija käyttää uusia lähteitä. Ennen tuotantoa lopullinen build edelleen tehtävä. Käyttäjä avaa nykyisen toimivan preview-välilehden ja päivittää sivun.
+- **Julkaistu tuotantoon:** ei mitään tässä muutoksessa. Aiempi julkaisulupa voimassa; tuotantoversion väitettä ei tehdä preview-testistä.
+- **Avoin / seuraava:** käyttäjän kolmen ennusteen selaintarkistus; sen jälkeen aiemmat Hermes/root-auth, oikea Oracle–Drive-vastausvertailu, Telegram-jatkuvuus ja täysi palvelupalautus sekä lopullinen build ja yhteensopiva tuotantokäyttöönotto. Oracle koko sivuston toiminnot/verkkohaku seuraava kokonaisuus. Työ release/acceptance-20260915, /home/arxcian-codex/arxcian-release; muiden keskeneräiset työt säilyvät alla.
+
+---
+
 ## Operaattorien nollatulkinta vahvistettu
 
 Kaikkien operaattorien blank-sales=nolla vahvistettu käyttäjältä. Olemassa olevien sarakkeiden tyhjät solut0; formula-error/missing-column null. Oikeassa uudessa readonly-lukutilanteessa uusmyynnin yhteensä ja päiväluvut16/16. 38 kohdennettua testiä/typecheck ja päivitetyn datan HTTP/React/focus/fingerprint läpäisi. Tapahtuma20/25/>30-rajat toteutettu; kolme puutteellisesta menneiden päivien erittelystä estyvää liittymäennustetta edelleen avoinna, eivät ratkea minimitavoitteen asettamisesta. Tuotantoon ei julkaistu; lupa säilyy. docs/HANDOFF.md sisältää täsmälliset päivät ja seuraavan päätöksen.
