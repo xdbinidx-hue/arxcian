@@ -1,3 +1,12 @@
+# F-Secure vihreä vähintään10 — 15.9.2026
+
+- **Toteutettu:** käyttäjän tarkennus: F-Secure >=10 vihreä koko solu myyntiseurannan myyjä- ja myymälätaulukoissa. Korvaa aiemman >10-rajan, ei runrate-värirajojen muutosta.
+- **Testattu:** React/HTTP-tarkistus läpäisi: nykyisessä Drive-aineistossa3 myyjää tasan10, >=10 vihreä tausta/teksti ja <10 ilman vihreää taustaa. Näkymäfingerprintit säilyivät. Testikirjoitukset vain omaan Redis-palveluun. Build ja preview-päivitys tehdään tälle lähdeversiolle, lokit arxcian-work/fsecure-ten-{build,ui-check}.log.
+- **Julkaistu:** oma preview päivitetty onnistuneella buildilla; ei tuotantoon. Lupa voimassa, muut julkaisun esteet alla edelleen avoinna.
+- **Seuraava:** käyttäjä päivittää previewn ja tarkistaa myös tasan10-solut. Leo4.9. erittely odottaa vahvistusta. Työ /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Muiden töiden tiedot säilytetty alla.
+
+---
+
 # Taulukoiden keskitys ja mittarien taustavärit — 15.9.2026
 
 - **Toteutettu:** kaikki RJ-Mob-taulukoiden otsikot/solut, nimet ja yhteensä-rivit keskitetty. Myyntiseurannan F-Secure >10 koko solu vihreä (myyjät/myymälät). Runraten tavoite/toteuma/ennuste/% kaikki samalla ennusteprosentin värillä kunkin mittarin sisällä; liittymät, F-Secure ja kassakate itsenäiset, myös yhteensä-rivit. Rajat edelleen >=100vihreä,90–99keltainen,80–89oranssi,<80punainen; puuttuva prosentti neutraali. Ei laskentamuutosta.

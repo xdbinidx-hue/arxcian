@@ -78,7 +78,7 @@ async function main(){
     for(const seller of snapshot.dash.sellers){
       const row=[...table.querySelectorAll('tbody tr')].find(r=>r.children[1]?.textContent===seller.nimi)
       if(!row)continue
-      if(seller.fsecKpl>10)assert.equal(row.children[5].style.color,'rgb(21, 128, 61)','F-Secure over ten must be green')
+      if(seller.fsecKpl>=10)assert.equal(row.children[5].style.color,'rgb(21, 128, 61)','F-Secure ten or more must be green')
       if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho) && seller.myyntiTeho<7) assert.equal(row.style.background,'rgb(253, 236, 236)','Measured efficiency below seven must mark the row red')
     }
   }

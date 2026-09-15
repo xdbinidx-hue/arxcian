@@ -510,7 +510,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl >= 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
@@ -573,7 +573,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl >= 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
