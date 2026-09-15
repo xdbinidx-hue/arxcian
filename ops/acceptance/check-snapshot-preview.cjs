@@ -78,7 +78,10 @@ async function main(){
     for(const seller of snapshot.dash.sellers){
       const row=[...table.querySelectorAll('tbody tr')].find(r=>r.children[1]?.textContent===seller.nimi)
       if(!row)continue
-      if(seller.fsecKpl>=10)assert.equal(row.children[5].style.color,'rgb(21, 128, 61)','F-Secure ten or more must be green')
+      const expected=seller.fsecKpl>=10?'rgb(234, 243, 222)':seller.fsecKpl>=5?'rgb(254, 249, 195)':'rgb(254, 226, 226)'
+      assert.equal(row.children[5].style.background,expected,'Count cell must use quantity band')
+      assert.equal(row.children[4].style.background,expected,'Euro cell must use same quantity band')
+      assert.equal(row.children[4].style.color,row.children[5].style.color)
       if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho) && seller.myyntiTeho<7) assert.equal(row.style.background,'rgb(253, 236, 236)','Measured efficiency below seven must mark the row red')
     }
   }

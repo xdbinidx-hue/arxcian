@@ -1,3 +1,12 @@
+# F-Securen kappaleet ja eurot samoilla värirajoilla — 15.9.2026
+
+- **Toteutettu:** myyntiseurannan F-Secure alle5 punainen,5–9 keltainen,>=10 vihreä koko solu. F-Secure € käyttää saman rivin kpl-värirajaa; myyjät, myymälät ja yhteensä-rivit. Runraten ennusteprosentin värirajat säilyvät, ei myyntilaskennan muutosta.
+- **Testattu:** nykyiseen Drive-captureen perustuva React/HTTP-tarkistus läpäisi myyjien kaikkien F-Secure-kpl/eurosolujen taustan ja saman tekstivärin; kolmen näkymän fingerprintit säilyivät. Ensimmäinen build keskeytyi SIGKILL:iin; oma readonly-watcher pysäytettiin väliaikaisesti muistikuorman vähentämiseksi. Buildin uusinta läpäisi exit0. Oma preview päivitetty onnistuneella buildilla ja readonly-watcher palautettu. Lokit arxcian-work/fsecure-bands-{build,build-retry,ui-check}.log. Testikirjoitukset vain eristettyyn Redis-palveluun; ei tuotantokirjoituksia.
+- **Julkaistu:** oma preview, ei tuotantoon. Julkaisulupa voimassa, aiemmat käyttöönoton esteet säilyvät.
+- **Avoin/seuraava:** käyttäjä päivittää nykyisen preview-välilehden ja tarkistaa värit. Leon4.9. tapahtumaerittely odottaa käyttäjätietoa; Hermes/root-auth, oikea Oracle–Drive, Telegram-jatkuvuus ja täysi palvelupalautus edelleen avoinna. Työ /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Muut keskeneräiset työt säilyvät alla.
+
+---
+
 # F-Secure vihreä vähintään10 — 15.9.2026
 
 - **Toteutettu:** käyttäjän tarkennus: F-Secure >=10 vihreä koko solu myyntiseurannan myyjä- ja myymälätaulukoissa. Korvaa aiemman >10-rajan, ei runrate-värirajojen muutosta.

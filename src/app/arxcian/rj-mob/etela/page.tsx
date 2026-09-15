@@ -309,6 +309,10 @@ function EtelanHaratSivu() {
   const tdLStyle = {...tdStyle, textAlign: 'center' as const, fontWeight:500}
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign: 'center' as const}
+  const fsecureVari = (kpl: number) => kpl >= 10
+    ? {background:'#EAF3DE', color:'#15803d'}
+    : kpl >= 5 ? {background:'#fef9c3', color:'#854F0B'}
+    : {background:'#fee2e2', color:'#A32D2D'}
 
   // Kynnys tulee jaettuna rjmob.ts:stä, jotta se on sama kuin tuottoseurannassa,
   // run ratessa ja yhteenvedossa. `liittyma`-lippu valitsee liittymätehon oman
@@ -509,8 +513,8 @@ Generoi viesti:`
                           <td style={tdLStyle}>{s.nimi}</td>
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
-                          <td style={tdStyle}>{fmt(s.fsecEur)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl >= 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, ...fsecureVari(s.fsecKpl)}}>{fmt(s.fsecEur)} €</td>
+                          <td style={{...tdStyle, fontWeight:500, ...fsecureVari(s.fsecKpl)}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
@@ -530,8 +534,8 @@ Generoi viesti:`
                       <td style={totLStyle} colSpan={2}>Yhteensä</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur)} €</td>
                       <td style={totStyle}>{sellerTotals.liittKpl}</td>
-                      <td style={totStyle}>{fmt(sellerTotals.fsecEur)} €</td>
-                      <td style={totStyle}>{sellerTotals.fsecKpl}</td>
+                      <td style={{...totStyle, ...fsecureVari(sellerTotals.fsecKpl)}}>{fmt(sellerTotals.fsecEur)} €</td>
+                      <td style={{...totStyle, ...fsecureVari(sellerTotals.fsecKpl)}}>{sellerTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
@@ -572,8 +576,8 @@ Generoi viesti:`
                           <td style={tdLStyle}>{nimi}</td>
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
-                          <td style={tdStyle}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl >= 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, ...fsecureVari(s.fsecKpl)}}>{fmt(s.fsecEur ?? 0)} €</td>
+                          <td style={{...tdStyle, fontWeight:500, ...fsecureVari(s.fsecKpl)}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
@@ -584,8 +588,8 @@ Generoi viesti:`
                       <td style={totLStyle} colSpan={2}>Yhteensä</td>
                       <td style={totStyle}>{fmt(storeTotals.liittEur)} €</td>
                       <td style={totStyle}>{storeTotals.liittKpl}</td>
-                      <td style={totStyle}>{fmt(storeTotals.fsecEur)} €</td>
-                      <td style={totStyle}>{storeTotals.fsecKpl}</td>
+                      <td style={{...totStyle, ...fsecureVari(storeTotals.fsecKpl)}}>{fmt(storeTotals.fsecEur)} €</td>
+                      <td style={{...totStyle, ...fsecureVari(storeTotals.fsecKpl)}}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
