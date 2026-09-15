@@ -1,3 +1,11 @@
+# Palvelukäynnistyksen lukutarkistuksen virhe korjattu — 15.9.2026
+
+- **Löydös:** käyttäjän root-ajo keskeytyi AST Attribute -käsittelyyn: Call palautti dictin, jota yhdistettiin merkkijonoon. Ei palvelumuutoksia, raportti ei valmistunut.
+- **Toteutettu/testattu:** Attribute käsittelee nyt myös rakenteisen Call-pohjan. Kohdennetut factory().process, sisäkkäinen process.run ja Popen-fixturet sekä salaisuuksien peitto läpäisivät; Python/bash-syntaksi kunnossa. Ei muiden läpäisseiden testien uusintaa.
+- **Seuraava:** käyttäjä uusii vain bash /home/arxcian-codex/arxcian-release/ops/acceptance/inspect-service-launch.sh. Lue valmistuva acceptance-service-launch.json ja jatka yhteensopivan tuotantoasennuksen valmistelua. Julkaisulupa voimassa, tuotantoon ei vielä julkaistu. Aiemmat avoimet asiat ja muiden työt säilyvät alla.
+
+---
+
 # API-profiilien ajonaikainen avainerottelu läpäisi — 15.9.2026
 
 - **Testattu oikeassa ajossa:** käyttäjän root-komento check-api-auth.sh tuotti acceptance-api-auth-read.json. default /v1/models ja oracle /p/oracle/v1/models: anonymous401,invalid401,own200,other_profile401. Molemmat rejects_unauthorized_and_accepts_own_key=true. Ei malliajoja/tehtäviä, credential_values_exported=false. Tämä sulkee profiilien API-avainerottelun esteen; owner_isolation_verified=false ja dashboard_access_verified=false edelleen, ei laajempaa oikeusväitettä.

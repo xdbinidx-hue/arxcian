@@ -10,7 +10,9 @@ def safe(node):
    return v if (v.startswith('/opt/') and '\n' not in v and not any(c in v for c in '?@')) or v in ('node','python3','python','oracle','default') else '<redacted>'
   return '<literal>'
  if isinstance(node,ast.Name):return node.id
- if isinstance(node,ast.Attribute):return safe(node.value)+'.'+node.attr
+ if isinstance(node,ast.Attribute):
+  base=safe(node.value)
+  return base+'.'+node.attr if isinstance(base,str) else {'base':base,'attribute':node.attr}
  if isinstance(node,(ast.List,ast.Tuple)):return [safe(x) for x in node.elts]
  if isinstance(node,ast.Call):return {'call':safe(node.func),'args':[safe(x) for x in node.args],'keywords':[k.arg for k in node.keywords]}
  return type(node).__name__
