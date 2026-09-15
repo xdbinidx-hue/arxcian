@@ -31,16 +31,32 @@ async function main(){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost:3302/arxcian/rj-mob/etela'})
  global.window=dom.window;global.document=dom.window.document;global.navigator=dom.window.navigator;global.IS_REACT_ACT_ENVIRONMENT=true
  const React=req('react'),{createRoot}=req('react-dom/client'),ts=req('typescript')
- let query='',calls=0,app
+ let query='',calls=0,app,heldPath,releaseHeld,heldReached
  const render=()=>app.render(React.createElement(Page))
  const nav={usePathname:()=>'/arxcian/rj-mob/etela',useSearchParams:()=>new URLSearchParams(query),useRouter:()=>({push:url=>{query=url.split('?')[1]||'';render()}})}
  const resolve=Module._resolveFilename,load=Module._load
  Module._resolveFilename=function(name,parent,...rest){return resolve.call(this,name.startsWith('@/')?root+'/src/'+name.slice(2):name,parent,...rest)}
  Module._load=function(name,parent,...rest){if(name==='next/navigation')return nav;return load.call(this,name,parent,...rest)}
  for(const ext of ['.ts','.tsx'])Module._extensions[ext]=(m,file)=>m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,file)
- global.fetch=(url,options={})=>{const target=new URL(url,base);assert.equal(target.origin,base);assert.equal(options.method||'GET','GET');assert(['/api/files','/api/sheets','/api/runrate','/api/targets'].includes(target.pathname));calls++;return network(target,{...options,headers:{...options.headers,cookie}})}
+ global.fetch=(url,options={})=>{const target=new URL(url,base);assert.equal(target.origin,base);assert.equal(options.method||'GET','GET');assert(['/api/files','/api/sheets','/api/runrate','/api/targets'].includes(target.pathname));calls++;if(target.pathname===heldPath){heldReached=true;return new Promise(resolve=>{releaseHeld=()=>resolve(network(target,{...options,headers:{...options.headers,cookie}}))})}return network(target,{...options,headers:{...options.headers,cookie}})}
  const Page=req(root+'/src/app/arxcian/rj-mob/etela/page.tsx').default
  const view=req(root+'/src/lib/arxcian/rjmobView.ts');let browserData;const originalData=view.rjMobViewData;view.rjMobViewData=(...args)=>{browserData=originalData(...args);return browserData};app=createRoot(document.getElementById('root'))
+ for(const delayed of ['/api/runrate','/api/sheets']){
+  heldPath=delayed;heldReached=false;releaseHeld=undefined
+  query='nakyma=tavoitteet';await React.act(async()=>render())
+  for(let i=0;i<100;i++){await React.act(async()=>new Promise(r=>setTimeout(r,10)));if(heldReached && releaseHeld && calls>=4)break}
+  assert(heldReached,'Delayed request must be reached')
+  await React.act(async()=>new Promise(r=>setTimeout(r,100)))
+  assert(!document.querySelector('table'),'No sales or runrate table may appear before both readers settle')
+  assert(document.body.textContent.includes('Ladataan...'),'Shared loading indicator must be visible')
+  heldPath=undefined;await React.act(async()=>releaseHeld())
+  for(let i=0;i<100 && !document.querySelector('table');i++) await React.act(async()=>new Promise(r=>setTimeout(r,10)))
+  assert(document.querySelector('table'),'Tables must appear after shared load completes')
+  assert(document.body.textContent.includes('Myyjät — Run Rate'),'Runrate must appear at shared completion')
+  assert(document.body.textContent.includes('Myyjät — '+snapshot.dash.kuukausi),'Sales tracking must appear at shared completion')
+  assert(document.body.textContent.includes('Myynti & Runrate'),'Capitalized view title must appear')
+  await React.act(async()=>app.unmount());app=createRoot(document.getElementById('root'))
+ }
  for(const name of ['tavoitteet','uusmyynti','kassamyynti']){
   query='nakyma='+name;await React.act(async()=>render())
   let matches=false
@@ -55,6 +71,6 @@ async function main(){
   if(name==='kassamyynti' && snapshot.targets.kassaRaportti) assert(document.body.textContent.includes(snapshot.targets.kassaRaportti.tilannePvm),'Actual cash page must show archive cutoff')
  }
  await React.act(async()=>app.unmount())
- console.log(JSON.stringify({passed:true,actualHttpSnapshot:true,anonymousAndTamperedRejected:true,bothUsersSharedData:true,unknownFileRejected:true,writeRouteBlocked:true,unconnectedOracle503:true,actualReactPageAllThreeFingerprintsMatchDriveCapture:true,domHttpRequests:calls,productionWrites:false,realOracleCompared:false}))
+ console.log(JSON.stringify({passed:true,actualHttpSnapshot:true,bothReaderArrivalOrdersHiddenUntilReady:true,anonymousAndTamperedRejected:true,bothUsersSharedData:true,unknownFileRejected:true,writeRouteBlocked:true,unconnectedOracle503:true,actualReactPageAllThreeFingerprintsMatchDriveCapture:true,domHttpRequests:calls,productionWrites:false,realOracleCompared:false}))
 }
 main().catch(e=>{console.error(JSON.stringify({passed:false,errorClass:e.constructor?.name,failedCheck:e.message.startsWith('Actual')?e.message.split('\n')[0]:null,code:e.code||null,operator:e.operator||null,actualStatus:typeof e.actual==='number'?e.actual:null,expectedStatus:typeof e.expected==='number'?e.expected:null}));process.exit(1)})

@@ -59,7 +59,7 @@ interface DriveFile {
 type Nakyma = 'tavoitteet' | 'uusmyynti' | 'kassamyynti'
 
 const NAKYMAT: { id: Nakyma; label: string }[] = [
-  { id: 'tavoitteet', label: 'myynti & Runrate' },
+  { id: 'tavoitteet', label: 'Myynti & Runrate' },
   { id: 'uusmyynti', label: 'Uusmyynti' },
   { id: 'kassamyynti', label: 'Kassamyynti' },
 ]
@@ -374,6 +374,8 @@ Generoi viesti:`
     setViestiLoading(null)
   }
 
+  const pageLoading = loading || runrateLoading || targetsLoading
+
   return (
     <div>
       <RjMobNav activePage="/arxcian/rj-mob/etela" files={files} selectedFile={selectedFile} onFileChange={setSelectedFile} />
@@ -381,15 +383,15 @@ Generoi viesti:`
       <div style={{maxWidth:1100, margin:'0 auto', padding:'16px'}}>
 
         {filesVirhe && <div role="alert" style={{padding:12, color:'#A32D2D'}}>{filesVirhe}</div>}
-        {loading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
+        {pageLoading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
 
         {/* Tilarivi ja näkymänapit ovat kaikkien kolmen näkymän yläpuolella:
             kuukausi ja työpäivätilanne koskevat niitä kaikkia. */}
-        {!loading && kuukausi && (
+        {!pageLoading && kuukausi && (
           <WorkdayInfo kuukausi={kuukausiLyhyt} ikkuna={runrate?.tyopaivat ?? null} />
         )}
 
-        {!loading && (
+        {!pageLoading && (
           <div style={{display:'flex', gap:8, marginBottom:16, overflowX:'auto', paddingBottom:2}}>
             {NAKYMAT.map(n => (
               <button key={n.id} onClick={() => vaihdaNakyma(n.id)}
@@ -410,15 +412,15 @@ Generoi viesti:`
 
         {/* Puuttuva sarake ei palauta nollaa vaan puutteen, ja puute näkyy
             tässä: nolla näyttäisi mitatulta tulokselta. */}
-        {!loading && puutteet.length > 0 && (
+        {!pageLoading && puutteet.length > 0 && (
           <div style={{background:'#FDECEC', border:'0.5px solid #E0A0A0', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12.5, color:'#A32D2D'}}>
             {puutteet.map((v, i) => <div key={i}>⚠ {v}</div>)}
           </div>
         )}
 
-        {runrateVirhe && <div role="alert" style={{ padding: 14, color: '#A32D2D' }}>{runrateVirhe}</div>}
+        {!pageLoading && runrateVirhe && <div role="alert" style={{ padding: 14, color: '#A32D2D' }}>{runrateVirhe}</div>}
 
-        {!loading && runrate && (
+        {!pageLoading && runrate && (
           <>
             {runrate.varoitukset.length > 0 && (
               <div style={{background:'#FEF6E7', border:'0.5px solid #F0C674', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12.5, color:'#854F0B'}}>
@@ -445,7 +447,7 @@ Generoi viesti:`
           </>
         )}
 
-        {!loading && sellers.length > 0 && (
+        {!pageLoading && sellers.length > 0 && (
           <>
             {/* MYYJÄT */}
             <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, marginBottom:16, overflow:'hidden'}}>
@@ -609,11 +611,11 @@ Generoi viesti:`
         {/* Uusmyynti ja Kassamyynti: siirretty Tavoitteet ja Run Rate -sivulta
             sellaisenaan. Virhe erotetaan tyhjästä kuukaudesta — tyhjä taulukko
             ilman selitystä näyttäisi siltä kuin myyntiä ei olisi ollut. */}
-        {!loading && nakyma === 'kassamyynti' && kassaRaportti && <div role="status" style={{padding:12,marginBottom:12,background:'#fff8e6'}}>Myynti, palautus, alennus ja kuitit: Winpos {kassaRaportti.raporttiPvm}, tilanne {kassaRaportti.tilannePvm} asti. Raportin jakson alku ei ole tiedossa. Kassakate, tavoite ja ennuste: {kuukausiLyhyt} myyntiseuranta.</div>}
-        {!loading && nakyma !== 'tavoitteet' && targetsVaroitukset.length > 0 && (
+        {!pageLoading && nakyma === 'kassamyynti' && kassaRaportti && <div role="status" style={{padding:12,marginBottom:12,background:'#fff8e6'}}>Myynti, palautus, alennus ja kuitit: Winpos {kassaRaportti.raporttiPvm}, tilanne {kassaRaportti.tilannePvm} asti. Raportin jakson alku ei ole tiedossa. Kassakate, tavoite ja ennuste: {kuukausiLyhyt} myyntiseuranta.</div>}
+        {!pageLoading && nakyma !== 'tavoitteet' && targetsVaroitukset.length > 0 && (
           <div role="status" style={{padding:12, marginBottom:12, background:'#fff8e6', fontSize:13}}>{targetsVaroitukset.join(' ')}</div>
         )}
-        {!loading && nakyma !== 'tavoitteet' && (
+        {!pageLoading && nakyma !== 'tavoitteet' && (
           targetsVirhe ? (
             <div style={{background:'#FCEBEB', border:'0.5px solid #F09595', borderRadius:10, padding:12, fontSize:13, color:'#A32D2D'}}>
               <strong>Virhe:</strong> {targetsVirhe}

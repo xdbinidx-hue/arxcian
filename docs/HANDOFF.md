@@ -1,3 +1,11 @@
+# Myynti & Runrate ja yhteinen lataus — 15.9.2026
+
+- **Toteutettu:** näkymänapin `myynti & Runrate` -> `Myynti & Runrate`. Myyntiseurannan taulukot, Runrate, työpäivätilanne ja muut datan osat näytetään vasta, kun myynti-, runrate- ja targets-pyynnöt ovat valmistuneet. Yksi Ladataan-ilmoitus odotusaikana; hakuvirheet pysyvät näkyvinä valmistumisen jälkeen. Lähteitä tai laskentaa ei muutettu.
+- **Testattu:** uusi oikean React-sivun viivekoe molemmissa järjestyksissä (runrate viivästyy / myyntiseuranta viivästyy) läpäisi: ei yhtään taulukkoa ennen yhteistä valmistumista, lataus näkyy, taulukot ja uusi otsikko tulevat lopuksi. Snapshotin kolmen näkymän fingerprintit, raporttipäiväys ja HTTP-rajat edelleen läpäisevät. 12 omaa loopback GET-datapyyntöä, kirjautumiset vain testitunnuksilla omaan Redis-laskuriin, ei tuotantokirjoituksia/Google-kutsuja. Loki shared-loading-preview-check.log. Erillinen typecheck läpäisi. Ensimmäinen rinnakkainen build SIGKILL; yksin ajettu uusinta läpäisi exit0 (shared-loading-build-retry.log). Vain omat preview-prosessit käynnistetty uudelleen onnistuneella buildilla, sama snapshot ja tunnukset. Restartin jälkeinen HTTP/React-testi läpäisi, bothReaderArrivalOrdersHiddenUntilReady=true. Viivekokeen lopputarkistus vaatii sekä myyntiseurannan että Runraten näkyvyyden, molemmat järjestykset läpäisivät.
+- **Julkaistu:** ei tuotantoon mitään tässä muutoksessa; lupa voimassa. Käyttäjän seuraava testi: päivitä myyntiseuranta, varmista yhteinen lataus ja otsikko. Hermes-root/auth, oikea Oracle-vastaus ja täysi palautus avoinna kuten alla.
+
+---
+
 # Operaattorikorjaukset ja readonly Winpos-erittely — 15.9.2026
 
 - **Käyttäjäpäätökset:** Elisa-uusmyynti on Pakettiliittymät; Telian tyhjä yritysuusmyynti tarkoittaa ei myyntiä/nollaa; kassamyynnin erittely tulee harvemmin päivitettävästä Winpos-arkistosta, kassakate edelleen valitun kuukauden Excelistä. Winpos-tiedostonimen päivä tarkoittaa raporttia edelliseen päivään asti (1.9. ->31.8.). Jakson alku ei vahvistunut, ei väitetä raporttia koko kuukauden kertymäksi.
