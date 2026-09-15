@@ -1,3 +1,16 @@
+# Kokonaisuuden hyväksyntä — uusin tarkistus 15.9.2026
+
+Tämä päivitys täydentää alla säilytettyä Oracle/Hermes/RJ-Mob-muistiota. Vanhoja testiraportteja ei laskettu uusiksi ajoiksi.
+
+- **Toteutettu:** julkaisukokonaisuus koottu erilliseen työkopioon /home/arxcian-codex/arxcian-release, haara release/acceptance-20260915, lähtöversio 71b5d9f / sovellustoteutus 8d9c719. Nykyiset toimivat korjaukset säilyvät. Hyväksymislista ja palautussuunnitelma docs/release-acceptance.md. Alkuperäiset työkopiot ja muiden arxcian/CLAUDE.md-muutos säilytetty.
+- **Testattu tässä työssä:** 400 Node/bridge + 14 Python, kaksi todellisen komponentin DOM-ajoa. Redis/SQLite-ketju eristetty, ei tuotantotunnuksia tai -kirjoituksia. Vanha FLUSHDB-testi ohitettu. Ensimmäinen Redis-ajo epäonnistui testibinaarin kirjastopolkuun, uusinta onnistui korjatulla ajoasetuksella. Next build ja erillinen typecheck läpäisivät.
+- **Julkaistu:** ei tätä kokonaisuutta, ei pushia tai aktivointia. Uusi suora tarkistus: origin/main 7346755ebb4b61aea6f12429e2b8201d39a34b6d, GitHub Production 6433181173 success. Tuotannon RJ-Mob kirjautumattomana 307 /login; bridge systemd active. Kirjautunut käyttö ja oikeat lähdeluvut eivät tästä varmistu.
+- **Avoinna:** eristetty käyttäjän päästä päähän -testipalvelu; oikeat Drive/Oracle-vastaukset; Hermes served_profiles/auth/dashboard-rajat, nykyinen supervisor ja palautuspiste. OS Docker-lukupääsy estyy edelleen. Varmennettu lähdepaketti /home/arxcian-codex/arxcian-work/release-source-71b5d9f.bundle (SHA256 ee807261516664c934208d7a36ccecabcd394ae185ee902d58ab8f8dfb81207d) säilyttää lähtöversion ja mainin. Paikallinen lähdepalautuspaketti ei korvaa tuotannon data/gateway-varmuuskopiota. Julkaisulupa puuttuu.
+- **Käyttäjäpäätös:** top kolme oli lukukyvyn esimerkki. Tavoite on Oraclen kattava Arxcian-käyttö ja verkkohaku; kiinteää ranking-mittaria ei ole pyydetty valittavaksi. Alla oleva ranking-mittarin päätöspyyntö ei enää ole tämän erän erillinen hyväksymiseste. Kattavat sivutyökalut ja verkkohaku ovat seuraava kokonaisuus, nykyiset kyvyt rajattu hyväksymisohjeessa.
+- **Seuraava tehtävä:** hanki hyväksymisohjeen rajattu ajonaikainen lukuevidenssi, viimeistele eristetty testipalvelu ja palautusharjoitus, vertaa oikeat vastaukset/lähteet, esittele konkreettinen versio julkaisu- ja aktivointipäätökseen. Älä julkaise pelkän aiemman paikallisen testiraportin perusteella.
+
+---
+
 # Arxcian — jatkomuistio 15.9.2026
 
 Tämä tiedosto kokoaa Oracle-työn tilan ja muiden keskeneräisten töiden olennaiset tiedot. Repositorion nykyisestä työkopiosta ei löytynyt aiempaa tilanne-/jatkotiedostoa, joten luotiin `docs/HANDOFF.md`. Ulkoiset muistiot säilytettiin muuttamattomina. Testitulokset koskevat alla nimettyjä ajoja; ne eivät todista tuotannon käyttäjäpolkua.
