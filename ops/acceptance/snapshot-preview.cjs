@@ -23,7 +23,7 @@ function json(res,status,data) {
 }
 const server = http.createServer(async(req,res)=>{
   try {
-    if (!['localhost:3302','127.0.0.1:3302'].includes(req.headers.host)) return json(res,403,{error:'Testipalvelun host ei ole sallittu.'})
+    if (!/^(localhost|127\.0\.0\.1):[0-9]{1,5}$/.test(req.headers.host || '')) return json(res,403,{error:'Testipalvelun host ei ole sallittu.'})
     const url = new URL(req.url,'http://localhost:3302')
     const p = url.pathname
     if (req.method==='GET' && p==='/arxcian') {res.writeHead(307,{location:'/arxcian/rj-mob/etela','cache-control':'no-store'});return res.end()}

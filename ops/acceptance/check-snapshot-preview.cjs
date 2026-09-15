@@ -6,6 +6,9 @@ const credentials=JSON.parse(fs.readFileSync(state+'/browser-credentials.json','
 const capture=JSON.parse(fs.readFileSync(state+'/drive-view-capture.json','utf8')),snapshot=capture.snapshots[0]
 const base='http://127.0.0.1:3302',network=global.fetch
 async function main(){
+ const hostStatus=host=>new Promise((resolve,reject)=>{const request=require('node:http').get(base+'/acceptance',{headers:{host}},response=>{response.resume();resolve(response.statusCode)});request.on('error',reject)})
+ assert.equal(await hostStatus('localhost:61434'),200)
+ assert.equal(await hostStatus('untrusted.example:61434'),403)
  const entry=await network(base+'/arxcian',{redirect:'manual'});assert.equal(entry.status,307);assert.equal(entry.headers.get('location'),'/arxcian/rj-mob/etela')
  assert.equal((await network(base+'/api/files')).status,401)
  let cookie

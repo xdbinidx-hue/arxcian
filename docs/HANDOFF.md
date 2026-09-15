@@ -1,3 +1,13 @@
+# Preview-yhteyden korjaus — 15.9.2026
+
+- **Toteutettu:** käyttäjän ilmoittama avaamisongelma toistettu: omat Next/proxy-prosessit eivät kuunnelleet. Käynnistetty vain eristetty preview uudelleen erillisissä prosessisessioissa. Uusi `ops/acceptance/start-preview.py` tekee saman ilman riippuvuutta transientin exec-session elinkaaresta, kieltää rinnakkaisen käynnistyksen ja poistaa vain connection-refused oman Redis-socketin. Ei automaattista VPS-reboot-käynnistystä tai palveluvalvontaa.
+- **Toteutettu:** proxy hyväksyy localhost/127.0.0.1:n myös Codexin välitetyllä portilla (havaittu selaimen URL-portti 61434). Aiempi tarkistus hyväksyi vain 3302 ja esti eri portin Host-otsakkeen. Bind pysyy 127.0.0.1:3302; vieraat hostit edelleen torjutaan.
+- **Testattu:** erillisestä seuraavasta exec-kutsusta /acceptance ja /login HTTP 200 Host localhost:61434:llä, anonyymi data 401, vieras host 403. Uusi välitetyn Hostin regressio ja snapshot-HTTP/React-testi läpäisivät. Käynnistin torjui jo käytössä olevan portin; syntax tarkistettu. Käyttäjän Macin/previewn päästä todellinen avaaminen vielä vahvistamatta. Selainpaneelin avaus pyydetty Codex-työkalulla (queued), ei näyttöä renderöinnistä.
+- **Julkaistu:** vain omat testiprosessit uudelleenkäynnistetty, ei tuotantojulkaisua/muutosta. Sovelluskoodi/laskennat muuttumattomia, aiemmat 13 testiä ja Drive-vertailut säilyvät; ei koko testisarjan uusintaa.
+- **Seuraava:** käyttäjä päivittää nykyisen /acceptance-previewtabin. Jos yhteys edelleen puuttuu, tarvitaan Macin välityksen virhe/SSH-yhteyden tila. Hermes-auth, oikea Oracle-vastaus ja täysi palvelupalautus ovat edelleen avoimia kuten alla.
+
+---
+
 # Jatkomuistio — Drive-lukutesti ja hyväksyntäesteen korjaus 15.9.2026
 
 - **Toteutettu:** yhteinen julkaisutyö `/home/arxcian-codex/arxcian-release`, haara `release/acceptance-20260915`, edellinen commit `9f3edff`; tämän päivityksen commit sisältää Drive-snapshot-testipalvelun ja laskentakorjauksen. Google-avaimen käyttäjäimportti tarkistettu: yksityinen `arxcian-work/acceptance-preview/drive-candidate.json` 0600. Ei aktiivista sovellusavainta eikä salaisuuksia Gitissä.
