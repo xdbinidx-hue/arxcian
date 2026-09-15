@@ -31,7 +31,8 @@ import {
  *
  * .xlsx-blobia **ei voi lukea** `sheets.spreadsheets.values.get`illä lainkaan;
  * se ladataan `files.get({ alt: 'media' })`illä ja jäsennetään SheetJS:llä,
- * samaan tapaan kuin Winpos-raportit. Natiivi taulukko luetaan Sheets-API:lla.
+ * samaan tapaan kuin Maksukuitti-raportit ([receipts/route.ts](../app/api/receipts/route.ts)).
+ * Natiivi taulukko luetaan Sheets-API:lla.
  * Siksi lukija tukee molempia eikä valitse toista.
  *
  * **Puuttuva kuukausitiedosto on varoitus, ei paluu edelliseen kuukauteen.**

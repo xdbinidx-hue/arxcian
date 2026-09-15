@@ -4,9 +4,6 @@ import { google } from 'googleapis'
 // mutta kansion oma ID pysyi samana — nimenmuutos ei vaadi ID:n päivitystä).
 const FOLDER_ID = '1QKY-rxqFQwbfK9saX5fvhVIixrv_9kYz'
 
-/** Kansio johon Winpos-raportit siirtyvät Gmailin "Lisää Driveen" -toiminnolla. */
-export const WINPOS_FOLDER_ID = '1pdgpw0Vb_fzuyxWhTXjaJeakrEQErkg5'
-
 export type DriveFile = {
   id?: string | null
   name?: string | null
@@ -31,10 +28,12 @@ function getAuth() {
  *
  * Lukureitit pysyvät tarkoituksella readonly-scopessa: silloin bugi
  * lukureitissä ei voi millään rikkoa lähdedataa, vaikka koodi menisi
- * pieleen. Tätä funktiota kutsuu tällä hetkellä vain Winpos-tuonti.
+ * pieleen. Tätä funktiota kutsuu työvuorolistan kirjoitus
+ * ([tyovuoroDriveKirjoitus.ts](shifts/tyovuoroDriveKirjoitus.ts)).
  *
- * Drive on `drive.readonly`, koska tuonti vain lukee tiedostot eikä siirrä
- * tai poista niitä — kirjoitusoikeus tarvitaan pelkkään taulukkoon.
+ * Drive on `drive.readonly`, koska kirjoittava puoli vain lukee tiedostot
+ * eikä siirrä tai poista niitä — kirjoitusoikeus tarvitaan pelkkään
+ * taulukkoon.
  */
 export function getWriteAuth() {
   return new google.auth.GoogleAuth({
@@ -44,18 +43,6 @@ export function getWriteAuth() {
       'https://www.googleapis.com/auth/spreadsheets',
     ],
   })
-}
-
-/** Winpos-arkiston .xls-raportit, uusin ensin. */
-export async function listWinposReports(): Promise<DriveFile[]> {
-  const drive = google.drive({ version: 'v3', auth: getAuth() })
-  const res = await drive.files.list({
-    q: `'${WINPOS_FOLDER_ID}' in parents and trashed = false`,
-    fields: 'files(id, name, mimeType, modifiedTime)',
-    orderBy: 'modifiedTime desc',
-  })
-  // Kansiossa on muutakin (esim. yhteystestitiedosto) — vain .xls kelpaa.
-  return (res.data.files ?? []).filter(f => (f.name ?? '').toLowerCase().endsWith('.xls'))
 }
 
 /** Lataa Driven tiedoston tavuina. */
