@@ -1,3 +1,11 @@
+# Leon liittymäennusteen este — 15.9.2026
+
+- **Tarkistettu nykyisestä Drive-capturesta:** Leo Rossi työpäivät11/22, liittymätoteuma49, tavoite150. F-Secure-ennuste28 ja kassakate-ennuste877,60 näkyvät. Liittymäennusteen estää työvuorolistan mennyt tapahtumapäivä4.9.2026, jonka todellista liittymämyyntiä ei ole vahvistettu; tulevia tapahtumapäiviä3 (20/pv).
+- **Toteutettu/julkaistu:** ei laskentamuutosta tai tuotantojulkaisua. Ei arvata menneen tapahtuman myyntiä minimitavoitteesta. Aiemmat läpäisseet testit eivät uusittu, vain nykytilan lukutarkistus.
+- **Avoin käyttäjätieto / seuraava:** montako liittymää Leo myi4.9. tapahtumassa, tai oliko päivä tavallinen myymäläpäivä ja vuorolistan tapahtumamerkintä väärä? Vahvistuksen jälkeen korjaa erittely, kohdennettu testi ja preview-lukutilanne. Muut julkaisutyön esteet säilyvät alla.
+
+---
+
 # Tapahtumapäivät ja puuttuneet ennusteet korjattu — 15.9.2026
 
 - **Vahvistettu käyttäjältä:** Iisalmi Alec/Hamza 3.–5.9.2026, liittymät 82/127; Ylöjärvi Joona 4.9.2026, liittymät20. Kuvien toteumat sisältyvät kuukausimyyntiin. Tämä korvaa aiemman Iisalmi4.–6.9.-päiväyksen ja ratkaisee alla mainitun puuttuvan erittelyn; tavalliseen ennusteeseen vaihtamista ei tarvita.
