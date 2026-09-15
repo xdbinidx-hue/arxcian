@@ -1,3 +1,13 @@
+# Palvelupaketti valmisteltu erilliseen konttivaiheeseen — 15.9.2026
+
+- **Nykytila luettu:** täydennetty supervisor-raportti vahvistaa yksityisen JSON-configin latauksen ja Node-oracle-bridge.mjs-prosessin käynnistyksen. DEFAULT=/opt/data/private/arxcian/oracle-production; supervisorSHA edelleen sama kuin palautuspisteessä. Oikeaa Node-polun ja live-bridge/config-polun muodostusta ei arvata peitetyistä vakioista.
+- **Toteutettu:** ops/acceptance/prepare-service-release.sh siirtää4 palvelulähdettä uuteen private700-hakemistoon /opt/data/private/arxcian/release-f8ef88d-prepared, uid10000. Ei live-korvausta, asetusten aktivointia tai restarttia. verify-service-stage.py tarkistaa supervisorSHA:n, johtaa bridge/config/Node-polut turvallisesti AST:n sallituista lausekkeista, config-omistuksen/0600:n, Python-AST:n ja Node --check:n. Raportoi vain polut, config-key-nimet ja lähdetarkisteet, ei arvoja. Hakemiston olemassaolo estää ylikirjoituksen.
+- **Testattu paikallisesti:** Python/bash-syntaksi, DEFAULT/state-polkujen fixturet, tuntematon lauseke torjuttu. Varsinainen konttiajo vielä odottaa käyttäjää; ei väitetä sitä läpäisseeksi. Aiemmat läpäisseet testit/backup-drill eivät uusittu.
+- **Tarvittava pääsy/seuraava:** käyttäjä root-webconsolessa bash /home/arxcian-codex/arxcian-release/ops/acceptance/prepare-service-release.sh. Lue acceptance-service-stage.json, valmistele varsinainen yhteensopiva vaihtomenettely oikeisiin polkuihin. API-key-erottelu jo läpäisi. Owner/dashboard/oikea Oracle/Telegram/täysi palvelupalautus edelleen avoinna.
+- **Julkaistu:** tuotantoon ei vielä mitään. Julkaisulupa voimassa. Sovellusf8ef88d testattu previewssä, gateway-kopio ja lähdebundle valmisteltu. Yhteinen muistio /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, release/acceptance-20260915; muut työt säilyvät alla.
+
+---
+
 # Nykyisen supervisorin ensimmäinen käynnistysraportti vastaanotettu — 15.9.2026
 
 - **Tarkistettu:** acceptance-service-launch.json supervisorSHA54185f029942771792d3e4aec8fc3fb3fab048ba38caf8f66f988c3ad9d6b860 sama kuin palautuspisteessä. Popen käyttää command/env ja run_child käynnistää bridge-muuttujan. Ei avainten vientiä, restarttia tai tuotantokirjoituksia.
