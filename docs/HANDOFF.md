@@ -1,3 +1,14 @@
+# Kontissa valmisteltu palvelupaketti läpäisi — 15.9.2026
+
+- **Testattu kontissa:** acceptance-service-stage.json: kaikki4 lähdetarkisteet, Python-AST ja Node--check läpäisivät. Node=/usr/local/bin/node; liveBridge=/opt/data/private/arxcian/oracle-production/release-9f26dc0/oracle-bridge.mjs; config=/opt/data/private/arxcian/oracle-production/config.json, vain key-nimet API_SERVER_KEY/ARXCIAN_ORIGIN/ORACLE_BRIDGE_SECRET vietiin. prepared_only=true, live_files_replaced=false, services_started=false.
+- **Valmisteltu tuotantopäivitys:** ops/acceptance/install-oracle-service.sh +py vaihtaa vain2 Oracle-bridge-tiedostoa varmennetuista stage-lähteistä. Tarkistaa supervisorSHA:n ja tasan yhden nykyisen oman supervisor-prosessin, ottaa private bridge-rollback-<timestamp>-kopion ja vanhat SHA:t, pysäyttää täsmälleen tämän supervisorin, vaihtaa tiedostot renameilla ja käynnistää saman komennon puhtaalla ympäristöllä; tarkistaa bridge-prosessin. Epäonnistuva käynnistys palauttaa vanhat tiedostot ja supervisorin. Ei gateway-/checklist-aktivointia tai frontend-pushia tässä vaiheessa.
+- **Testattu eristetysti:** installer onnistumispolku ja epäonnistuneen käynnistyksen palautus läpäisivät vain uusissa tempfile-hakemistoissa, kaikki os.kill/Popen/run/sleep korvattu; ei todellisia prosessi-/verkko-/tuotantotoimia. Python/bash-syntaksi läpäisi. Tämä ei todista täyttä tuotantopalvelupalautusta.
+- **Seuraava root-toimi valtuutetulla luvalla:** bash /home/arxcian-codex/arxcian-release/ops/acceptance/install-oracle-service.sh. Tämä on oikea tuotannon Oracle-bridge-päivitys ja lyhyt yhteyskatko; käyttäjälle kerrottu. Raportti production-oracle-service-release.json. Varsinainen suoritus vielä odottaa käyttäjää; älä merkitse julkaistuksi ennen raporttia. Sitten toiminnan varmennus ja yhteensopiva frontend-julkaisu sekä jäljellä olevan Hermes-ketjun ratkaisu.
+- **Julkaistu:** ei tuotantoon vielä mitään tämän kirjauksen hetkellä. Lupa voimassa. API-key-erottelu läpäisi; owner/dashboard/oikea Oracle–Drive/Telegram/täysi palvelupalautus edelleen avoinna, Leo4.9. erittely puuttuu. Sovellusf8ef88d testattu previewssä.
+- **Työ/sijainti:** release/acceptance-20260915, /home/arxcian-codex/arxcian-release/docs/HANDOFF.md. Muiden keskeneräisten töiden tiedot säilyvät alla.
+
+---
+
 # Palvelupaketti valmisteltu erilliseen konttivaiheeseen — 15.9.2026
 
 - **Nykytila luettu:** täydennetty supervisor-raportti vahvistaa yksityisen JSON-configin latauksen ja Node-oracle-bridge.mjs-prosessin käynnistyksen. DEFAULT=/opt/data/private/arxcian/oracle-production; supervisorSHA edelleen sama kuin palautuspisteessä. Oikeaa Node-polun ja live-bridge/config-polun muodostusta ei arvata peitetyistä vakioista.
