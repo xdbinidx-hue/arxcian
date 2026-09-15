@@ -1,3 +1,12 @@
+# Epäonnistuneen julkaisun palautus varmennettu ja readiness korjattu — 15.9.2026
+
+- **Varmennettu oikeasta diagnoosista:** supervisor1,bridge1, enabled-portti olemassa, config_valid=true, hermes_oracle_scope=true. Live-tiedostot vastaavat viimeistä palautuskopiota /opt/data/private/arxcian/oracle-production/bridge-rollback-20260915T214030Z. Live-libSHA827e38a530ec988f6d05f3a33ec415152df651465be3c9c0111495eab545bfec (vanha), ei uusi73e62d... . Palautus siis todettu tiedostoista ja prosesseista, ei oikeasta Oracle-vastauksesta.
+- **Korjattu/testattu:** asennuksen yksittäinen4sek-prosessitarkistus korvattu enintään35sek-readiness-odotuksella, supervisorin ennenaikainen poistuminen torjutaan. Viivästynyt lapsiprosessi läpäisi eristetyllä tempfile/prosessimock-fixturellä. Päivitysvirheen JSON talletetaan nyt production-oracle-service-failure.json ennen exit1:tä; ei lokien/avainten vientiä. Python/bash-syntaksi läpäisi. Todellista alkuperäistä käynnistysvirhettä ei vielä tunneta, liian aikainen tarkistus on poistettu mahdollisena syynä.
+- **Seuraava valtuutettu root-toimi:** käyttäjä uusii korjatun bash /home/arxcian-codex/arxcian-release/ops/acceptance/install-oracle-service.sh kerran. Jos epäonnistuu, ei uusintoja vaan virheraportti ja uusi diagnoosi. Jos onnistuu, varmista uudet SHA:t/prosessi ja jatka frontendin yhteensopivaan julkaisuun.
+- **Julkaistu:** vanha Oracle palautettu; uutta koko tuotantoversiota ei julkaistu. Julkaisulupa voimassa. Aiemmat hyväksymisesteet edelleen avoinna. Yhteinen muistio /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, muiden töiden tiedot säilyvät alla.
+
+---
+
 # Oracle-bridge-tuotantopäivitys epäonnistui — 15.9.2026
 
 - **Käyttäjän todellinen ajotulos:** install-oracle-service.sh keskeytyi RuntimeError: Update failed; old bridge restored and restarted. Onnistumisraportti production-oracle-service-release.json puuttuu. Käyttäjä käynnisti komennon heti toistamiseen; tämän uusinnan tulos ei vielä tiedossa. Älä aja lisää asennuksia ennen diagnoosia.

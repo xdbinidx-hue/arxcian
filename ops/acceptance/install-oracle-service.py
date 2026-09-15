@@ -48,20 +48,26 @@ try:
  for name in expected:
   temporary=live/(name+'.release.tmp');temporary.write_bytes((stage/name).read_bytes());temporary.chmod(0o600);os.replace(temporary,live/name)
  child=launch()
- # Verify the supervisor actually launched the bridge, rather than merely waiting.
- running=False
- for p in Path('/proc').iterdir():
-  if not p.name.isdigit():continue
-  try:
-   args=(p/'cmdline').read_bytes().split(b'\0')
-   if str(live/'oracle-bridge.mjs').encode() in args and p.stat().st_uid==os.getuid():running=True
-  except OSError:pass
- assert running,'No bridge child found; rollback needed'
-except Exception:
+ # Wait for the guarded supervisor to actually launch its bridge child.
+ for attempt in range(350):
+  running=False
+  for p in Path('/proc').iterdir():
+   if not p.name.isdigit():continue
+   try:
+    args=(p/'cmdline').read_bytes().split(b'\0')
+    if str(live/'oracle-bridge.mjs').encode() in args and p.stat().st_uid==os.getuid():running=True
+   except OSError:pass
+  if running:break
+  if child.poll() is not None:raise RuntimeError('Supervisor exited while awaiting bridge')
+  time.sleep(.1)
+ else:raise RuntimeError('Bridge readiness deadline exceeded')
+except Exception as error:
+ failure_class=type(error).__name__
  if child and child.poll() is None:
   child.terminate();child.wait(timeout=35)
  for name,data in old.items():
   temporary=live/(name+'.rollback.tmp');temporary.write_bytes(data);temporary.chmod(0o600);os.replace(temporary,live/name)
  launch()
+ print(json.dumps({'bridge_updated':False,'rollback_directory':str(backup),'old_files_restored':True,'supervisor_restarted':True,'failure_class':failure_class,'readiness_verified':False}))
  raise RuntimeError('Update failed; old bridge restored and restarted') from None
 print(json.dumps({'bridge_updated':True,'source_version':'f8ef88d','rollback_directory':str(backup),'old_hashes':manifest,'new_hashes':expected,'supervisor_restarted':True,'bridge_process_verified':True,'gateway_changed':False,'checklist_activated':False,'frontend_deployed':False,'real_oracle_answer_verified':False}))
