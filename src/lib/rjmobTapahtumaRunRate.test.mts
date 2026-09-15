@@ -1,3 +1,4 @@
+import { tapahtumaPaivanTaso } from './rjmobTapahtumaRunRate.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MALMI_SYYSKUU_2026, tapahtumaOikaisut, tapahtumaMittari } from './rjmobTapahtumaRunRate.ts'
@@ -136,4 +137,14 @@ test('pelkät tulevat tapahtumat eivät tarvitse normaalipäivän tahtia, virhee
  const base = {toteuma:0,paattyneet:0,kaikki:0,selite:'testi'}
  assert.equal(tapahtumaMittari(m,{paattyneet:0,kaikki:3},{...base,tulevatPaivat:3}).ennuste,60)
  for(const days of [-1,4,1.5,NaN]) assert.equal(tapahtumaMittari(m,{paattyneet:0,kaikki:3},{...base,tulevatPaivat:days}).ennuste,null)
+})
+
+
+test('tapahtumapäivä: minimi20, hyvä25, erittäin hyvä vasta yli30', () => {
+  assert.equal(tapahtumaPaivanTaso(19),'heikko')
+  assert.equal(tapahtumaPaivanTaso(20),'minimi')
+  assert.equal(tapahtumaPaivanTaso(25),'hyva')
+  assert.equal(tapahtumaPaivanTaso(30),'hyva')
+  assert.equal(tapahtumaPaivanTaso(31),'erinomainen')
+  assert.equal(tapahtumaPaivanTaso(null),'tuntematon')
 })

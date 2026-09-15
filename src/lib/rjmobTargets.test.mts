@@ -193,3 +193,12 @@ test('arkiston erittely säilyttää oman päiväyksen eikä korvaa Excel-kassak
   assert.equal(r.kassaKate,700)
   assert.deepEqual(data.kassaRaportti,metadata)
 })
+
+
+test('tyhjät operaattorimyynnit ovat nollia ja yhteensä/päivä lasketaan, virhe pysyy puutteena', async () => {
+  for (const [cell, expected] of [['', 2], ['#N/A', null]] as const) {
+    const { data } = await hae({ sheets: { 'Myyjät Myymälöittäin': [headers, ['Hamza Hanif', '10', '50', '2', '30', '2', cell, '', '']], data: [['Nimi','Toteutuneet työpäivät(pv)'],['Hamza Hanif','2']] } })
+    assert.equal(data.targets[0].uusmyyntiYhteensa,expected)
+    assert.equal(data.targets[0].uusmyyntiPerPaiva,expected === null ? null : 1)
+  }
+})

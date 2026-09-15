@@ -24,6 +24,15 @@ export const IISALMI_SYYSKUU_2026 = {
 }
 
 export const TAPAHTUMA_LIITTYMAT_PER_PAIVA = 20
+export const TAPAHTUMA_HYVA_PER_PAIVA = 25
+export const TAPAHTUMA_ERINOMAINEN_YLI = 30
+export function tapahtumaPaivanTaso(myynti: number | null): 'heikko' | 'minimi' | 'hyva' | 'erinomainen' | 'tuntematon' {
+  if (myynti === null || !Number.isFinite(myynti)) return 'tuntematon'
+  if (myynti > TAPAHTUMA_ERINOMAINEN_YLI) return 'erinomainen'
+  if (myynti >= TAPAHTUMA_HYVA_PER_PAIVA) return 'hyva'
+  if (myynti >= TAPAHTUMA_LIITTYMAT_PER_PAIVA) return 'minimi'
+  return 'heikko'
+}
 
 export type TapahtumaOikaisu = {
   /** Tulevat tapahtumapäivät ennustetaan erikseen, kerran per päivä. */
@@ -103,6 +112,14 @@ export function tapahtumaOikaisut(
       selite: `Vahvistettu tapahtumamyynti: ${toteuma} liittymää, ${tapahtumaVuorot.length} tapahtumavuoroa. Tulevat tapahtumapäivät: ${new Set(tulevat.map(v => v.date)).size} × ${TAPAHTUMA_LIITTYMAT_PER_PAIVA} liittymää. Muut jäljellä olevat vuorot ennustetaan normaalitahdilla.`,
       ...(syyt.length ? { puute: syyt.join('. ') } : {}),
     }
+  }
+  for (const o of Object.values(result.myyjat)) {
+    if (!o.puute && o.paattyneet > 0) {
+      const daily = o.toteuma / o.paattyneet
+      const labels = {heikko:'alle minimin',minimi:'minimi',hyva:'hyvä',erinomainen:'erittäin hyvä',tuntematon:'tuntematon'}
+      o.selite += ` Vahvistettujen tapahtumapäivien keskiarvo ${daily.toFixed(1)} liitt/pv: ${labels[tapahtumaPaivanTaso(daily)]}.`
+    }
+    o.selite += ` Tapahtumapäivän rajat: minimi ${TAPAHTUMA_LIITTYMAT_PER_PAIVA}, hyvä ${TAPAHTUMA_HYVA_PER_PAIVA}, erittäin hyvä yli ${TAPAHTUMA_ERINOMAINEN_YLI}.`
   }
   return result
 }

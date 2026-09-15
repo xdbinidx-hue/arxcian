@@ -1,3 +1,7 @@
+## Operaattorien nollatulkinta vahvistettu
+
+Kaikkien operaattorien blank-sales=nolla vahvistettu käyttäjältä. Olemassa olevien sarakkeiden tyhjät solut0; formula-error/missing-column null. Oikeassa uudessa readonly-lukutilanteessa uusmyynnin yhteensä ja päiväluvut16/16. 38 kohdennettua testiä/typecheck ja päivitetyn datan HTTP/React/focus/fingerprint läpäisi. Tapahtuma20/25/>30-rajat toteutettu; kolme puutteellisesta menneiden päivien erittelystä estyvää liittymäennustetta edelleen avoinna, eivät ratkea minimitavoitteen asettamisesta. Tuotantoon ei julkaistu; lupa säilyy. docs/HANDOFF.md sisältää täsmälliset päivät ja seuraavan päätöksen.
+
 ## Myyntiseurannan käyttötestin jatkomuutokset
 
 Yksi yhdistetty tehosarake, mitatun myyjätehon <7 punainen rivi, >10 F-Secure vihreä luku, viestikortti näkymänappien yläpuolelle, oranssi runrate 80–89%, Basri pois 2026-09 alkaen. Stevenin tuore lähdetavoite 100/15/700 varmennettu readonly. Previewn erillinen readonly lukija päivittyy 60s, selain päivittää kolme reittiä samalla latausrajalla. 57 kohdennettua testiä +typecheck/build +post-restart DOM/HTTP/focus läpäisivät. Ennusteiden tapahtumafallback ja muiden operaattorien tyhjien solujen nollatulkinta odottavat käyttäjän päätöstä, ei merkitä korjatuiksi. Ei tuotantojulkaisua tässä erässä; aiempi lupa voimassa. docs/HANDOFF.md sisältää pääsyesteet ja jatkon.

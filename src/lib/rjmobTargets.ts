@@ -99,6 +99,11 @@ const solu = (row: string[], col: number): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
+// User-confirmed: blank operator-sales cells mean no sale, not missing data.
+// Missing columns and formula errors remain unknown.
+const operatorSale = (row: string[], col: number): number | null =>
+  col >= 0 && String(row[col] ?? '').trim() === '' ? 0 : solu(row, col)
+
 function findSheet(sheetNames: string[], ...patterns: string[]): string {
   for (const p of patterns) {
     const found = sheetNames.find(n => n.toLowerCase().includes(p.toLowerCase()))
@@ -230,9 +235,9 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
           liittEur: summa(edell.liittEur, solu(row, idxLiittEur)),
           fsecKpl: summa(edell.fsecKpl, fsecKpl),
           kassaKate: summa(edell.kassaKate, solu(row, idxKate)),
-          dnaUusmyynti: summa(edell.dnaUusmyynti, solu(row, idxDnaUusmyynti)),
-          elisaUusmyynti: summa(edell.elisaUusmyynti, solu(row, idxElisaUusmyynti)),
-          teliaUusmyynti: summa(edell.teliaUusmyynti, summa(solu(row, idxTeliaUusmyynti), idxTeliaYritysUusmyynti >= 0 ? String(row[idxTeliaYritysUusmyynti] ?? '').trim() === '' ? 0 : solu(row, idxTeliaYritysUusmyynti) : 0)),
+          dnaUusmyynti: summa(edell.dnaUusmyynti, operatorSale(row, idxDnaUusmyynti)),
+          elisaUusmyynti: summa(edell.elisaUusmyynti, operatorSale(row, idxElisaUusmyynti)),
+          teliaUusmyynti: summa(edell.teliaUusmyynti, summa(operatorSale(row, idxTeliaUusmyynti), idxTeliaYritysUusmyynti >= 0 ? operatorSale(row, idxTeliaYritysUusmyynti) : 0)),
         }
       }
     }
