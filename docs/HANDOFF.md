@@ -1,3 +1,12 @@
+# Runrate-värirajat vahvistettu — 15.9.2026
+
+- **Käyttäjän vahvistus:** >=100% vihreä,90–<100% keltainen,80–<90% oranssi,<80% punainen. Korvaa aiemman värirajojen tulkinnan avoimuuden.
+- **Nykytila tarkistettu:** lähde8c647ab toteuttaa jo nämä rajat ja mittariryhmien taustavärit; ei sovelluskoodin muutosta, buildia tai läpäisseiden testien uusintaa. Aiemmat väri-/näkymätestit ja onnistunut preview-build säilyvät näyttönä.
+- **Julkaistu:** olemassa olevassa previewssä, ei uutta tuotantojulkaisua. Työ release/acceptance-20260915, /home/arxcian-codex/arxcian-release.
+- **Avoin/seuraava:** käyttäjän selaintarkistus; Leon4.9. erittely sekä aiemmat Hermes/Oracle/Telegram/palautusesteet säilyvät. Muiden töiden tiedot alla.
+
+---
+
 # F-Securen kappaleet ja eurot samoilla värirajoilla — 15.9.2026
 
 - **Toteutettu:** myyntiseurannan F-Secure alle5 punainen,5–9 keltainen,>=10 vihreä koko solu. F-Secure € käyttää saman rivin kpl-värirajaa; myyjät, myymälät ja yhteensä-rivit. Runraten ennusteprosentin värirajat säilyvät, ei myyntilaskennan muutosta.
