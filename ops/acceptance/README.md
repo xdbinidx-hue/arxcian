@@ -1,3 +1,16 @@
+# All requested metadata commands completed
+
+The corrected acceptance-profile-gates.json was received and read (15 September
+2026 08:15:10 UTC). No further generic root metadata script is requested now.
+Reports verify configuration facts, not effective per-user auth or dashboard access.
+Captured-backup SQLite restore and isolated preview AOF durability passed previously.
+See docs/acceptance-results.md for current evidence and explicit remaining blockers.
+Next prerequisite: existing isolated Oracle/Drive/HTTPS test access locations, or a
+user decision to provision the missing environment on this VPS. Do not paste secrets.
+Instructions below are retained history; completed checks need no routine rerun.
+
+---
+
 # Update: capture drill passed; corrected auth summary pending
 
 Read acceptance-final-evidence.json: captured files verified, restored SQLite integrity

@@ -1,3 +1,15 @@
+# Korjattu profiiliraportti luettu — 15.9.2026 klo 08:15 UTC
+
+- **Toteutettu:** julkaisutyö /home/arxcian-codex/arxcian-release, haara release/acceptance-20260915, lähtöversio c889748. Kaikki tähän asti pyydetyt root-raporttikomennot ajettu käyttäjän toimesta ja tulokset luettu tiedostoista. Yhteinen tulostaulukko docs/acceptance-results.md. Sovelluskoodiin ei uutta muutosta.
+- **Testattu/varmennettu nyt:** acceptance-profile-gates.json checked_at 2026-09-15T08:15:10.835759+00:00. Default yksi TELEGRAM_ALLOWED_USERS ilman wildcardia; kummankin profiilin API-avain täyttää vähintään 16 merkin pituusrajan. Default-configin api_server löydetty; enabled/bind_loopback null. Oracle-configin platforms tyhjä. Nämä ovat vain luettuja asetuksia; profile_authorization_verified=false säilyy perusteltuna. Älä päättele tyhjistä kentistä adapterien puuttumista, portin sulkeutumista tai käyttäjärajan toimivuutta.
+- **Aiemmin tässä hyväksymistyössä läpäissyt:** erilliset HTTP-login/checklist-rajat omassa previewssä; testijonon AOF-persistenssi oikean restartin yli; otetun tuotantobackupin hashit/SQLite-palautus yksityiseen sandboxiin (8 taulua, eheys ok, lähde muuttumaton). Nämä ja aiemmat sovellustestit eivät ole tämän dokumentointivuoron uusia ajoja. Ei tarvetta uusia suoritettuja root-asetus-/backup-tarkistuksia ilman uutta kohdistettua muutostarvetta.
+- **Julkaistu:** ei tuotantoon mitään, ei pushia, tuotantoasetusten muutosta tai restartia. Loopback-preview localhost:3300/login on alustava. Tuotannon palautuspiste 20260915T075851Z-4754f8ce on otettu ja SQLite-palautusdrill läpäissyt; täydellinen palvelupalautus on avoin.
+- **Avoinna:** oikea käyttäjätestipalvelu/HTTPS-pääsy; eristetty Oracle/Telegram-ajo ja Drive-lukupääsy; tehokkaat sallitut/kielletyt profiili-/dashboard-käyttäjäpyynnöt; oikean Oracle-vastauksen Drive-vertailu samalla kuukaudella/näkymällä; supervisor/profiiliasetusten täysi palautusvalmius. Varsinaista käyttäjän selaintestiä ei ole tehty, eikä oikeita vastauksia simuloitu.
+- **Käyttäjältä tarvittava seuraava tieto:** ovatko eristetty Oracle-testipalvelu, Drive-lukupääsy ja HTTPS-testiosoite olemassa vai perustetaanko ne nykyiselle VPS:lle. Pyydetty sijainnit/osoitteet ilman avaimia. Tämä ratkaisee seuraavien konkreettisten kytkentöjen ja oikeiden auth/data-testien edellytykset. Ei uutta root-lukuraporttipyyntöä tässä vaiheessa.
+- **Seuraava tehtävä:** saatujen testipääsytietojen perusteella viimeistele eristetty käyttäjätestipalvelu, tee tehokkaat käyttöoikeuspyynnöt ja oikea Oracle–Drive-vertailu, varmista täysi sandbox-palvelupalautus. Anna toimiva käyttäjätestiosoite ja hyväksymistulokset erillistä julkaisupäätöstä varten. Koko sivuston Oracle-työkalut/verkkohaku säilyvät seuraavana kokonaisuutena. Oracle-/Mac-koontirajaukset ja muiden töiden historia alla säilytetty.
+
+---
+
 # Captured-backup-palautus luettu — 15.9.2026 klo 08:03 UTC
 
 ## Testattu ja varmennettu
