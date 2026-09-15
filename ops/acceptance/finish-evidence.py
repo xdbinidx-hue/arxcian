@@ -1,5 +1,5 @@
 """Read-only profile summaries plus restore drill on a copy of a captured backup."""
-import datetime,hashlib,json,os,re,shutil,sqlite3,tempfile
+import datetime,hashlib,json,os,re,shutil,sqlite3,tempfile,sys
 from pathlib import Path
 import yaml
 
@@ -17,18 +17,31 @@ for name,home in [('default',Path('/opt/data')),('oracle',Path('/opt/data/profil
     parts=[v.strip() for v in value.split(',') if v.strip()];row['environment_gates'][key]={'count':len(parts),'wildcard':'*' in parts}
    elif key in ('TELEGRAM_ALLOW_ALL_USERS','GATEWAY_ALLOW_ALL_USERS'):
     row['environment_gates'][key]=value.lower() in ('true','1','yes')
-   elif key=='API_SERVER_KEY':row['api_key_present']=bool(value)
+   elif key=='API_SERVER_KEY':row['api_key_present']=bool(value);row['api_key_meets_minimum_length']=len(value)>=16
    elif key=='API_SERVER_HOST':row['api_bind_loopback']=value in ('127.0.0.1','localhost','::1')
  config=home/'config.yaml'
  if config.is_file():
   data=yaml.safe_load(config.read_text()) or {};row['config_present']=True
   gateway=data.get('gateway',{});row['multiplex_profiles']=gateway.get('multiplex_profiles') if isinstance(gateway,dict) else None
-  platforms=data.get('platforms',{});row['platforms']=[]
+  platforms={}
+  legacy=home/'gateway.json'
+  if legacy.is_file():
+   previous=json.loads(legacy.read_text())
+   if isinstance(previous,dict) and isinstance(previous.get('platforms'),dict):platforms.update(previous['platforms'])
+  if isinstance(gateway,dict) and isinstance(gateway.get('platforms'),dict):platforms.update(gateway['platforms'])
+  if isinstance(data.get('platforms'),dict):
+   for k,v in data['platforms'].items():
+    platforms[k]={**platforms.get(k,{}),**v} if isinstance(v,dict) and isinstance(platforms.get(k,{}),dict) else v
+  for platform in ('telegram','api_server'):
+   for section in (gateway,data):
+    if isinstance(section,dict) and isinstance(section.get(platform),dict):
+     platforms[platform]={**platforms.get(platform,{}),**section[platform]}
+  row['platforms']=[]
   if isinstance(platforms,dict):
    for platform,p in platforms.items():
     if not isinstance(p,dict):continue
     entry={'name':platform,'enabled':p.get('enabled'),'dm_policy':p.get('dm_policy')}
-    for k in ('allowed_users','group_allowed_users','group_allowed_chats'):
+    for k in ('allowed_users','allow_from','allowed_chats','group_allowed_users','group_allowed_chats'):
      value=p.get(k);entry[k+'_count']=len(value) if isinstance(value,list) else None
      entry[k+'_wildcard']='*' in value if isinstance(value,list) else None
     extra=p.get('extra',{})
@@ -45,6 +58,9 @@ for name,home in [('default',Path('/opt/data')),('oracle',Path('/opt/data/profil
     approved=json.loads(p.read_text());row['pairing'].append({'platform':p.name.removesuffix('-approved.json'),'layout':relative,'count':len(approved) if isinstance(approved,dict) else None})
    except (OSError,ValueError):row['pairing'].append({'layout':relative,'unavailable':True})
  report['profiles'].append(row)
+if os.environ.get('ARXCIAN_AUDIT_ONLY')=='1':
+ report['checked_at']=datetime.datetime.now(datetime.timezone.utc).isoformat()
+ print(json.dumps(report));sys.exit(0)
 base=Path(os.environ['ARXCIAN_CAPTURE_PATH']).resolve()
 if base.parent!=Path('/opt/data/private/arxcian/restore-points').resolve():raise RuntimeError('Capture path outside restore-points')
 manifest=json.loads((base/'manifest.json').read_text());db=base/'kanban.db'

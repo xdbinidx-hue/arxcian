@@ -44,7 +44,7 @@ def run():
    except Exception:self.send_error(503,'Isolated Redis command failed')
  rest=http.server.ThreadingHTTPServer(('127.0.0.1',3301),Handler)
  try:
-  children.append(subprocess.Popen([str(RUNTIME/'usr/bin/redis-server'),'--port','0','--unixsocket',str(socket),'--unixsocketperm','700','--save','','--appendonly','no','--dir',str(STATE)],env=redis_env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
+  children.append(subprocess.Popen([str(RUNTIME/'usr/bin/redis-server'),'--port','0','--unixsocket',str(socket),'--unixsocketperm','700','--save','','--appendonly','yes','--dir',str(STATE)],env=redis_env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
   for _ in range(50):
    try:
     if command(['PING'])=='PONG':break
@@ -57,7 +57,7 @@ def run():
    if key.stat().st_mode & 0o077:raise RuntimeError('Drive key must have mode 0600')
    env['GOOGLE_SERVICE_ACCOUNT_KEY']=json.dumps(json.loads(key.read_text()))
   children.append(subprocess.Popen(['node',str(ROOT/'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port','3300'],cwd=ROOT,env=env))
-  (STATE/'status.json').write_text(json.dumps({'url':'http://localhost:3300','bind':'127.0.0.1','redis':'own Unix socket, no persistence','drive_key_present':key.exists(),'real_oracle_connected':False,'telegram_connected':False,'user_acceptance_ready':False}))
+  (STATE/'status.json').write_text(json.dumps({'url':'http://localhost:3300','bind':'127.0.0.1','redis':'own Unix socket, isolated AOF persistence','drive_key_present':key.exists(),'real_oracle_connected':False,'telegram_connected':False,'user_acceptance_ready':False}))
   print('Loopback preview http://localhost:3300; full acceptance NOT ready',flush=True)
   children[-1].wait()
  finally:

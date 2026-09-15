@@ -1,3 +1,22 @@
+# Update: capture drill passed; corrected auth summary pending
+
+Read acceptance-final-evidence.json: captured files verified, restored SQLite integrity
+passed (8 tables), temporary sandbox removed, capture unchanged, no services started.
+Full-service rollback and effective profile authorization remain unverified.
+
+The previous profile summary missed nested/current config shapes. Corrected metadata
+reader is prepared. Run only:
+`bash /home/arxcian-codex/arxcian-release/ops/acceptance/inspect-profile-gates.sh`.
+This is read-only audit mode and does NOT repeat the passed backup restore drill.
+Output: arxcian-work/acceptance-profile-gates.json. Syntax checks passed; container
+execution pending. Empty platform lists in the old report must not be used as proof
+that there are no adapters or no unauthorized access.
+
+Own preview Redis AOF and restart durability now passed. No production restart.
+Earlier preparation/status text below is retained as historical context.
+
+---
+
 # Received evidence 15 September 2026
 
 The user ran both initial root commands. The actual JSON reports were read.
@@ -44,8 +63,9 @@ privately on the VPS; do not paste it into chat. The launcher imports no inherit
 production environment and refuses actual application `.env` files. No model
 bridge, supervisor or Telegram poller is started. Never point this Redis adapter
 at an existing Redis socket; the launcher always creates its own server/socket.
-Redis has no persistence in this preliminary environment. Restarts lose queue/cache
-state: it is not suitable for final continuity acceptance. No sample task is seeded
+Redis now uses AOF persistence only in the private preview directory. A test key
+survived an actual preview/Redis restart; acceptance-preview-durability.json records
+the passing check. Real Telegram task continuity still awaits test routing. No sample task is seeded
 and missing live connections are not replaced with simulated successful results.
 
 Tested against the actual running Next build: anonymous checklist API 401, new Albin

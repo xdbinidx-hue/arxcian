@@ -1,3 +1,27 @@
+# Captured-backup-palautus luettu — 15.9.2026 klo 08:03 UTC
+
+## Testattu ja varmennettu
+
+Käyttäjä ajoi finish-evidence.sh:n. Luettu todellinen raportti /home/arxcian-codex/arxcian-work/acceptance-final-evidence.json, checked_at 2026-09-15T08:03:18.995882+00:00. Palautuspisteen 20260915T075851Z-4754f8ce neljän kopioidun tiedoston tarkisteet täsmäsivät; SQLite palautettiin uuteen yksityiseen tilapäishakemistoon, 8 taulua ja integrity_check läpäisivät. Capture ei muuttunut, sandbox poistettu, palveluja ei käynnistetty. **Otetun backupin tarkiste-/SQLite-sandbox-palautusharjoitus läpäisi.** Täydellinen gateway/supervisor/palveluasetusten palautusvalmius on edelleen avoin; raportin full_service_restore_verified=false on oikea rajaus.
+
+Uusi riippumaton testipalvelun parannus: ops/acceptance/local-preview.py käyttää nyt oman Redisin AOF-persistenssiä. Vain loopback-preview ja sen oma Redis käynnistettiin uudelleen. Oma testiavain säilyi molempien prosessien uudelleenkäynnistyksen yli ja poistettiin tarkistuksen jälkeen. /home/arxcian-codex/arxcian-work/acceptance-preview-durability.json passed=true, production_touched=false. Ei aiempien sovellustestien tai backup-palautuksen uusintaa.
+
+## Oikeusraportin rajoitus — ei hyväksytty vielä
+
+Default: yksi TELEGRAM_ALLOWED_USERS ilman wildcardia; oracle: env-gate-lista tyhjä; molemmilla API-avain olemassa; pairing-lukumäärät tyhjiä. Näitä ei tulkita tehokkaaksi käyttäjärajaksi. Havaittiin oman raporttiskriptin puute: se luki vain top-level platforms:n, vaikka varmennettu config.py tukee gateway.platforms-, gateway.telegram/api_server- ja top-level telegram/api_server -lohkoja sekä legacy gateway.json:ia ja allow_from-kenttiä. Tyhjät platforms-listat eivät siis todista adapterien puuttumista.
+
+Raporttiskripti korjattu; uusi **vain lukuasetuksille** tarkoitettu ops/acceptance/inspect-profile-gates.sh käyttää audit-only-tilaa eikä toista läpäissyttä backup-palautusharjoitusta. AST/shell-syntaksi ja diff-check läpäisivät; itse uusi konttiajo puuttuu. Käyttäjälle kerrotaan avoimesti, että lisäajo tarvitaan oman raportin rajauksen vuoksi. Todellisten sallittujen/kiellettyjen auth/dashboard-lukupyyntöjen varmistus ja lähde-/runtime-asetusten sovitus ovat edelleen avoimia.
+
+## Toteutettu / julkaistu / avoinna
+
+Sovelluskoodiin ei muutoksia. Testipalvelussa oma persistentti Redis, samat uudet testitunnukset, localhost:3300/login vain VPS-loopbackissa. Ei oikeaa Drive/Oracle/Telegram-kytkentää eikä valmista käyttäjän HTTPS-testiosoitetta. Ei tuotantojulkaisua, pushia tai tuotantorestartia. Alkuperäiset työkopiot ja Oracle/Mac-koontirajaukset säilytetty alla.
+
+## Seuraava askel
+
+VPS-rootissa vain uusi korjattu lukuajo: bash /home/arxcian-codex/arxcian-release/ops/acceptance/inspect-profile-gates.sh . Se tuottaa acceptance-profile-gates.json:n; **älä uusi** finish-evidence.sh:n palautusosaa. Lisäksi käyttäjältä odotetaan Drive-testilukutunnuksen, eristetyn Oracle-ajoympäristön ja HTTPS-testipääsyn sijainti-/osoitetietoja ilman salaisia arvoja. Niiden jälkeen viimeistellään testikytkennät, oikea Oracle–Drive-vertailu ja tehokkaat käyttäjärajatestit. Julkaisupäätös vasta hyväksymistuloksista; laaja Oracle/web search edelleen seuraava kokonaisuus.
+
+---
+
 # Käyttäjän ajamat konttikomennot — 15.9.2026 klo 07:58 UTC
 
 ## Varmennettu uusi evidenssi
