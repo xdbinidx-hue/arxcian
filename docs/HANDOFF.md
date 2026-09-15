@@ -1,3 +1,12 @@
+# Käyttäjä pääsee kirjautumissivulle — 15.9.2026
+
+- **Käyttäjän vahvistus:** previewn RJ-Mob-kirjautumissivu avautuu; käyttäjän omia tunnuksia ei hyväksytä. Yhteyden avaaminen ei enää ole tämän käyttäjäraportin perusteella este.
+- **Testattu:** eristetyn previewn login-laskuri 1 ennen tarkistusta, ei täyttynyt. Testikäyttäjä albin kirjautui private browser-credentials.json:n testisalasanalla HTTP200 myös Host localhost:61434:llä. Salasanaa/istuntoa ei tulostettu. Vain oma testijono/login-laskuri muuttui, ei tuotantoa.
+- **Ohje:** testi käyttää omia albin/arbnor-testisalasanoja; tuotantotunnuksia ei kopioida tähän. Albinin testisalasana näytetään käyttäjän omassa VPS-konsolessa lukemalla vain albin-kenttä browser-credentials.json:sta. Käyttäjän todellinen kirjautuminen/näkymätesti vielä vahvistamatta.
+- **Julkaistu:** ei tuotantoon mitään. Julkaisulupa voimassa, root-auth/Hermes-käyttöönotto ja oikea Oracle-vertailu edelleen avoinna kuten alla. Seuraava: kirjautuminen testitunnuksella ja kolmen näkymän käyttäjätesti.
+
+---
+
 # Preview ei avaudu käyttäjälle — tarkistus 15.9.2026
 
 - **Toteutettu:** ei uutta sovelluskoodimuutosta eikä palvelurestarttia. Nykyiset testipalvelut edelleen käynnissä. Tuotantojulkaisulupa säilyy voimassa; tuotantoon ei tässä vuorossa julkaistu.
