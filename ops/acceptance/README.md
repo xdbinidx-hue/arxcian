@@ -1,3 +1,25 @@
+# Received evidence 15 September 2026
+
+The user ran both initial root commands. The actual JSON reports were read.
+Capture exists: `/opt/data/private/arxcian/restore-points/20260915T075851Z-4754f8ce`,
+SQLite integrity_check ok. Runtime hashes for run.py/authz_mixin.py/status.py match
+the reviewed source package. Missing profiles.py was obtained and inspected.
+Persisted runtime lists default/oracle but has an old timestamp; effective auth is
+still unverified. Capture settings completeness/full service rollback remain open.
+
+Next targeted root command:
+`bash /home/arxcian-codex/arxcian-release/ops/acceptance/finish-evidence.sh`.
+It summarizes only default/oracle gates and restores the captured backup into a new
+private temporary sandbox, verifies hashes/integrity, then removes the sandbox.
+No live replacement, PairingStore import/migration, service start or model request.
+Output: `arxcian-work/acceptance-final-evidence.json`. The command has only passed
+syntax/AST checks locally; its real container execution is pending.
+
+The two initial capture/read commands below are completed; do not rerun them just
+because the older preparation instructions still appear in the retained record.
+
+---
+
 # Acceptance environment — preparation, not a production release
 
 ## Existing local preview

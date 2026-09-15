@@ -1,3 +1,28 @@
+# Käyttäjän ajamat konttikomennot — 15.9.2026 klo 07:58 UTC
+
+## Varmennettu uusi evidenssi
+
+- Käyttäjä ajoi export-runtime.sh:n ja capture-restore-point.sh:n root-webconsolessa. Raportit acceptance-runtime.json ja acceptance-restore-point.json luettiin tässä työssä suoraan paikallisista tiedostoista; onnistumista ei päätelty pelkästä keskusteluviestistä.
+- Puuttuva hermes_cli/profiles.py saatiin; SHA256 edeafa558cea28cc42ce4e80a21489a3176454a48bae9f767d8c179b954e0981. Yksityinen lukukopio /home/arxcian-codex/arxcian-work/acceptance-profiles.py. profiles_to_serve lähteessä: multiplex palvelee defaultia aina sekä allowlistin sallimia named-profiileja. Tämä ei ole käyttäjäoikeuden todiste.
+- gateway/run.py, gateway/authz_mixin.py ja gateway/status.py:n runtime-tarkisteet vastaavat tarkistettua lähdepakettia. Runtime-status listaa default/oracle, PID 86752 olemassa, mutta updated_at on 14.9.2026 06:08:48 UTC. PID-olemassaolo ja vanha persisted-status eivät yksin todista tuoretta tehokasta adapteri/auth-rajaa.
+- Otettu yksityinen palautuspiste /opt/data/private/arxcian/restore-points/20260915T075851Z-4754f8ce kontissa hermes-agent-vmvu-hermes-agent-1. Capture-aika 15.9.2026 07:58:51 UTC, SQLite SHA256 9203c4ad77fe41d8a1754beac2787948e77a1ce78784aa74349e3697726b9bf1, integrity_check ok. Mukana alkuperäinen run.py, root .env/config.yaml ja supervisor.py (SHA256 54185f029942771792d3e4aec8fc3fb3fab048ba38caf8f66f988c3ad9d6b860). Uusia checklist-gatewaymoduuleja ei ollut live-asennuksessa; manifestiin merkitty absent. Salaisuudet/databackup pysyvät yksityisessä konttihakemistossa.
+
+## Toteutettu / testattu / julkaistu
+
+Valmisteltu ops/acceptance/finish-evidence.sh + .py: seuraava rajattu root-komento tarkistaa nyt olemassa olevan capture-ID:n tiedostohashit, palauttaa SQLite-kopion uuteen yksityiseen tilapäishakemistoon ja tarkistaa sen eheyden muuttamatta backupia tai liveä. Samassa raportissa vain default/oracle-profiilien allowlist/wildcard/allow-all/pairing-lukumäärät ja rajatut config-kentät; ei tunnisteita, avaimia tai keskustelutietoja. Ei PairingStore-importtia (se voi migroida/kirjoittaa), ei palvelukäynnistyksiä. Python-AST ja shell-syntaksi sekä diff-check läpäisivät; itse konttiajo on vielä käyttäjältä odotettava. Aiemmat sovellustestit ja fixture-palautusajo säilyvät aiempina ajoina. Ei sovelluskoodimuutosta, pushia, julkaisua tai tuotantorestartia. Käyttäjän capture loi vain uuden varmuuskopion.
+
+## Jäljellä
+
+- Tehokas ajonaikainen profiili-/dashboard-oikeusraja on yhä avoin. Default/oracle-kohtainen gate-yhteenveto ja todelliset sallitut/kielletyt lukupyynnöt tarvitaan; uusi raportti ei lupaa auth-varmennusta pelkistä lukumääristä.
+- Tuotannon palautuspiste ON nyt otettu ja metadata/eheys luettu. Täysi palautusvalmius EI vielä ole varmennettu: runtime_settings_complete=false ja production_restore_tested=false ovat capture-manifestissa tarkoituksella. Otetun backupin sandbox-palautus ja supervisor/profiiliasetusten täydellisyys puuttuvat.
+- Drive viewer-ACL-tunnus, eristetty Oracle/Telegram-testiajo ja käyttäjälle HTTPS-osoite edelleen puuttuvat. Loopback-preview jatkaa alustavana; status.json sanoo user_acceptance_ready=false. Oikeaa Oracle–Drive-vertailua ei ole ajettu eikä simuloitu.
+
+## Seuraava konkreettinen askel
+
+Käyttäjältä tarvitaan VPS-rootissa: bash /home/arxcian-codex/arxcian-release/ops/acceptance/finish-evidence.sh . Ajo tuottaa /home/arxcian-codex/arxcian-work/acceptance-final-evidence.json. Tämä kohdistuu juuri saatuun palautuspisteeseen ja todettuihin default/oracle-profiileihin eikä toista vanhaa preflightia. Lue tulos, päätä puuttuvan oikeus-/palautusevidenssin jatko ja kytke käyttäjän järjestämät testipääsyt vasta varmennetun eristyksen jälkeen. Yhteinen koontivastuu säilyy tässä HANDOFF-tiedostossa; Oracle- ja Mac-tiedostojen aiemmat tiedot alla säilytetty. Koko sivuston toiminnot/verkkohaku edelleen seuraava kokonaisuus.
+
+---
+
 # Hyväksymisesteiden jatko — 15.9.2026
 
 Yhteinen koonti tehdään tässä julkaisutyökopiossa. Oracle-tehtävä lopetti käyttäjän pyynnöstä koonnin eikä tehnyt tässä vaiheessa tiedostomuutoksia tai committia. /home/arxcian-codex/arxcian-oracle/docs/HANDOFF.md ja sen 71b5d9f-version tiedot huomioitu ja säilytetty alla; Oracle-työpuu tarkistettiin puhtaaksi. Macin docs/HANDOFF.md on tarkistamatta, eikä sen synkronointia väitetä tehdyksi. Muiden työkopioiden tiedostoja ei muutettu.
