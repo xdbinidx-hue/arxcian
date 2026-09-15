@@ -1,3 +1,9 @@
+# Hyväksymisvalmistelun päivitys 15.9.2026
+
+Uusi eristetty loopback-preview ja rajatut runtime-/backup-komennot on valmisteltu; uudet ympäristö- ja palautus-fixturetarkistukset läpäisivät. Käyttäjälle valmis päästä päähän -testipalvelu, oikeat Drive/Oracle/Telegram-yhteydet, tehokkaat Hermes-oikeudet ja tuotannon palautuspiste ovat edelleen avoinna. Tarkat käyttöohjeet ja pääsypyynnöt: [ops/acceptance/README.md](../ops/acceptance/README.md). Yhteinen ajantasainen tila: [HANDOFF.md](HANDOFF.md). Alla säilyy aiemman julkaisukokonaisuuden sisältö ja hyväksymislista.
+
+---
+
 # Kokonaisuuden hyväksyntä 15.9.2026
 
 ## Julkaisukokonaisuus

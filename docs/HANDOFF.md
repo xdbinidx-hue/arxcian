@@ -1,3 +1,38 @@
+# Hyväksymisesteiden jatko — 15.9.2026
+
+Yhteinen koonti tehdään tässä julkaisutyökopiossa. Oracle-tehtävä lopetti käyttäjän pyynnöstä koonnin eikä tehnyt tässä vaiheessa tiedostomuutoksia tai committia. /home/arxcian-codex/arxcian-oracle/docs/HANDOFF.md ja sen 71b5d9f-version tiedot huomioitu ja säilytetty alla; Oracle-työpuu tarkistettiin puhtaaksi. Macin docs/HANDOFF.md on tarkistamatta, eikä sen synkronointia väitetä tehdyksi. Muiden työkopioiden tiedostoja ei muutettu.
+
+## Toteutettu
+
+- Jatkettiin /home/arxcian-codex/arxcian-release-haarassa release/acceptance-20260915 versiosta b4a73a6. Sovelluskoodiin ei tehty muutoksia; käytetään aiempaa testattua buildia.
+- Uusi loopback-testipalvelu käynnistetty osoitteeseen http://localhost:3300/login VPS:llä. Oma Redis-prosessi, portti 0 ja yksityinen Unix-socket; uudet vain testiin luodut kirjautumis-/sessio-/bridge-tunnukset. Ei tuotantoasetusten tuontia. Käynnistin ops/acceptance/local-preview.py, yksityinen tilahakemisto /home/arxcian-codex/arxcian-work/acceptance-preview, logi acceptance-preview.log. Testitunnukset browser-credentials.json:ssa (0600), ei Gitissä tai keskustelussa.
+- Rajattu root-lukukomento ops/acceptance/export-runtime.sh ja capture-only-varmuuskopiokomento ops/acceptance/capture-restore-point.sh valmisteltu ja käyttäjältä pyydetty ajettaviksi. Molempien tarkat polut ja perustelut ops/acceptance/README.md:ssä. Ei broad Docker/root-oikeuksien muutosta.
+- Turvallinen palautusharjoitus ops/acceptance/rehearse-restore.py ja tuotantocapture-työkalun fixture-tarkistus tehty uusissa tilapäishakemistoissa.
+
+## Testattu tässä jatkossa
+
+- Uusi paikallinen Next-palvelu: kirjautumaton checklist API 401; testialbin login 200 / read 200; testiarbnor login 200 / read 404. @vercel/kv:n todellinen HTTP→oma Redis -kirjoitus/luku läpäisi. Tulos /home/arxcian-codex/arxcian-work/acceptance-preview-smoke.json. Eväste välitettiin HTTP-testissä käsin; varsinaista selainta ei testattu tässä vaiheessa.
+- SQLite online backup→palautuskopio, molempien integrity_check, vanhan revision palautuminen ja uudemman live-fixturen säilyminen läpäisivät. Capture-työkalun yksityiset 0700/0600-oikeudet, lähteen muuttumattomuus, olemassa olevan kohteen ylikirjoituskiellot ja salaisuuksien puuttuminen metatietotulosteesta läpäisivät. Tulokset acceptance-restore-drill.json ja acceptance-capture-check.json arxcian-workissa.
+- Uusien Python-skriptien AST- ja shell-skriptien syntaksitarkistus sekä git diff --check läpäisivät. Sovelluksen aiempia 400 Node/bridge + 14 Python / DOM / build / typecheck -ajoja EI uusittu eikä laskettu tämän vuoron uusiksi testeiksi. Ei tuotantotietojen kirjoitustestejä, mallikutsuja tai Telegram-viestejä.
+
+## Julkaistu / käytössä
+
+Ei tuotantojulkaisua, pushia, aktivointia, julkista porttia/DNS-muutosta tai tuotantorestartia. Ainoa uusi käynnistetty palvelu on loopback-preview ja sen oma Redis. Tuotannon aiempi varmennettu 7346755 / deployment 6433181173 säilyy edellisen tarkistuksen tuloksena; sitä ei tarkistettu uudelleen tässä jatkossa.
+
+## Avoinna — ei väitetä ratkaistuiksi
+
+1. Lopullinen käyttäjälle osoitettavissa oleva HTTPS-testiversio puuttuu. Loopback-preview on alustava ympäristö: Drive-tunnus puuttuu, oikea Oracle/Telegram ei ole kytketty, Redis on vielä ilman persistenssiä. Ei seeded/simuloitua onnistunutta tehtävää. http://localhost:3300 on VPS-paikallinen, muualta tarvitaan SSH-forward nykyiseen VPS:ään; tarkka SSH-host ja HTTPS-proxy pitää vielä sopia/järjestää.
+2. Käyttäjältä odotetaan root-lukuraporttia acceptance-runtime.json. Suora sudo vaatii salasanan, Docker-pääsy puuttuu edelleen. Raportti ei yksin todista tehokasta profiilien/dashboardin oikeusrajaa; puuttuva profiles.py ja todelliset sallitut/kielletyt pyynnöt tarvitaan jatkoarviointiin.
+3. Dedicated Drive viewer-ACL-tunnus ja eristetty Hermes Oracle -profiili/API-key/työkalusandbox sekä varmennettu testirouting Telegramista erilliseen SQLiteen puuttuvat. Avaimia ei pyydetä keskusteluun. Tuotannon kirjoitusoikeuksista tiliä, supervisor-prosessia tai bottipolleria ei saa ottaa previewn käyttöön.
+4. Oikean Oraclen vastauksia ei verrattu Driveen: estetty kunnes yllä oleva pääsy ja eristys on todennettu. Vertailun fileId/kuukausi/näkymä/snapshot/viesti ja jokaisen luvun hyväksyntä kirjataan samalla aikavälillä ops/acceptance/README.md:n ja docs/oracle-rjmob-validation.md:n mukaan.
+5. Tuotannon palautuspiste ei ole vielä otettu/varmennettu tässä työssä. Käyttäjältä odotetaan capture-komennon acceptance-restore-point.json. Capture tallentaa vain yksityisen kontin backupin/metatiedot ja merkitsee runtime_settings_complete=false: lähteet pitää sovittaa todelliseen supervisor/profiilien asetuksiin ja palveluyksiköihin. Palautusta harjoiteltiin vain fixturessa; oikean backupin sandbox-palautus puuttuu. Lähde-Git-bundle ei korvaa tätä.
+
+## Seuraava tehtävä
+
+Lue saapuvat kaksi metatietoraporttia; tarkista puuttuva lähde/ajonaikaiset oikeusrajat. Kytke rajatut Drive/Oracle-testitunnukset vasta eristyksen vahvistuttua, viimeistele persistentti testijono/SQLite ja HTTPS-pääsy sekä autentikoitu Telegram-testirouting. Tee oikea Oracle–Drive-vertailu ja otetun backupin palautus uuteen sandboxiin. Anna tämän jälkeen valmis testiosoite ja hyväksymistulokset julkaistavan sisällön päätöstä varten. Tuotantojulkaisu päätetään erikseen. Koko sivuston Oracle-toiminnot ja verkkohaku säilyvät seuraavana kokonaisuutena.
+
+---
+
 # Kokonaisuuden hyväksyntä — uusin tarkistus 15.9.2026
 
 Tämä päivitys täydentää alla säilytettyä Oracle/Hermes/RJ-Mob-muistiota. Vanhoja testiraportteja ei laskettu uusiksi ajoiksi.
