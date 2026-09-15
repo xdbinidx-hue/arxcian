@@ -1,3 +1,15 @@
+# Tuotantojulkaisulupa ja valmistelu — 15.9.2026
+
+- **Lupa:** käyttäjä sanoi ”julkase kaikki tuotantoon”. Voimassa oleva lupa koskee nykyistä RJ-Mob/Oracle/Hermes-julkaisukokonaisuutta, myös tarvittavaa käyttöönottoa. Uutta julkaisulupaa ei pyydetä. Koko sivuston Oracle-toiminnot/verkkohaku ovat edelleen seuraava toteutuskokonaisuus; niitä ei toteutettu.
+- **Nykyinen tuotanto tarkistettu:** origin/main `44fdf009dff2f9812927ffcaa4a80bf3c388c5c7`; GitHub Production deployment `6460090985` success 15.9.2026 13:36:36 UTC. Tämä uudempi Winpos-automaattituonnin poisto säilytetty: yhdistetty release-haaraan konfliktitta, sovellusversio `cfa84ae`.
+- **Toteutettu:** julkaisutyö `/home/arxcian-codex/arxcian-release`, haara `release/acceptance-20260915`. Lähdepaketti `/home/arxcian-codex/arxcian-work/production-release-cfa84ae.bundle`, SHA256 `0e2a6c78052027590fb30c4460f24fbb2c5701da32030fdc3ae874d45cba25ef`. Ei tuotantotunnuksia/testiavaimia paketissa.
+- **Testattu muutoksen vuoksi:** mainin muuttamien lukijoiden/cronin/Oracle-kontekstin 42 testiä läpäisi. Repon julkaisugate: 378 Node/TS +22 bridge läpäisi, kaksi eristettyä Redis-integraatiota ohitettu ilman testiasetuksia; typecheck läpäisi. Clean env-i, ei tuotantotunnuksia tai kirjoitustestejä tuotantokantoihin. Aiemmat backup-/DOM-testit säilyvät, ei uusittu. Build rinnakkaisajossa SIGKILL; erillinen uusinta läpäisi exit 0. Loki production-release-build-retry.log. Sovelluksen julkaisugatet nyt läpäisty.
+- **Julkaistu tämän pyynnön perusteella:** ei vielä mitään, ei main-pushia/uutta Vercel-tuotantojulkaisua tai Hermes-asennusta. Pelkkä frontend-julkaisu jättäisi vanhan Oracle-bridgen sivuuttamaan uuden viewContextin; koko ketju vaatii yhteensopivan VPS-päivityksen. Julkaisulupa ei poista puuttuvaa pääsyä tai todistamattomia oikeusrajoja.
+- **Puuttuva pääsy:** uid1000: sudo -n vaatii salasanan, Docker socket permission denied. Käyttäjältä pyydetty vain root-webconsoleajo `bash /home/arxcian-codex/arxcian-release/ops/acceptance/check-api-auth.sh`; raportti puuttuu edelleen. Se on GET-only eikä julkaisu. Root tarvitaan myös varsinaiseen Hermes/gateway/bridge-asennukseen ja hallittuun restarttiin. Ei oleteta tuntematonta supervisor-käynnistystä.
+- **Seuraava:** vahvista build, lue root-auth-raportti, valmistele nykyiseen supervisor-asennukseen sopiva VPS-käyttöönotto ja palautus. Ratkaise runtime-oikeudet ja oikea Oracle-Drive-vastaus; julkaise jo annetun luvan perusteella yhteensopiva kokonaisuus, tarkista tuotanto. Älä kysy julkaisulupaa uudelleen. Muut avoimet käyttäjätesti/Telegram/täysi palvelupalautus ja aiemmat muistiot säilyvät alla.
+
+---
+
 # Preview-yhteyden korjaus — 15.9.2026
 
 - **Toteutettu:** käyttäjän ilmoittama avaamisongelma toistettu: omat Next/proxy-prosessit eivät kuunnelleet. Käynnistetty vain eristetty preview uudelleen erillisissä prosessisessioissa. Uusi `ops/acceptance/start-preview.py` tekee saman ilman riippuvuutta transientin exec-session elinkaaresta, kieltää rinnakkaisen käynnistyksen ja poistaa vain connection-refused oman Redis-socketin. Ei automaattista VPS-reboot-käynnistystä tai palveluvalvontaa.
