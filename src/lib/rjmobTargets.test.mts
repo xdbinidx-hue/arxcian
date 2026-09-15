@@ -166,3 +166,12 @@ for (const broken of ['store', 'seller']) {
     assert.match(result.varoitukset.join(' '), /lukeminen epäonnistui/)
   })
 }
+
+
+test('Excelin otsikon ylimääräiset välilyönnit eivät kadota Elisan uusmyyntiä', async () => {
+  const spaced = headers.map(h => h === 'ELISA Pakettiliittymät' ? ' ELISA  Pakettiliittymät ' : h)
+  const { data } = await hae({ sheets: { 'Myyjät Myymälöittäin': [spaced, ['Hamza Hanif', '10', '50', '2', '30', '2', '3', '4', '1']] } })
+  assert.equal(data.targets[0].elisaUusmyynti, 3)
+  assert.equal(data.targets[0].teliaUusmyynti, 5)
+  assert.equal(data.targets[0].uusmyyntiYhteensa, 10)
+})

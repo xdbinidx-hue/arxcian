@@ -19,7 +19,8 @@ function getAuth() {
 
 function findCol(headers: string[], ...patterns: string[]): number {
   for (const p of patterns) {
-    const idx = headers.findIndex(h => h.toLowerCase().includes(p.toLowerCase()))
+    const normalized = p.toLowerCase().trim().replace(/\s+/g, ' ')
+    const idx = headers.findIndex(h => h.toLowerCase().trim().replace(/\s+/g, ' ').includes(normalized))
     if (idx >= 0) return idx
   }
   return -1

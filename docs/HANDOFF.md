@@ -1,3 +1,15 @@
+# Käyttäjätestin löydökset: operaattorit ja kassamyynnin erittely — 15.9.2026
+
+- **Käyttäjän testitulos:** kirjautuminen onnistui, uusmyynnissä vain DNA, kassamyynnissä kate/tavoite/päivä/ennuste mutta ei myyntiä/palautusta/alennusta/kuitteja. Ei hyväksytä näitä näkymiä vielä valmiiksi.
+- **Lähteestä varmennettu:** yksityisen syyskuun capturen Myyjät Myymälöittäin -otsikko `ELISA  Pakettiliittymät` sisältää kaksi välilyöntiä, joten findCol ei tunnistanut sitä. TELIA uusmyynti ja yritysuusmyynti -sarakkeet löytyvät, mutta tyhjät yrityssolut kulkevat nullina ja poistavat summan. Ei oleteta tyhjää nollaksi ilman lähdesemantiikan vahvistusta.
+- **Toteutettu:** findCol normalisoi otsikoiden whitespacea ennen vertailua. Elisan otsikkobugi korjattu lähdekoodiin, nykyisen previewn tallennettua aineistoa/running buildia ei vielä päivitetty. Telian tyhjän solun semantiikka odottaa käyttäjäpäätöstä.
+- **Testattu:** muutetun lukijan 11 mocked-I/O-testiä läpäisi, uusi tuplavälilyönnin regression mukana. Loki `/home/arxcian-codex/arxcian-work/operator-reader-fix-tests.log`. Ei Google-luku-/kirjoituskutsuja, tuotantotunnuksia tai kantojen muutoksia. Aiempi build ei kata tätä uutta muutosta.
+- **Kassamyynnin erittely:** oikean capturen kuukausitiedostossa vain `Myyjät Myymälöittäin` ja `data`; ei Kassakate/Kassamyynti-välilehteä. Kaikkien erittelykenttien arvo null, kassakate löytyy erillisestä toteumasarakkeesta. Erittelyä ei päätellä katteesta. Mainin Winpos-automaattituonti poistettu, sitä ei palauteta huomaamatta.
+- **Käyttäjältä kysytty:** tarkoittaako tyhjä operaattorimyyntisolu nollaa vai puuttuvaa tietoa, sekä kassamyynnin erittelyn tiedosto/välilehti. Vastaus tarvitaan ennen Telia-summan ja kassalähteen muuttamista.
+- **Julkaistu:** ei tuotantoon mitään, julkaisulupa voimassa. Previewn operaattoriaineisto vielä aiempi capture. Seuraava: vastauksen perusteella korjaa semantiikka/lähde, testaa muuttunut lukija, päivitä capture/preview turvallisesti ja julkaise ketju kun aiemmat root/Oracle/palautusesteet ratkaistu. Muut työt säilyvät alla.
+
+---
+
 # Käyttäjä pääsee kirjautumissivulle — 15.9.2026
 
 - **Käyttäjän vahvistus:** previewn RJ-Mob-kirjautumissivu avautuu; käyttäjän omia tunnuksia ei hyväksytä. Yhteyden avaaminen ei enää ole tämän käyttäjäraportin perusteella este.
