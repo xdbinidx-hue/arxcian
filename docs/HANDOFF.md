@@ -1,3 +1,13 @@
+# Oracle-bridge-tuotantopäivitys epäonnistui — 15.9.2026
+
+- **Käyttäjän todellinen ajotulos:** install-oracle-service.sh keskeytyi RuntimeError: Update failed; old bridge restored and restarted. Onnistumisraportti production-oracle-service-release.json puuttuu. Käyttäjä käynnisti komennon heti toistamiseen; tämän uusinnan tulos ei vielä tiedossa. Älä aja lisää asennuksia ennen diagnoosia.
+- **Julkaistu/nykytila:** Oracle-tiedostoihin tehtiin tuotantopäivitysyritys ja virhepolku ilmoitti palauttaneensa vanhat tiedostot sekä käynnistäneensä supervisorin. Tätä ei merkitä onnistuneeksi julkaisuksi tai todisteeksi vanhan bridge-lapsiprosessin toiminnasta. Frontendiin/gatewayhin/checklist-aktivointiin ei tehty julkaisua. Julkaisulupa edelleen voimassa.
+- **Valmisteltu/testattu:** ops/acceptance/diagnose-oracle-update.sh +py tekee vain lukudiagnoosin: supervisor/bridge-prosessien lukumäärä, nykyisen tunnetun supervisorin load_config-validointi (ei arvoja), state-gate-tiedoston läsnäolo, livebridge-SHA:t, viimeisin palautuskopio ja vastaavatko live-tiedostot sitä. Ei lokisisältöjä, avaimia, malliajoja, restartteja tai tuotantokirjoituksia. Python/bash-syntaksi läpäisi; todellinen diagnoosi odottaa root-käyttäjää.
+- **Seuraava:** kun käyttäjän käynnistämä toinen asennusajo päättynyt, root-webconsolessa bash /home/arxcian-codex/arxcian-release/ops/acceptance/diagnose-oracle-update.sh. Lue acceptance-oracle-update-diagnostic.json, varmista toimiva vanha palvelu ja korjaa oikea epäonnistumissyy ennen uusintaa. Aiemmat API-auth/testit/backup-drill eivät uusittu.
+- **Avoin:** tuotannon nykyinen bridge-prosessi ja palautuksen todellinen tila; onnistunut yhteensopiva julkaisu sekä aiemmat owner/dashboard/oikea Oracle–Drive/Telegram/täysi palvelupalautus/Leo4.9. erittely. Sovellusf8ef88d previewssä. Yhteinen muistio /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, muiden töiden tiedot säilyvät alla.
+
+---
+
 # Kontissa valmisteltu palvelupaketti läpäisi — 15.9.2026
 
 - **Testattu kontissa:** acceptance-service-stage.json: kaikki4 lähdetarkisteet, Python-AST ja Node--check läpäisivät. Node=/usr/local/bin/node; liveBridge=/opt/data/private/arxcian/oracle-production/release-9f26dc0/oracle-bridge.mjs; config=/opt/data/private/arxcian/oracle-production/config.json, vain key-nimet API_SERVER_KEY/ARXCIAN_ORIGIN/ORACLE_BRIDGE_SECRET vietiin. prepared_only=true, live_files_replaced=false, services_started=false.
