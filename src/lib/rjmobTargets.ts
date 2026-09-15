@@ -1,6 +1,6 @@
 import { readCashArchive, type CashReport } from './winposArchive/read'
 import { google } from 'googleapis'
-import { isRJMobSeller, shouldSkip, RJ_MOB_SELLERS } from '@/lib/rjmob'
+import { isRJMobSeller, isRJMobSellerForMonth, shouldSkip, RJ_MOB_SELLERS } from '@/lib/rjmob'
 import { haeTavoitteet } from '@/lib/rjmobTavoiteDrive'
 import { kuukausiTiedostonimesta } from '@/lib/rjmobTavoiteTaulukko'
 import { UUSI_LUKULAHDE_ALKAEN, KASSAKATE_KERROIN } from '@/lib/rjmobMyymalaTaulukko'
@@ -314,7 +314,6 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
         if (!isRJMobSeller(row.nimi)) continue
         kassaMap[normalizeName(row.nimi).toLowerCase()] = { kassaMyynti: row.myynti, kassaPalautus: row.palautus, kassaAlennus: row.alennus, kassaKuitit: row.kuitit, kassaKate: null }
       }
-      varoitukset.push(`Winpos-erittelyn tilanne ${kassaRaportti.tilannePvm} asti. Raportin jakson alkua ei ilmoiteta lähteessä. Kassakate luetaan valitun kuukauden myyntiseurannasta.`)
     }
   } catch {
     varoitukset.push('Winpos-arkiston lukeminen epäonnistui. Erittelyä ei voida vahvistaa.')
@@ -346,7 +345,7 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
 
   // Myynti näkyy myös ilman tavoitetta, tavoite myös ilman myyntiriviä.
   const nimet = new Set([...Object.keys(targetsMap), ...Object.keys(actualsMap), ...Object.keys(kassaMap)])
-  const targets: TargetRow[] = Array.from(nimet).filter(key => isRJMobSeller(key)).map(key => {
+  const targets: TargetRow[] = Array.from(nimet).filter(key => isRJMobSellerForMonth(key, kuukausi.order % 100, kuukausi.order)).map(key => {
     const t = targetsMap[key] ?? { nimi: normalizeName(key), liittTavoite: null, fsecTavoite: null, kassaTavoite: null }
     const actual = actualsMap[key] ?? { liittKpl: null, liittEur: null, fsecKpl: null, kassaKate: null, dnaUusmyynti: null, elisaUusmyynti: null, teliaUusmyynti: null }
     const kassa = kassaMap[key] ?? { kassaMyynti: null, kassaPalautus: null, kassaAlennus: null, kassaKuitit: null, kassaKate: null }

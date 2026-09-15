@@ -17,7 +17,10 @@ def main():
    try:connection.connect(str(private))
    except ConnectionRefusedError:private.unlink()
    else:raise SystemExit('Private Redis still running; refuse concurrent preview')
- for name,command,log in [('app',['python3','-B','ops/acceptance/local-preview.py'],'acceptance-preview.log'),('proxy',['node','ops/acceptance/snapshot-preview.cjs'],'acceptance-snapshot-preview.log')]:
+ jobs = [('app',['python3','-B','ops/acceptance/local-preview.py'],'acceptance-preview.log'),('proxy',['node','ops/acceptance/snapshot-preview.cjs'],'acceptance-snapshot-preview.log')]
+ if (STATE/'drive-candidate.json').exists():
+  jobs.append(('reader',['node','ops/acceptance/capture-drive-view.cjs','--watch'],'acceptance-drive-watch.log'))
+ for name,command,log in jobs:
   with open(STATE.parent/log,'ab',buffering=0) as output:
    process=subprocess.Popen(command,cwd=ROOT,env=ENV,stdin=subprocess.DEVNULL,stdout=output,stderr=output,start_new_session=True)
   (STATE/(name+'-pid')).write_text(str(process.pid))

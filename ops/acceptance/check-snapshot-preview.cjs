@@ -68,9 +68,28 @@ async function main(){
   if(!matches){fs.writeFileSync(state+'/snapshot-ui-diagnostic.json',JSON.stringify({view:name,browserData,expected:snapshot.views[name].data}),{mode:0o600});const selection=view.getRjMobSelection();console.error(JSON.stringify({diagnostic:true,view:name,fileMatches:selection?.fileId===snapshot.file.id,viewMatches:selection?.view===name,hasFingerprint:Boolean(selection?.fingerprint),tableRendered:Boolean(document.querySelector('table')),sourceHashReproducible:view.viewFingerprint(snapshot.views[name].data)===snapshot.views[name].fingerprint}))}
   assert(matches,'Actual page fingerprint must match captured Drive view: '+name)
   assert(document.querySelector('table'),'Actual table must render')
+  if(name==='tavoitteet'){
+    assert(![...document.querySelectorAll('th')].some(h=>h.textContent==='Liitt teho'||h.textContent==='Total teho'),'Only combined sales efficiency must remain')
+    const text=document.body.textContent
+    assert(text.indexOf('Viikkoviesti tiimille') < text.indexOf('Myynti & Runrate'),'Message generation must precede view buttons')
+    assert(!text.includes('Basri Salihi'),'Former seller must be absent for September')
+    const table=[...document.querySelectorAll('table')].find(t=>t.textContent.includes('Liitt+Kassa teho') && t.textContent.includes('Provisio yht.'))
+    assert(table,'Sales tracking table must remain visible')
+    for(const seller of snapshot.dash.sellers){
+      const row=[...table.querySelectorAll('tbody tr')].find(r=>r.children[1]?.textContent===seller.nimi)
+      if(!row)continue
+      if(seller.fsecKpl>10)assert.equal(row.children[5].style.color,'rgb(21, 128, 61)','F-Secure over ten must be green')
+      if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho) && seller.myyntiTeho<7) assert.equal(row.style.background,'rgb(253, 236, 236)','Measured efficiency below seven must mark the row red')
+    }
+  }
   if(name==='kassamyynti' && snapshot.targets.kassaRaportti) assert(document.body.textContent.includes(snapshot.targets.kassaRaportti.tilannePvm),'Actual cash page must show archive cutoff')
  }
+ const beforeRefresh=calls
+ Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'visible'})
+ await React.act(async()=>window.dispatchEvent(new window.Event('focus')))
+ for(let i=0;i<100 && (calls<beforeRefresh+3 || !view.getRjMobSelection());i++) await React.act(async()=>new Promise(r=>setTimeout(r,10)))
+ assert(calls>=beforeRefresh+3,'Focusing the page must refresh all three data readers')
  await React.act(async()=>app.unmount())
- console.log(JSON.stringify({passed:true,actualHttpSnapshot:true,bothReaderArrivalOrdersHiddenUntilReady:true,anonymousAndTamperedRejected:true,bothUsersSharedData:true,unknownFileRejected:true,writeRouteBlocked:true,unconnectedOracle503:true,actualReactPageAllThreeFingerprintsMatchDriveCapture:true,domHttpRequests:calls,productionWrites:false,realOracleCompared:false}))
+ console.log(JSON.stringify({passed:true,actualHttpSnapshot:true,bothReaderArrivalOrdersHiddenUntilReady:true,focusRefreshesAllThreeReaders:true,anonymousAndTamperedRejected:true,bothUsersSharedData:true,unknownFileRejected:true,writeRouteBlocked:true,unconnectedOracle503:true,actualReactPageAllThreeFingerprintsMatchDriveCapture:true,domHttpRequests:calls,productionWrites:false,realOracleCompared:false}))
 }
 main().catch(e=>{console.error(JSON.stringify({passed:false,errorClass:e.constructor?.name,failedCheck:e.message.startsWith('Actual')?e.message.split('\n')[0]:null,code:e.code||null,operator:e.operator||null,actualStatus:typeof e.actual==='number'?e.actual:null,expectedStatus:typeof e.expected==='number'?e.expected:null}));process.exit(1)})

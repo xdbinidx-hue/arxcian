@@ -7,8 +7,8 @@ const native = createRequire(path.resolve(__dirname,'../../package.json'))
 const { unsealData } = native('iron-session')
 const state = '/home/arxcian-codex/arxcian-work/acceptance-preview'
 const credentials = JSON.parse(fs.readFileSync(state+'/browser-credentials.json','utf8'))
-const capture = JSON.parse(fs.readFileSync(state+'/drive-view-capture.json','utf8'))
-const snapshots = new Map(capture.snapshots.map(s=>[s.file.id,s]))
+let capture = JSON.parse(fs.readFileSync(state+'/drive-view-capture.json','utf8'))
+let snapshots = new Map(capture.snapshots.map(s=>[s.file.id,s]))
 async function user(req) {
   try {
     const cookie = (req.headers.cookie || '').split(';').map(s=>s.trim()).find(s=>s.startsWith('arxcian_session='))
@@ -24,13 +24,20 @@ function json(res,status,data) {
 const server = http.createServer(async(req,res)=>{
   try {
     if (!/^(localhost|127\.0\.0\.1):[0-9]{1,5}$/.test(req.headers.host || '')) return json(res,403,{error:'Testipalvelun host ei ole sallittu.'})
+    try {
+      const updated = JSON.parse(fs.readFileSync(state+'/drive-view-capture.json','utf8'))
+      if(updated.capturedAt !== capture.capturedAt) {
+        const next = new Map(updated.snapshots.map(s=>[s.file.id,s]))
+        capture=updated;snapshots=next
+      }
+    } catch { /* Keep the last complete snapshot when refresh fails. */ }
     const url = new URL(req.url,'http://localhost:3302')
     const p = url.pathname
     if (req.method==='GET' && p==='/arxcian') {res.writeHead(307,{location:'/arxcian/rj-mob/etela','cache-control':'no-store'});return res.end()}
     if (req.method==='GET' && p==='/') {res.writeHead(302,{location:'/acceptance'});return res.end()}
     if (req.method==='GET' && p==='/acceptance') {
       res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"})
-      return res.end('<!doctype html><html lang="fi"><meta charset="utf-8"><title>Arxcian — testiversio</title><body><h1>Arxcianin eristetty lukutesti</h1><p>Oikeasta Drivestä otettu syyskuun 2026 lukukuva: '+capture.capturedAt+'. Tämä on tallennettu lukutilanne, ei jatkuvasti päivittyvä tuotantodata.</p><p>Oracle- ja Telegram-testiyhteys eivät ole vielä käytössä.</p><p><a href="/login">Kirjaudu testitunnuksella</a> · <a href="/arxcian/rj-mob/etela">Myyntiseuranta</a> · <a href="/arxcian/personal/checklist">Käyttötestilista</a></p></body></html>')
+      return res.end('<!doctype html><html lang="fi"><meta charset="utf-8"><title>Arxcian — testiversio</title><body><h1>Arxcianin eristetty lukutesti</h1><p>Oikeasta Drivestä otettu syyskuun 2026 lukukuva: '+capture.capturedAt+'. Lukutilanne päivittyy noin minuutin välein erillisellä lukijalla. Lähdetietoja ei muuteta.</p><p>Oracle- ja Telegram-testiyhteys eivät ole vielä käytössä.</p><p><a href="/login">Kirjaudu testitunnuksella</a> · <a href="/arxcian/rj-mob/etela">Myyntiseuranta</a> · <a href="/arxcian/personal/checklist">Käyttötestilista</a></p></body></html>')
     }
     if (['/api/files','/api/sheets','/api/runrate','/api/targets'].includes(p)) {
       if (req.method!=='GET') return json(res,405,{error:'Lukutestissä sallitaan vain GET.'})

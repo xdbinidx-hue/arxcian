@@ -57,7 +57,13 @@ function load(filename) {
   mod._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText,filename)
   return mod.exports
 }
+function saveCapture(filename, value) {
+  const temporary = filename + '.' + process.pid + '.tmp'
+  fs.writeFileSync(temporary, JSON.stringify(value), {mode:0o600})
+  fs.renameSync(temporary, filename)
+}
 async function main() {
+  responses.length = 0
   if (process.argv.includes('--recompute-only')) {
     const filename = state + '/drive-view-capture.json'
     const capture = JSON.parse(fs.readFileSync(filename, 'utf8'))
@@ -70,7 +76,7 @@ async function main() {
       }))
     }
     capture.calculationsRecomputedAt = new Date().toISOString()
-    fs.writeFileSync(filename, JSON.stringify(capture), {mode:0o600})
+    saveCapture(filename, capture)
     console.log(JSON.stringify({passed:true,recomputedOnly:true,googleCalls:0,originalCaptureTimePreserved:true}))
     return
   }
@@ -95,7 +101,11 @@ async function main() {
   const after = await drive.listSeurantaFiles()
   for (const s of snapshots) s.sourceModifiedTimeUnchanged = after.find(f => f.id === s.file.id)?.modifiedTime === s.file.modifiedTime
   const output = {capturedAt:new Date().toISOString(),readOnlyScopeGuard:true,applicationActivated:false,oracleAnswerCompared:false,nextAvailableMonthPresent:Boolean(next),files:months,snapshots,responses}
-  fs.writeFileSync(state + '/drive-view-capture.json',JSON.stringify(output),{mode:0o600})
+  if(!snapshots.every(s=>s.readers.every(r=>r==='fulfilled') && s.sourceModifiedTimeUnchanged)) throw new Error('Incomplete refresh: previous snapshot retained')
+  saveCapture(state + '/drive-view-capture.json',output)
   console.log(JSON.stringify({passed:snapshots.every(s=>s.readers.every(r=>r==='fulfilled') && s.sourceModifiedTimeUnchanged),snapshotCount:snapshots.length,nextAvailableMonthPresent:Boolean(next),readOnlyScopeGuard:true,readers:snapshots.map(s=>({month:drive.monthOrder(s.file.name),statuses:s.readers,sourceModifiedTimeUnchanged:s.sourceModifiedTimeUnchanged})),responseCount:responses.length,applicationActivated:false,oracleAnswerCompared:false}))
 }
-main().catch(error=>{console.error(JSON.stringify({passed:false,errorClass:error?.constructor?.name,httpStatus:typeof error?.response?.status==='number'?error.response.status:null}));process.exitCode=1})
+let reading = false
+async function runCapture() { if(reading)return;reading=true;try{await main()}catch(error){console.error(JSON.stringify({passed:false,errorClass:error?.constructor?.name,httpStatus:typeof error?.response?.status==='number'?error.response.status:null}));if(!process.argv.includes('--watch'))process.exitCode=1}finally{reading=false} }
+if(process.argv.includes('--watch'))setInterval(runCapture,60000)
+runCapture()

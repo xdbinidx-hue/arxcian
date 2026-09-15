@@ -1,3 +1,4 @@
+import { isRJMobSellerForMonth } from './rjmob'
 import { google } from 'googleapis'
 import { haeTavoitteet, type TavoiteHaku } from '@/lib/rjmobTavoiteDrive'
 import { monthOrder } from '@/lib/rjmobDrive'
@@ -97,6 +98,7 @@ export async function loadRunRate(fileId: string, now: Date = nytHelsingissa()):
     }),
   ])
 
+  tavoitteet.myyjat = tavoitteet.myyjat.filter(r => isRJMobSellerForMonth(r.nimi, kuukausiNro, order))
   const myyjaVuorot = vuorot === null ? {} : toteumaIkkunat(vuorot, toteumaPaivat, viimeinenPaattynytPaiva(order, now))
 
   if (Object.keys(myyjaVuorot).length === 0) {

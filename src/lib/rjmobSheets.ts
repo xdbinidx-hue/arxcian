@@ -470,7 +470,7 @@ async function parseNewFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
 
     if (isStandi(cleanedNimi)) {
       standiRows.push(raw)
-    } else if (isRJMobSellerForMonth(cleanedNimi, monthNum)) {
+    } else if (isRJMobSellerForMonth(cleanedNimi, monthNum, monthOrder(fileName))) {
       sellers.push({ ...raw, tunnit: normaaliTunnit, palkkaTunnit: palkkaTunnit > 0 ? palkkaTunnit : normaaliTunnit })
     }
   }
@@ -639,7 +639,7 @@ async function parseMyymaloittainFormat(
 
     const nimi = cleanUnmatchedName(myyjaRaw)
     const standi = isStandi(nimi)
-    if (!standi && !isRJMobSellerForMonth(nimi, monthNum)) continue
+    if (!standi && !isRJMobSellerForMonth(nimi, monthNum, monthOrder(fileName))) continue
 
     const kohde = standi ? standit : myyjat
     const key = nimi.toLowerCase()
@@ -766,7 +766,7 @@ async function parseYhdestaLahteesta(
   const { sarakkeet, puutteet: sarakePuutteet } = lueSarakkeet(rows[headerIdx])
   puutteet.push(...sarakePuutteet)
 
-  const kuuluuMyyjiin = (nimi: string) => isRJMobSellerForMonth(nimi, monthNum)
+  const kuuluuMyyjiin = (nimi: string) => isRJMobSellerForMonth(nimi, monthNum, monthOrder(fileName))
   const { myymalat, ulkopuoliset, storeHours } = summaaMyymalat(rows, headerIdx, sarakkeet, kuuluuMyyjiin)
   const { myyjat, standit } = summaaMyyjat(rows, headerIdx, sarakkeet, kuuluuMyyjiin)
 
@@ -897,7 +897,7 @@ async function parseOldFormat(sheets: ReturnType<typeof google.sheets>, fileId: 
     }
     if (raw.liittKpl === 0 && raw.liittEur === 0) continue
     if (isStandi(nimi)) standiRows.push(raw)
-    else if (isRJMobSellerForMonth(nimi, monthNum)) sellers.push(raw)
+    else if (isRJMobSellerForMonth(nimi, monthNum, monthOrder(fileName))) sellers.push(raw)
   }
 
   const storeResults: Record<string, { liittKpl: number, liittEur: number, fsecKpl: number, fsecEur: number, kassa: number, kassaRjmob: number, tunnit: number }> = {}

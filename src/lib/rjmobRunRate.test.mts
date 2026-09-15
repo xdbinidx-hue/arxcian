@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { laskeEnnuste, pctTavoitteesta, runRateMittari, runRateTaso } from './rjmob.ts'
+import { isRJMobSellerForMonth, laskeEnnuste, pctTavoitteesta, runRateMittari, runRateTaso } from './rjmob.ts'
 import { laskeTyopaivat, tyopaivaIkkuna, viimeinenPaattynytPaiva } from './rjmobWorkdays.ts'
 import { laskeVuoroIkkuna, type DayInfo } from './shiftSchedule.ts'
 
@@ -60,7 +60,7 @@ test('väriportaikko on 100/90 eikä tehon 9/7', () => {
   assert.equal(runRateTaso(100), 'hyva')
   assert.equal(runRateTaso(99.9), 'rajalla')
   assert.equal(runRateTaso(90), 'rajalla')
-  assert.equal(runRateTaso(89.9), 'heikko')
+  assert.equal(runRateTaso(89.9), 'varoitus')
   assert.equal(runRateTaso(null), 'tuntematon')
 })
 
@@ -130,4 +130,18 @@ test('myyjän vuorot lasketaan eiliseen asti, koko kuukausi erikseen', () => {
   // Listalta puuttuva myyjä ei saa ikkunaa lainkaan — ei nollaa, jonka
   // kutsuja voisi tulkita mitatuksi.
   assert.equal(ikkuna['Vladimir Kogan'], undefined)
+})
+
+
+test('runrate: oranssi 80–89 %, punainen alle 80 %', () => {
+  assert.equal(runRateTaso(80), 'varoitus')
+  assert.equal(runRateTaso(79.99), 'heikko')
+})
+
+
+test('Basri säilyy lopettamiskuukaudessa ja aiemmassa historiassa, ei myöhemmissä kuukausissa', () => {
+  assert.equal(isRJMobSellerForMonth('Basri Salihi',8,202608),true)
+  assert.equal(isRJMobSellerForMonth('Salihi Basri',9,202609),false)
+  assert.equal(isRJMobSellerForMonth('Basri Salihi',9,202509),true)
+  assert.equal(isRJMobSellerForMonth('Basri Salihi',1,202701),false)
 })

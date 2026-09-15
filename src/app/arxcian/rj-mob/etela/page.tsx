@@ -192,7 +192,7 @@ function EtelanHaratSivu() {
             .sort((a: SellerResult, b: SellerResult) => {
               if (a.nimi.includes('Albin')) return 1
               if (b.nimi.includes('Albin')) return -1
-              return (b.myyntiTehoLiitt ?? 0) - (a.myyntiTehoLiitt ?? 0)
+              return (b.myyntiTeho ?? 0) - (a.myyntiTeho ?? 0)
             })
           setSellers(sorted)
           setStores(d.stores ?? {})
@@ -214,7 +214,7 @@ function EtelanHaratSivu() {
     setRunrateLoading(true)
     setRunrate(null)
     setRunrateVirhe('')
-    fetch(`/api/runrate?fileId=${selectedFile}`)
+    fetch(`/api/runrate?fileId=${selectedFile}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (active) { setRunrate(d.error ? null : d); setRunrateVirhe(d.error ?? ''); setRunrateLoading(false) } })
       .catch(() => { if (active) { setRunrate(null); setRunrateLoading(false); setRunrateVirhe('Tavoitteiden haku epäonnistui. Vaihda kuukautta tai lataa sivu uudelleen.') } })
@@ -227,7 +227,7 @@ function EtelanHaratSivu() {
     if (!selectedFile) return
     let active = true
     setKassaRaportti(null); setTargets([]); setTargetsVirhe(''); setTargetsVaroitukset([]); setTargetsLoading(true)
-    fetch(`/api/targets?fileId=${selectedFile}`)
+    fetch(`/api/targets?fileId=${selectedFile}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (!active) return; if (d.error) setTargetsVirhe(d.error); else { setKassaRaportti(d.kassaRaportti ?? null); setTargets(d.targets ?? []); setTargetsVaroitukset(d.varoitukset ?? []) } })
       .catch(e => { if (active) setTargetsVirhe(String(e)) })
@@ -385,6 +385,36 @@ Generoi viesti:`
         {filesVirhe && <div role="alert" style={{padding:12, color:'#A32D2D'}}>{filesVirhe}</div>}
         {pageLoading && <div style={{textAlign:'center', padding:40, color:'#888', fontSize:14}}>Ladataan...</div>}
 
+        {!pageLoading && sellers.length > 0 && (
+          <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, padding:'16px', marginBottom:16}}>
+            <div style={{fontSize:11, fontWeight:500, color:'#888', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:12}}>Viikkoviesti tiimille</div>
+            <div style={{display:'flex', gap:8, marginBottom:12, flexWrap:'wrap'}}>
+              {[
+                {tyyppi:'paiva' as const, label:'Päivittäinen — suorittajat'},
+                {tyyppi:'viikko' as const, label:'Viikottainen — missä mennään'},
+                {tyyppi:'kuukausi' as const, label:'Kuukausikatsaus'},
+              ].map(({tyyppi, label}) => (
+                <button key={tyyppi} onClick={() => generoiViesti(tyyppi)} disabled={viestiLoading !== null}
+                  style={{padding:'10px 18px', borderRadius:8, background: viestiLoading === tyyppi ? '#0d4a82' : '#185FA5', color:'white', border:'none', fontSize:13, fontWeight:500, cursor:'pointer', opacity: viestiLoading !== null && viestiLoading !== tyyppi ? 0.5 : 1}}>
+                  {viestiLoading === tyyppi ? 'Generoidaan...' : label}
+                </button>
+              ))}
+            </div>
+            {viesti && (
+              <div>
+                <div style={{background:'#f8f8f6', borderRadius:8, padding:'14px', fontSize:13, lineHeight:1.7, whiteSpace:'pre-wrap', marginBottom:10, border:'0.5px solid #eee'}}>
+                  {viesti}
+                </div>
+                <button onClick={() => {navigator.clipboard.writeText(viesti)}}
+                  style={{padding:'7px 16px', borderRadius:8, background:'white', border:'0.5px solid #ddd', fontSize:12, cursor:'pointer', color:'#333'}}>
+                  Kopioi leikepöydälle
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+
         {/* Tilarivi ja näkymänapit ovat kaikkien kolmen näkymän yläpuolella:
             kuukausi ja työpäivätilanne koskevat niitä kaikkia. */}
         {!pageLoading && kuukausi && (
@@ -467,7 +497,6 @@ Generoi viesti:`
                       <th style={thStyle}>Kassakate</th>
                       <th style={thStyle}>Tunnit</th>
                       <th style={thStyle}>Provisio yht.</th>
-                      <th style={thStyle}>Liitt teho</th>
                       <th style={thStyle}>Liitt+Kassa teho</th>
                     </tr>
                   </thead>
@@ -475,13 +504,13 @@ Generoi viesti:`
                     {sellers.map((s, i) => {
                       const provisio = s.liittEur + s.fsecEur + s.kassa
                       return (
-                        <tr key={s.nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
+                        <tr key={s.nimi} style={{background: !eiTehoa(s.nimi) && s.tunnit > 0 && Number.isFinite(s.myyntiTeho) && s.myyntiTeho! < 7 ? '#FDECEC' : i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
                           <td style={tdLStyle}>{s.nimi}</td>
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur)} €</td>
-                          <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {color:'#15803d'} : {})}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
@@ -491,7 +520,6 @@ Generoi viesti:`
                             <td style={tdStyle} colSpan={2} />
                           ) : (
                             <>
-                              {tehoTd(s.myyntiTehoLiitt, 0, true)}
                               {tehoTd(s.myyntiTeho, 1)}
                             </>
                           )}
@@ -507,7 +535,6 @@ Generoi viesti:`
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
-                      <td style={tehoTot(sellerTeho.liitt, true)}>{fmt(sellerTeho.liitt)} €/h</td>
                       <td style={tehoTot(sellerTeho.kassa)}>{fmt(sellerTeho.kassa)} €/h</td>
                     </tr>
                   </tbody>
@@ -533,9 +560,7 @@ Generoi viesti:`
                       <th style={thStyle}>F-Secure kpl</th>
                       <th style={thStyle}>Kassakate</th>
                       <th style={thStyle}>Tunnit</th>
-                      <th style={thStyle}>Liitt teho</th>
                       <th style={thStyle}>Liitt+Kassa teho</th>
-                      <th style={thStyle}>Total teho</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -548,12 +573,10 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, fontWeight:500}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {color:'#15803d'} : {})}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
-                          <td style={tehoSolu(t.liitt, true)}>{fmt(t.liitt)} €/h</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
-                          <td style={tehoSolu(t.total)}>{fmt(t.total)} €/h</td>
                         </tr>
                       )
                     })}
@@ -565,9 +588,7 @@ Generoi viesti:`
                       <td style={totStyle}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
-                      <td style={tehoTot(storeTeho.liitt, true)}>{fmt(storeTeho.liitt)} €/h</td>
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>
-                      <td style={tehoTot(storeTeho.total)}>{fmt(storeTeho.total)} €/h</td>
                     </tr>
 
                   </tbody>
@@ -577,41 +598,13 @@ Generoi viesti:`
           </>
         )}
 
-        {sellers.length > 0 && (
-          <div style={{background:'white', border:'0.5px solid #eee', borderRadius:12, padding:'16px', marginBottom:16}}>
-            <div style={{fontSize:11, fontWeight:500, color:'#888', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:12}}>Viikkoviesti tiimille</div>
-            <div style={{display:'flex', gap:8, marginBottom:12, flexWrap:'wrap'}}>
-              {[
-                {tyyppi:'paiva' as const, label:'Päivittäinen — suorittajat'},
-                {tyyppi:'viikko' as const, label:'Viikottainen — missä mennään'},
-                {tyyppi:'kuukausi' as const, label:'Kuukausikatsaus'},
-              ].map(({tyyppi, label}) => (
-                <button key={tyyppi} onClick={() => generoiViesti(tyyppi)} disabled={viestiLoading !== null}
-                  style={{padding:'10px 18px', borderRadius:8, background: viestiLoading === tyyppi ? '#0d4a82' : '#185FA5', color:'white', border:'none', fontSize:13, fontWeight:500, cursor:'pointer', opacity: viestiLoading !== null && viestiLoading !== tyyppi ? 0.5 : 1}}>
-                  {viestiLoading === tyyppi ? 'Generoidaan...' : label}
-                </button>
-              ))}
-            </div>
-            {viesti && (
-              <div>
-                <div style={{background:'#f8f8f6', borderRadius:8, padding:'14px', fontSize:13, lineHeight:1.7, whiteSpace:'pre-wrap', marginBottom:10, border:'0.5px solid #eee'}}>
-                  {viesti}
-                </div>
-                <button onClick={() => {navigator.clipboard.writeText(viesti)}}
-                  style={{padding:'7px 16px', borderRadius:8, background:'white', border:'0.5px solid #ddd', fontSize:12, cursor:'pointer', color:'#333'}}>
-                  Kopioi leikepöydälle
-                </button>
-              </div>
-            )}
-          </div>
-        )}
 
         </>)}
 
         {/* Uusmyynti ja Kassamyynti: siirretty Tavoitteet ja Run Rate -sivulta
             sellaisenaan. Virhe erotetaan tyhjästä kuukaudesta — tyhjä taulukko
             ilman selitystä näyttäisi siltä kuin myyntiä ei olisi ollut. */}
-        {!pageLoading && nakyma === 'kassamyynti' && kassaRaportti && <div role="status" style={{padding:12,marginBottom:12,background:'#fff8e6'}}>Myynti, palautus, alennus ja kuitit: Winpos {kassaRaportti.raporttiPvm}, tilanne {kassaRaportti.tilannePvm} asti. Raportin jakson alku ei ole tiedossa. Kassakate, tavoite ja ennuste: {kuukausiLyhyt} myyntiseuranta.</div>}
+        {!pageLoading && nakyma === 'kassamyynti' && kassaRaportti && <div role="status" style={{padding:12,marginBottom:12,background:'#fff8e6'}}>Winpos-raportti {kassaRaportti.raporttiPvm}, tilanne {kassaRaportti.tilannePvm} asti.</div>}
         {!pageLoading && nakyma !== 'tavoitteet' && targetsVaroitukset.length > 0 && (
           <div role="status" style={{padding:12, marginBottom:12, background:'#fff8e6', fontSize:13}}>{targetsVaroitukset.join(' ')}</div>
         )}

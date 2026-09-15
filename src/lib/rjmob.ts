@@ -171,7 +171,8 @@ export function isRJMobSeller(nimi: string): boolean {
 // Petri" / "Petri Kaijanniemi" (myyntiseuranta) — tarkistetaan onko "petri" jompikumpi
 // välilyönnillä erotetuista nimiosista, ei vaadita täsmällistä koko nimen osumaa.
 const PETRI_ACTIVE_MONTHS = [11, 12, 1, 2, 3]
-export function isRJMobSellerForMonth(nimi: string, monthNum: number | null): boolean {
+export function isRJMobSellerForMonth(nimi: string, monthNum: number | null, period: number | null = null): boolean {
+  if (period !== null && period > 202608 && /^(basri salihi|salihi basri)$/i.test(nimi.trim())) return false
   if (isRJMobSeller(nimi)) return true
   const isPetri = nimi.trim().toLowerCase().split(/\s+/).includes('petri')
   if (monthNum !== null && isPetri && PETRI_ACTIVE_MONTHS.includes(monthNum)) return true
@@ -577,10 +578,11 @@ export function pctTavoitteesta(ennuste: number | null, tavoite: number | null):
 export const RUNRATE_HYVA = 100
 export const RUNRATE_RAJALLA = 90
 
-export function runRateTaso(pct: number | null): 'hyva' | 'rajalla' | 'heikko' | 'tuntematon' {
+export function runRateTaso(pct: number | null): 'hyva' | 'rajalla' | 'varoitus' | 'heikko' | 'tuntematon' {
   if (pct === null) return 'tuntematon'
   if (pct >= RUNRATE_HYVA) return 'hyva'
   if (pct >= RUNRATE_RAJALLA) return 'rajalla'
+  if (pct >= 80) return 'varoitus'
   return 'heikko'
 }
 

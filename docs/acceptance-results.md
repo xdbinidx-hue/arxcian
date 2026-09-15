@@ -1,3 +1,7 @@
+## Myyntiseurannan käyttötestin jatkomuutokset
+
+Yksi yhdistetty tehosarake, mitatun myyjätehon <7 punainen rivi, >10 F-Secure vihreä luku, viestikortti näkymänappien yläpuolelle, oranssi runrate 80–89%, Basri pois 2026-09 alkaen. Stevenin tuore lähdetavoite 100/15/700 varmennettu readonly. Previewn erillinen readonly lukija päivittyy 60s, selain päivittää kolme reittiä samalla latausrajalla. 57 kohdennettua testiä +typecheck/build +post-restart DOM/HTTP/focus läpäisivät. Ennusteiden tapahtumafallback ja muiden operaattorien tyhjien solujen nollatulkinta odottavat käyttäjän päätöstä, ei merkitä korjatuiksi. Ei tuotantojulkaisua tässä erässä; aiempi lupa voimassa. docs/HANDOFF.md sisältää pääsyesteet ja jatkon.
+
 ## Käyttäjätestin korjaukset: Winpos ja operaattorit
 
 Elisan Pakettiliittymät-otsikon whitespace ja tyhjä Telia-yritysuusmyynti korjattu. Winpos-arkiston erittely luetaan suoraan readonly, ei tuontia Exceliin tai cron-kirjoitusta. Kassasivu/Oracle-data erottavat raportin tilanteen (uusin raportti 1.9.2026, tilanne 31.8.2026) valitun kuukauden Excel-katteesta. Raportin jakson alkua ei lähteessä ole, ei arvata. Yksi raportti, ei päällekkäisten kertymien summausta. Käyttäjän uusi hyväksyntä tarvitaan; tämä ei todista varsinaisen Oracle-vastauksen toimivuutta. Ajantasaiset testit/julkaisut docs/HANDOFF.md.
