@@ -91,6 +91,7 @@ async function main(){
       assert.equal(row.children[4].style.background,expected,'Euro cell must use same quantity band')
       assert.equal(row.children[4].style.color,row.children[5].style.color)
       assert.equal(row.style.background,[...row.parentElement.children].indexOf(row)%2===0?'white':'rgb(250, 250, 250)','Seller row must use neutral striping')
+      if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho)){const expected=seller.myyntiTeho>=9?'rgb(220, 252, 231)':seller.myyntiTeho>=7?'rgb(254, 249, 195)':'rgb(254, 226, 226)';assert.equal(row.children[9].style.background,expected,'Combined efficiency cell must have colored background')}
     }
   }
   if(name==='kassamyynti' && snapshot.targets.kassaRaportti) assert(document.body.textContent.includes(snapshot.targets.kassaRaportti.tilannePvm),'Actual cash page must show archive cutoff')

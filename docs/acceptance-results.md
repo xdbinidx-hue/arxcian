@@ -1,3 +1,12 @@
+# Tehosolut myös taustavärillisiksi — 15.9.2026
+
+- **Toteutettu:** myyntiseurannan tehosoluissa koko solun taustaväri yhteisestä paletista, ei pelkkä tekstiväri. Yhdistetty teho <7punainen,7–<9keltainen,>=9vihreä; myyjät/myymälät ja tehojen yhteensä-solut. Puuttuva/arvioimaton teho neutraali; F-Secure-yhteensä edelleen neutraali. Rivitaustoja ei palautettu.
+- **Testattu:** kohdennettu React/HTTP-tarkistus tehosolun taustavärille nykyisillä myyjätoteumilla; ensimmäisen tarkistuksen väärä sarakeindeksi korjattu nykyiseen ainoaan tehosarakkeeseen. Näkymäfingerprintit/F-Secure-värit ja neutraalit rivit tarkistetaan samalla. Vain oma testi-Redis, ei tuotantokirjoituksia. Lokit arxcian-work/efficiency-cell-{build,ui}.log. React/HTTP-tarkistus läpäisi. Build läpäisi exit0 sisältäen tyyppitarkistuksen; oma preview päivitetty ja readonly-watcher palautettu.
+- **Julkaistu:** ei tuotantoon; oma preview päivitetty onnistuneella buildilla, readonly-watcher palautettu. Julkaisulupa ja aiemmat palveluesteet säilyvät.
+- **Avoin/seuraava:** käyttäjän tehosolujen selaintarkistus. Leon4.9. erittely ja aiemmat Hermes/Oracle/Telegram/palautusesteet edelleen avoinna. Työ /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Muut työt säilyvät alla.
+
+---
+
 # Väritystä vähennetty käyttäjän hyväksyntäpalautteesta — 15.9.2026
 
 - **Toteutettu:** Runrate vain ennuste ja ennuste% värilliset; tavoite/toteuma neutraalit. Myyntiseurannan myyjä/myymälärivien tehoväriset taustat poistettu, neutraali vuororaitaisuus. F-Secure kpl/€ myyjillä <5punainen/5–9keltainen/>=10vihreä, myymälöillä käyttäjän viimeisestä päätöksestä <30punainen/>=30vihreä; käyttäjän lisätarkennuksesta yhteensä-rivien F-Secure-solut neutraalit. Liittymä€ ja kpl värit näkyvän yhdistetyn tehon mukaan (<7/7–<9/>=9); teholukujen omat tekstivärit säilyvät. Albin/puuttuva teho neutraali. Yhteinen paletti ja aiemmat prosentti/F-Secure-rajat säilyvät, ei laskentamuutosta.

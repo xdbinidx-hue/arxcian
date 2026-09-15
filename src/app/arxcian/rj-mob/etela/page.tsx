@@ -328,8 +328,8 @@ function EtelanHaratSivu() {
     const taso = tehoTaso(teho, liittyma)
     return taso === 'hyva' ? '#3B6D11' : taso === 'rajalla' ? '#854F0B' : '#A32D2D'
   }
-  const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, color: tehoColor(teho, liittyma), fontWeight:500})
-  const tehoTot = (teho: number, liittyma = false) => ({...totStyle, color: tehoColor(teho, liittyma)})
+  const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, background:RJMOB_VARIT[tehoTaso(teho, liittyma)].bg, color: tehoColor(teho, liittyma), fontWeight:500})
+  const tehoTot = (teho: number, liittyma = false) => ({...totStyle, background:RJMOB_VARIT[tehoTaso(teho, liittyma)].bg, color: tehoColor(teho, liittyma)})
   // Tehosarakkeen solu. Asteikko annetaan eksplisiittisesti eikä
   // päätellä indeksistä: sarakejärjestyksen vaihtaminen siirtäisi muuten
   // liittymän 8,5-rajan hiljaa väärään sarakkeeseen ilman että mikään kaatuu.
