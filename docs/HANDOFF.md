@@ -1,3 +1,11 @@
+# Korjattu päivitys pysähtyi supervisor-esitarkistukseen — 15.9.2026
+
+- **Todellinen käyttäjätulos:** Expected one current supervisor; refuse. Tämä tapahtui ennen backupin luontia, tiedostojen vaihtoa tai SIGTERM:iä; tässä ajossa ei live-muutoksia. Aiempi diagnoosi supervisor1/bridge1 on vanhempi eikä todista nykyistä prosessitilaa.
+- **Toteutettu:** esitarkistus raportoi nyt supervisor_count ja live_files_changed=false JSON:na, jos määrä !=1. Vanha assertion ei tuottanut raporttia, production-oracle-service-failure.json edelleen puuttuu. Ei uutta asennusyritystä.
+- **Seuraava:** käyttäjä ajaa vain bash /home/arxcian-codex/arxcian-release/ops/acceptance/diagnose-oracle-update.sh nykyisen prosessitilan/vanhojen tiedostojen lukutarkistukseen. Älä poista prosesseja tai käynnistä sokkona; selvitä0 vs useampi ja palveluvalvojan elinkaari. Tuotannon koko julkaisu yhä tekemättä, lupa voimassa, aiemmat hyväksymisesteet säilyvät.
+
+---
+
 # Epäonnistuneen julkaisun palautus varmennettu ja readiness korjattu — 15.9.2026
 
 - **Varmennettu oikeasta diagnoosista:** supervisor1,bridge1, enabled-portti olemassa, config_valid=true, hermes_oracle_scope=true. Live-tiedostot vastaavat viimeistä palautuskopiota /opt/data/private/arxcian/oracle-production/bridge-rollback-20260915T214030Z. Live-libSHA827e38a530ec988f6d05f3a33ec415152df651465be3c9c0111495eab545bfec (vanha), ei uusi73e62d... . Palautus siis todettu tiedostoista ja prosesseista, ei oikeasta Oracle-vastauksesta.

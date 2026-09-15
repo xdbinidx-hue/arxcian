@@ -18,7 +18,9 @@ for p in Path('/proc').iterdir():
   args=[x.decode() for x in (p/'cmdline').read_bytes().split(b'\0') if x]
   if str(source) in args and '--stop' not in args and p.stat().st_uid==os.getuid():processes.append((int(p.name),args))
  except (OSError,UnicodeError):pass
-assert len(processes)==1,'Expected one current supervisor; refuse'
+if len(processes)!=1:
+ print(json.dumps({'bridge_updated':False,'live_files_changed':False,'failure_stage':'supervisor_preflight','supervisor_count':len(processes)}))
+ raise RuntimeError('Expected one current supervisor; refuse')
 pid,command=processes[0]
 backup=base/('bridge-rollback-'+time.strftime('%Y%m%dT%H%M%SZ',time.gmtime()))
 backup.mkdir(mode=0o700)
