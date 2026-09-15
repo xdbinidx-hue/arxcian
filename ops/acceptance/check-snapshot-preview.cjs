@@ -52,6 +52,7 @@ async function main(){
   if(!matches){fs.writeFileSync(state+'/snapshot-ui-diagnostic.json',JSON.stringify({view:name,browserData,expected:snapshot.views[name].data}),{mode:0o600});const selection=view.getRjMobSelection();console.error(JSON.stringify({diagnostic:true,view:name,fileMatches:selection?.fileId===snapshot.file.id,viewMatches:selection?.view===name,hasFingerprint:Boolean(selection?.fingerprint),tableRendered:Boolean(document.querySelector('table')),sourceHashReproducible:view.viewFingerprint(snapshot.views[name].data)===snapshot.views[name].fingerprint}))}
   assert(matches,'Actual page fingerprint must match captured Drive view: '+name)
   assert(document.querySelector('table'),'Actual table must render')
+  if(name==='kassamyynti' && snapshot.targets.kassaRaportti) assert(document.body.textContent.includes(snapshot.targets.kassaRaportti.tilannePvm),'Actual cash page must show archive cutoff')
  }
  await React.act(async()=>app.unmount())
  console.log(JSON.stringify({passed:true,actualHttpSnapshot:true,anonymousAndTamperedRejected:true,bothUsersSharedData:true,unknownFileRejected:true,writeRouteBlocked:true,unconnectedOracle503:true,actualReactPageAllThreeFingerprintsMatchDriveCapture:true,domHttpRequests:calls,productionWrites:false,realOracleCompared:false}))

@@ -65,7 +65,7 @@ async function main() {
     for (const snapshot of capture.snapshots) {
       const comparisons = view.rjMobComparisons(snapshot.dash, snapshot.runrate, snapshot.targets.targets)
       snapshot.views = Object.fromEntries(['tavoitteet','uusmyynti','kassamyynti'].map(name => {
-        const data = view.rjMobViewData(name, comparisons, snapshot.targets.targets)
+        const data = view.rjMobViewData(name, comparisons, snapshot.targets.targets, snapshot.targets.kassaRaportti ?? null)
         return [name, {data, fingerprint:view.viewFingerprint(data)}]
       }))
     }
@@ -90,7 +90,7 @@ async function main() {
     const results = await Promise.allSettled([loadDashData(file.id),loadRunRate(file.id),loadTargets(file.id)])
     const [dash,runrate,targets] = results.map(r => r.status === 'fulfilled' ? r.value : null)
     const comparisons = view.rjMobComparisons(dash || {sellers:[],stores:{}},runrate,targets?.targets || [])
-    snapshots.push({file,capturedAt:new Date().toISOString(),readers:results.map(r => r.status),dash,runrate,targets,views:Object.fromEntries(['tavoitteet','uusmyynti','kassamyynti'].map(name => {const data=view.rjMobViewData(name,comparisons,targets?.targets ?? null);return [name,{data,fingerprint:view.viewFingerprint(data)}]}))})
+    snapshots.push({file,capturedAt:new Date().toISOString(),readers:results.map(r => r.status),dash,runrate,targets,views:Object.fromEntries(['tavoitteet','uusmyynti','kassamyynti'].map(name => {const data=view.rjMobViewData(name,comparisons,targets?.targets ?? null, targets?.kassaRaportti ?? null);return [name,{data,fingerprint:view.viewFingerprint(data)}]}))})
   }
   const after = await drive.listSeurantaFiles()
   for (const s of snapshots) s.sourceModifiedTimeUnchanged = after.find(f => f.id === s.file.id)?.modifiedTime === s.file.modifiedTime

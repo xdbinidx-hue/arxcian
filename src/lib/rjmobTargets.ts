@@ -1,3 +1,4 @@
+import { readCashArchive, type CashReport } from './winposArchive/read'
 import { google } from 'googleapis'
 import { isRJMobSeller, shouldSkip, RJ_MOB_SELLERS } from '@/lib/rjmob'
 import { haeTavoitteet } from '@/lib/rjmobTavoiteDrive'
@@ -75,6 +76,7 @@ export interface TargetRow {
 
 export type TargetsData = {
   kuukausi: string
+  kassaRaportti?: CashReport | null
   targets: TargetRow[]
   sheetNames: string[]
   varoitukset: string[]
@@ -230,7 +232,7 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
           kassaKate: summa(edell.kassaKate, solu(row, idxKate)),
           dnaUusmyynti: summa(edell.dnaUusmyynti, solu(row, idxDnaUusmyynti)),
           elisaUusmyynti: summa(edell.elisaUusmyynti, solu(row, idxElisaUusmyynti)),
-          teliaUusmyynti: summa(edell.teliaUusmyynti, summa(solu(row, idxTeliaUusmyynti), idxTeliaYritysUusmyynti >= 0 ? solu(row, idxTeliaYritysUusmyynti) : 0)),
+          teliaUusmyynti: summa(edell.teliaUusmyynti, summa(solu(row, idxTeliaUusmyynti), idxTeliaYritysUusmyynti >= 0 ? String(row[idxTeliaYritysUusmyynti] ?? '').trim() === '' ? 0 : solu(row, idxTeliaYritysUusmyynti) : 0)),
         }
       }
     }
@@ -303,6 +305,21 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
     }
   }
 
+  let kassaRaportti: CashReport | null = null
+  try {
+    const archive = await readCashArchive(kuukausi.order)
+    if (archive) {
+      kassaRaportti = archive.metadata
+      for (const row of archive.rows) {
+        if (!isRJMobSeller(row.nimi)) continue
+        kassaMap[normalizeName(row.nimi).toLowerCase()] = { kassaMyynti: row.myynti, kassaPalautus: row.palautus, kassaAlennus: row.alennus, kassaKuitit: row.kuitit, kassaKate: null }
+      }
+      varoitukset.push(`Winpos-erittelyn tilanne ${kassaRaportti.tilannePvm} asti. Raportin jakson alkua ei ilmoiteta lähteessä. Kassakate luetaan valitun kuukauden myyntiseurannasta.`)
+    }
+  } catch {
+    varoitukset.push('Winpos-arkiston lukeminen epäonnistui. Erittelyä ei voida vahvistaa.')
+  }
+
   // ---- data: kuluneet työpäivät myyjää kohden ----
   const paivatMap: Record<string, number | null> = {}
   if (dataSheet) {
@@ -324,7 +341,7 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
   }
 
   if (!myyjatSheet || Object.keys(actualsMap).length === 0) varoitukset.push('Myyntitietoja ei löytynyt valitulta kuukaudelta.')
-  if (!kassakateSheet) varoitukset.push('Kassamyynnin erittely puuttuu valitulta kuukaudelta.')
+  if (!kassakateSheet && !kassaRaportti) varoitukset.push('Kassamyynnin erittely puuttuu valitulta kuukaudelta.')
   if (!Object.keys(paivatMap).length) varoitukset.push('Toteutuneita työpäiviä ei löytynyt. Päiväkohtaisia lukuja ei lasketa.')
 
   // Myynti näkyy myös ilman tavoitetta, tavoite myös ilman myyntiriviä.
@@ -366,5 +383,5 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
   }).filter(t => t.nimi !== 'Albin Rashica')
     .sort((a, b) => (b.liittRunrate ?? -1) - (a.liittRunrate ?? -1))
 
-  return { kuukausi: fileName, targets, sheetNames, varoitukset }
+  return { kuukausi: fileName, targets, sheetNames, varoitukset, kassaRaportti }
 }

@@ -1,3 +1,14 @@
+# Operaattorikorjaukset ja readonly Winpos-erittely — 15.9.2026
+
+- **Käyttäjäpäätökset:** Elisa-uusmyynti on Pakettiliittymät; Telian tyhjä yritysuusmyynti tarkoittaa ei myyntiä/nollaa; kassamyynnin erittely tulee harvemmin päivitettävästä Winpos-arkistosta, kassakate edelleen valitun kuukauden Excelistä. Winpos-tiedostonimen päivä tarkoittaa raporttia edelliseen päivään asti (1.9. ->31.8.). Jakson alku ei vahvistunut, ei väitetä raporttia koko kuukauden kertymäksi.
+- **Toteutettu:** Elisan heading-whitespace-korjaus säilyy; vain tyhjä Telia-yritysuusmyynti muutetaan nollaksi, virhesolu säilyy nullina. Uusi `src/lib/winposArchive/read.ts` listaa nykyisen arkistokansion readonly-scopella, valitsee yhden uusimman raportin valitun kuukauden päättymiseen asti (mukaan kuukauden jälkeisen 1. päivän raportti), ei summaa päällekkäisiä raportteja. Uudelleenkäytetty aiempi puhdas XLS-parseri/nimikartta uudessa readonly-kansiossa. Cron/import/write-polkuja ei palautettu.
+- **Toteutettu UI/Oracle:** myynti/palautus/alennus/kuitit arkistosta; kate/tavoite/päivä/ennuste Excelistä. Kassasivu kertoo raporttipäivän, tilanteen edelliseen päivään asti, tuntemattoman jakson alun sekä erillisen Excel-lähteen. Raportin metadata sisältyy Oracle-viewContextiin ja fingerprintiin. Vanha live-bridge pitää yhä päivittää ennen tuotantoa.
+- **Varmennettu oikeasta datasta:** arkistossa kuusi .xls-tiedostoa, uusin `Winpos 2026-09-01 3819012.xls`; sisällä vain nimet/rahakentät, ei aikaväliä. Uusi capture: kaikki kolme lukijaa onnistuivat, 36 readonly-vastausta, kuukausitiedoston modifiedTime säilyi; ei app-avaimen aktivointia tai Google-kirjoituksia. Raportin tilanne 2026-08-31, jaksonAlku null. Erittely löytyi 17 riville; Excel-kate 16/17. Elisa arvo 9/17, Telia 4/17; muut tyhjät/missing-data-solut edelleen null, ei yleistä tyhjä=nolla-muutosta.
+- **Testattu:** 28 arkisto/lukija/Oracle-näkymätestiä ja typecheck läpäisivät. Arkisto-testit mocked I/O ja erilliset fixtuurit, oikea source-capture vain readonly. Build läpäisi exit0; vain omat preview-prosessit käynnistettiin uudelleen start-preview.py:llä. Päivitetyn snapshotin HTTP/React-DOM-testi läpäisi: kaikki kolme fingerprintiä yhtenevät, cutoff 2026-08-31 näkyy kassasivulla, auth/fileId/write-rajat säilyvät. Loki cash-archive-preview-check.log. Aiemmat tuotannon backup- ja laajat testit eivät uusittu.
+- **Julkaistu:** ei tuotantoon mitään. Julkaisulupa edelleen voimassa; runtime-root-oikeudet, varsinainen Oracle-vastaus, Telegram-jatkuvuus ja täysi palvelupalautus avoinna. Seuraava: päivitetyn previewn käyttäjätesti ja puuttuvat runtime-asennukset jo annetulla luvalla.
+
+---
+
 # Käyttäjätestin löydökset: operaattorit ja kassamyynnin erittely — 15.9.2026
 
 - **Käyttäjän testitulos:** kirjautuminen onnistui, uusmyynnissä vain DNA, kassamyynnissä kate/tavoite/päivä/ennuste mutta ei myyntiä/palautusta/alennusta/kuitteja. Ei hyväksytä näitä näkymiä vielä valmiiksi.

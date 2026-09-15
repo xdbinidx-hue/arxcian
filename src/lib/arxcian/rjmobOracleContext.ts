@@ -19,7 +19,7 @@ export async function resolveRjMobOracleContext(value: unknown, user: SessionUse
   const comparisons = rjMobComparisons(dash ?? { sellers: [], stores: {} }, runrate, targets?.targets ?? [])
   const warnings = [ ...(dash?.puutteet ?? []), ...(runrate?.varoitukset ?? []), ...(targets?.varoitukset ?? []),
     ...(!dash ? ['Myyntitiedot puuttuvat: lukuvirhe.'] : []), ...(!runrate ? ['Tavoitteet ja työpäivät puuttuvat: lukuvirhe.'] : []), ...(!targets ? ['Uusmyynti ja kassamyynti puuttuvat: lukuvirhe.'] : []) ]
-  const data = rjMobViewData(selection.view, comparisons, targets?.targets ?? null)
+  const data = rjMobViewData(selection.view, comparisons, targets?.targets ?? null, targets?.kassaRaportti ?? null)
   if (selection.fingerprint && selection.fingerprint !== viewFingerprint(data)) throw new Error('Näkymän luvut muuttuneet. Päivitä näkymä.')
   return {
     selection, capturedAt: new Date().toISOString(), month: dash?.kuukausi ?? runrate?.kuukausi ?? targets?.kuukausi,

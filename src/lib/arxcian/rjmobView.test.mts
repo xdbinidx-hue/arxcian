@@ -44,3 +44,10 @@ test('myyjien näyttöjärjestys ei muuta desimaalisumman Oracle-tarkistetta', (
   assert.equal(viewFingerprint(calculate(sellers)), viewFingerprint(calculate([...sellers].reverse())))
   assert.deepEqual(calculate(sellers).sellerTotal, calculate([...sellers].reverse()).sellerTotal)
 })
+
+
+test('kassaraportin muuttunut aikaväli muuttaa Oracle-lukutilannetta vaikka numerot säilyvät', () => {
+  const comparisons = rjMobComparisons({sellers:[],stores:{}},null,[])
+  const report = {tiedosto:'Winpos 2026-09-01.xls',raporttiPvm:'2026-09-01',tilannePvm:'2026-08-31',jaksonAlku:null}
+  assert.notEqual(viewFingerprint(rjMobViewData('kassamyynti',comparisons,[],report)),viewFingerprint(rjMobViewData('kassamyynti',comparisons,[],{...report,tilannePvm:'2026-09-15'})))
+})

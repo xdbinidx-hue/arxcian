@@ -1,3 +1,7 @@
+## Käyttäjätestin korjaukset: Winpos ja operaattorit
+
+Elisan Pakettiliittymät-otsikon whitespace ja tyhjä Telia-yritysuusmyynti korjattu. Winpos-arkiston erittely luetaan suoraan readonly, ei tuontia Exceliin tai cron-kirjoitusta. Kassasivu/Oracle-data erottavat raportin tilanteen (uusin raportti 1.9.2026, tilanne 31.8.2026) valitun kuukauden Excel-katteesta. Raportin jakson alkua ei lähteessä ole, ei arvata. Yksi raportti, ei päällekkäisten kertymien summausta. Käyttäjän uusi hyväksyntä tarvitaan; tämä ei todista varsinaisen Oracle-vastauksen toimivuutta. Ajantasaiset testit/julkaisut docs/HANDOFF.md.
+
 ## Uusi näyttö 15.9.2026: Drive ja snapshot-testiversio
 
 Toteutettu erillinen readonly Drive-capture ja loopback snapshot-preview. Oikean syyskuun kaikki kolme lukijaa onnistuivat, lähteen modifiedTime säilyi; myöhempää kuukautta ei löytynyt listasta. Korjattu myyjäkokonaissumman järjestyksestä riippuva desimaaliero. Kohdennetut 13 testiä, typecheck/build ja kolme oikean React-sivun fingerprint-vertailua läpäisivät. Uuden testin loki: `/home/arxcian-codex/arxcian-work/acceptance-snapshot-check.log`.

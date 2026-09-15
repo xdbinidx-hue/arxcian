@@ -26,7 +26,7 @@ function moduuli(file: string, dependencies: Record<string, unknown>) {
 
 const headers = ['Myyjä', 'Liittymä kpl', 'Liittymäprovisio', 'F-Secure kpl', 'Kassakate', 'DNA uusmyynti', 'ELISA Pakettiliittymät', 'TELIA uusmyynti', 'TELIA yritysliittymä uusmyynti']
 const tavoite = { nimi: 'Hamza Hanif', liittymat: 100, fsecure: 10, kassakate: 1000 }
-async function hae(options: { month?: string; sheets?: Record<string, string[][]>; targets?: unknown[]; failTargets?: boolean } = {}) {
+async function hae(options: { month?: string; sheets?: Record<string, string[][]>; targets?: unknown[]; failTargets?: boolean; archive?: unknown } = {}) {
   const calls: string[] = []
   const sheets = options.sheets ?? {
     'Myyjät Myymälöittäin': [headers, ['Hanif Hamza', '10', '50', '2', '30', '2', '3', '4', '1'], ['Hamza Hanif', '20', '100', '3', '40', '3', '4', '5', '2']],
@@ -46,7 +46,7 @@ async function hae(options: { month?: string; sheets?: Record<string, string[][]
     } }),
   }
   const module = moduuli('./rjmobTargets.ts', {
-    googleapis: { google }, '@/lib/rjmob': rjmob, '@/lib/rjmobTavoiteTaulukko': taulukko,
+    './winposArchive/read': { readCashArchive: async () => options.archive ?? null }, googleapis: { google }, '@/lib/rjmob': rjmob, '@/lib/rjmobTavoiteTaulukko': taulukko,
     '@/lib/rjmobMyymalaTaulukko': myymala,
     '@/lib/rjmobTavoiteDrive': { haeTavoitteet: async (order: number) => {
       calls.push(`targets:${order}`)
@@ -153,7 +153,7 @@ for (const broken of ['store', 'seller']) {
       } }),
     }
     const module = moduuli('./rjmobTavoiteDrive.ts', {
-      googleapis: { google }, xlsx: {}, '@/lib/rjmob': rjmob,
+      './winposArchive/read': { readCashArchive: async () => options.archive ?? null }, googleapis: { google }, xlsx: {}, '@/lib/rjmob': rjmob,
       '@/lib/rjmobDrive': { SPREADSHEET_MIME: 'sheets' },
       '@/lib/rjmobTavoiteTaulukko': { ...taulukko,
         parseMyymalaTavoitteet: () => ({ rivit: [{ storeKey: 'Helsinki, Malmi', liittymat: 900 }], varoitukset: [] }),
@@ -174,4 +174,22 @@ test('Excelin otsikon ylimääräiset välilyönnit eivät kadota Elisan uusmyyn
   assert.equal(data.targets[0].elisaUusmyynti, 3)
   assert.equal(data.targets[0].teliaUusmyynti, 5)
   assert.equal(data.targets[0].uusmyyntiYhteensa, 10)
+})
+
+
+test('tyhjä Telian yritysuusmyynti on käyttäjän vahvistama nolla, virhe ei', async () => {
+  for (const [cell, expected] of [['', 4], ['#N/A', null]] as const) {
+    const { data } = await hae({ sheets: { 'Myyjät Myymälöittäin': [headers, ['Hamza Hanif', '10', '50', '2', '30', '2', '3', '4', cell]] } })
+    assert.equal(data.targets[0].teliaUusmyynti, expected)
+  }
+})
+
+
+test('arkiston erittely säilyttää oman päiväyksen eikä korvaa Excel-kassakatetta', async () => {
+  const metadata = { tiedosto: 'Winpos 2026-09-01.xls', raporttiPvm: '2026-09-01', tilannePvm: '2026-08-31', jaksonAlku: null }
+  const { data } = await hae({archive:{metadata,rows:[{nimi:'Hamza Hanif',myynti:1234,palautus:-20,alennus:-10,kuitit:12,kate:999}]}})
+  const r = data.targets[0]
+  assert.equal(r.kassaMyynti,1234);assert.equal(r.kassaPalautus,-20);assert.equal(r.kassaAlennus,-10);assert.equal(r.kassaKuitit,12)
+  assert.equal(r.kassaKate,700)
+  assert.deepEqual(data.kassaRaportti,metadata)
 })

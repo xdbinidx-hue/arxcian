@@ -48,11 +48,11 @@ export function rjMobComparisons(dash: { sellers: { nimi: string; tyyppi: string
   return { stores, sellers: sellerRows, storeTotal: completeTotal(storeTotal, stores), sellerTotal: completeTotal(sellerTotal, sellerRows), cash, cashTotal }
 }
 
-export function rjMobViewData(view: RjMobSelection['view'], comparisons: ReturnType<typeof rjMobComparisons>, targets: TargetRow[] | null) {
+export function rjMobViewData(view: RjMobSelection['view'], comparisons: ReturnType<typeof rjMobComparisons>, targets: TargetRow[] | null, cashReport: import('../winposArchive/read').CashReport | null = null) {
   const sum = (key: keyof TargetRow) => !targets?.length || targets.some(r => r[key] === null) ? null : targets.reduce((s, r) => s + (r[key] as number), 0)
   return view === 'tavoitteet' ? { stores: comparisons.stores, sellers: comparisons.sellers, storeTotal: comparisons.storeTotal, sellerTotal: comparisons.sellerTotal }
     : view === 'uusmyynti' ? { sellers: targets?.map(r => ({ nimi: r.nimi, dnaUusmyynti: r.dnaUusmyynti, elisaUusmyynti: r.elisaUusmyynti, teliaUusmyynti: r.teliaUusmyynti, uusmyyntiYhteensa: r.uusmyyntiYhteensa, uusmyyntiPerPaiva: r.uusmyyntiPerPaiva })) ?? null, total: { dna: sum('dnaUusmyynti'), elisa: sum('elisaUusmyynti'), telia: sum('teliaUusmyynti'), yhteensa: sum('uusmyyntiYhteensa') } }
-    : { sellers: targets?.map(r => ({ nimi: r.nimi, kassaMyynti: r.kassaMyynti, kassaPalautus: r.kassaPalautus, kassaAlennus: r.kassaAlennus, kassaKuitit: r.kassaKuitit, kassaKate: r.kassaKate, kassaPerPaiva: r.kassaPerPaiva, comparison: comparisons.cash(r) })) ?? null, total: comparisons.cashTotal }
+    : { cashReport, sellers: targets?.map(r => ({ nimi: r.nimi, kassaMyynti: r.kassaMyynti, kassaPalautus: r.kassaPalautus, kassaAlennus: r.kassaAlennus, kassaKuitit: r.kassaKuitit, kassaKate: r.kassaKate, kassaPerPaiva: r.kassaPerPaiva, comparison: comparisons.cash(r) })) ?? null, total: comparisons.cashTotal }
 }
 
 // Tunnistaa muuttuneen näkymän; käyttöoikeudet tarkistetaan erikseen palvelimella.

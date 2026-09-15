@@ -118,6 +118,7 @@ function EtelanHaratSivu() {
   // Uusmyynti- ja Kassamyynti-näkymien rivit. Oma reittinsä (`/api/targets`)
   // eikä /api/sheets, koska ne ovat myyntiseurantataulukon myyjäkohtaisia
   // lukuja joita myymälälukujen lukupää ei tuota.
+  const [kassaRaportti, setKassaRaportti] = useState<import('@/lib/winposArchive/read').CashReport | null>(null)
   const [targets, setTargets] = useState<TargetRow[]>([])
   const [targetsVirhe, setTargetsVirhe] = useState('')
   const [targetsVaroitukset, setTargetsVaroitukset] = useState<string[]>([])
@@ -225,10 +226,10 @@ function EtelanHaratSivu() {
   useEffect(() => {
     if (!selectedFile) return
     let active = true
-    setTargets([]); setTargetsVirhe(''); setTargetsVaroitukset([]); setTargetsLoading(true)
+    setKassaRaportti(null); setTargets([]); setTargetsVirhe(''); setTargetsVaroitukset([]); setTargetsLoading(true)
     fetch(`/api/targets?fileId=${selectedFile}`)
       .then(r => r.json())
-      .then(d => { if (!active) return; if (d.error) setTargetsVirhe(d.error); else { setTargets(d.targets ?? []); setTargetsVaroitukset(d.varoitukset ?? []) } })
+      .then(d => { if (!active) return; if (d.error) setTargetsVirhe(d.error); else { setKassaRaportti(d.kassaRaportti ?? null); setTargets(d.targets ?? []); setTargetsVaroitukset(d.varoitukset ?? []) } })
       .catch(e => { if (active) setTargetsVirhe(String(e)) })
       .finally(() => { if (active) setTargetsLoading(false) })
     return () => { active = false }
@@ -293,7 +294,7 @@ function EtelanHaratSivu() {
   const myyjaEnnusteRivit = comparisons.sellers
   const kassaRr = comparisons.cash
   const kassaRrYhteensa = comparisons.cashTotal
-  const fingerprint = viewFingerprint(rjMobViewData(nakyma, comparisons, targetsVirhe ? null : targets))
+  const fingerprint = viewFingerprint(rjMobViewData(nakyma, comparisons, targetsVirhe ? null : targets, kassaRaportti))
   useEffect(() => {
     setRjMobSelection(selectedFile && !loading && !targetsLoading && !runrateLoading ? { route: '/arxcian/rj-mob/etela', fileId: selectedFile, view: nakyma, fingerprint } : undefined)
     return () => setRjMobSelection(undefined)
@@ -608,6 +609,7 @@ Generoi viesti:`
         {/* Uusmyynti ja Kassamyynti: siirretty Tavoitteet ja Run Rate -sivulta
             sellaisenaan. Virhe erotetaan tyhjästä kuukaudesta — tyhjä taulukko
             ilman selitystä näyttäisi siltä kuin myyntiä ei olisi ollut. */}
+        {!loading && nakyma === 'kassamyynti' && kassaRaportti && <div role="status" style={{padding:12,marginBottom:12,background:'#fff8e6'}}>Myynti, palautus, alennus ja kuitit: Winpos {kassaRaportti.raporttiPvm}, tilanne {kassaRaportti.tilannePvm} asti. Raportin jakson alku ei ole tiedossa. Kassakate, tavoite ja ennuste: {kuukausiLyhyt} myyntiseuranta.</div>}
         {!loading && nakyma !== 'tavoitteet' && targetsVaroitukset.length > 0 && (
           <div role="status" style={{padding:12, marginBottom:12, background:'#fff8e6', fontSize:13}}>{targetsVaroitukset.join(' ')}</div>
         )}
