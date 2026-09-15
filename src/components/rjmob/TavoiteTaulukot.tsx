@@ -51,11 +51,11 @@ function PctCell({ pct }: { pct: number | null }) {
 }
 
 const th = {padding:'8px 10px', fontSize:11, fontWeight:500, color:'#888', textAlign:'center' as const, borderBottom:'0.5px solid #eee', whiteSpace:'nowrap' as const, background:'#f8f8f8'}
-const thL = {...th, textAlign:'left' as const}
+const thL = {...th, textAlign: 'center' as const}
 const td = {padding:'8px 10px', fontSize:13, textAlign:'center' as const, borderBottom:'0.5px solid #f5f5f5'}
-const tdL = {...td, textAlign:'left' as const, fontWeight:500}
+const tdL = {...td, textAlign: 'center' as const, fontWeight:500}
 const tot = {...td, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
-const totL = {...tot, textAlign:'left' as const}
+const totL = {...tot, textAlign: 'center' as const}
 
 function Kehys({ otsikko, children }: { otsikko: string; children: React.ReactNode }) {
   return (

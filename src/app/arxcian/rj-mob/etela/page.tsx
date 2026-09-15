@@ -303,12 +303,12 @@ function EtelanHaratSivu() {
   /** Otsikoihin ilman "Myyntiseuranta"-etuliitettä, kuten run rate -taulukoissa. */
   const kuukausiLyhyt = kuukausi.replace('Myyntiseuranta ', '')
 
-  const thStyle = {padding:'8px 10px', fontSize:11, fontWeight:500, color:'#888', textAlign:'right' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6'}
-  const thLStyle = {...thStyle, textAlign:'left' as const}
-  const tdStyle = {padding:'7px 10px', fontSize:12, textAlign:'right' as const, borderBottom:'0.5px solid #f0f0f0', whiteSpace:'nowrap' as const}
-  const tdLStyle = {...tdStyle, textAlign:'left' as const, fontWeight:500}
+  const thStyle = {padding:'8px 10px', fontSize:11, fontWeight:500, color:'#888', textAlign: 'center' as const, borderBottom:'1px solid #ddd', whiteSpace:'nowrap' as const, background:'#f8f8f6'}
+  const thLStyle = {...thStyle, textAlign: 'center' as const}
+  const tdStyle = {padding:'7px 10px', fontSize:12, textAlign: 'center' as const, borderBottom:'0.5px solid #f0f0f0', whiteSpace:'nowrap' as const}
+  const tdLStyle = {...tdStyle, textAlign: 'center' as const, fontWeight:500}
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
-  const totLStyle = {...totStyle, textAlign:'left' as const}
+  const totLStyle = {...totStyle, textAlign: 'center' as const}
 
   // Kynnys tulee jaettuna rjmob.ts:stä, jotta se on sama kuin tuottoseurannassa,
   // run ratessa ja yhteenvedossa. `liittyma`-lippu valitsee liittymätehon oman
@@ -510,7 +510,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {color:'#15803d'} : {})}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={{...tdStyle, fontWeight:500}}>{fmt(provisio)} €</td>
@@ -573,7 +573,7 @@ Generoi viesti:`
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
                           <td style={tdStyle}>{s.liittKpl}</td>
                           <td style={tdStyle}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {color:'#15803d'} : {})}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, fontWeight:500, ...(s.fsecKpl > 10 ? {background:'#EAF3DE', color:'#15803d'} : {})}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>

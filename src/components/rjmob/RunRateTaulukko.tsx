@@ -68,21 +68,21 @@ function arvo(n: number | null, yksikko: 'kpl' | '€'): string {
 
 const th = {
   padding: '6px 8px', fontSize: 11, fontWeight: 500, color: '#888',
-  textAlign: 'right' as const, borderBottom: '1px solid #ddd',
+  textAlign: 'center' as const, borderBottom: '1px solid #ddd',
   whiteSpace: 'nowrap' as const, background: '#f8f8f6',
 }
-const thL = { ...th, textAlign: 'left' as const }
+const thL = { ...th, textAlign: 'center' as const }
 const thRyhma = {
   ...th, textAlign: 'center' as const, borderLeft: '1px solid #e5e5e5',
   fontWeight: 600, color: '#555',
 }
 const td = {
-  padding: '7px 8px', fontSize: 12, textAlign: 'right' as const,
+  padding: '7px 8px', fontSize: 12, textAlign: 'center' as const,
   borderBottom: '0.5px solid #f0f0f0', whiteSpace: 'nowrap' as const,
 }
-const tdL = { ...td, textAlign: 'left' as const, fontWeight: 500 }
+const tdL = { ...td, textAlign: 'center' as const, fontWeight: 500 }
 const tot = { ...td, fontWeight: 600, background: '#f8f8f6', borderTop: '1px solid #ddd' }
-const totL = { ...tot, textAlign: 'left' as const }
+const totL = { ...tot, textAlign: 'center' as const }
 
 function PctSolu({ pct, pohja }: { pct: number | null; pohja: typeof td }) {
   const v = VARIT[runRateTaso(pct)]
@@ -94,11 +94,13 @@ function PctSolu({ pct, pohja }: { pct: number | null; pohja: typeof td }) {
 }
 
 function MittariSolut({ m, yksikko, pohja }: { m: NayttoMittari; yksikko: 'kpl' | '€'; pohja: typeof td }) {
+  const v = VARIT[runRateTaso(m.pct)]
+  const solu = { ...pohja, background: v.bg, color: v.fg }
   return (
     <>
-      <td style={{ ...pohja, color: '#888', borderLeft: '1px solid #e5e5e5' }}>{m.tavoite === null ? 'Ei tavoitetta' : arvo(m.tavoite, yksikko)}</td>
-      <td style={pohja}>{arvo(m.toteuma, yksikko)}</td>
-      <td style={{ ...pohja, color: '#185FA5', fontWeight: 500 }}>{arvo(m.ennuste, yksikko)}</td>
+      <td style={{ ...solu, borderLeft: '1px solid #e5e5e5' }}>{m.tavoite === null ? 'Ei tavoitetta' : arvo(m.tavoite, yksikko)}</td>
+      <td style={solu}>{arvo(m.toteuma, yksikko)}</td>
+      <td style={{ ...solu, fontWeight: 500 }}>{arvo(m.ennuste, yksikko)}</td>
       <PctSolu pct={m.pct} pohja={pohja} />
     </>
   )

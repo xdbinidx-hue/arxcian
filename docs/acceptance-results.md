@@ -1,3 +1,12 @@
+# Taulukoiden keskitys ja mittarien taustavärit — 15.9.2026
+
+- **Toteutettu:** kaikki RJ-Mob-taulukoiden otsikot/solut, nimet ja yhteensä-rivit keskitetty. Myyntiseurannan F-Secure >10 koko solu vihreä (myyjät/myymälät). Runraten tavoite/toteuma/ennuste/% kaikki samalla ennusteprosentin värillä kunkin mittarin sisällä; liittymät, F-Secure ja kassakate itsenäiset, myös yhteensä-rivit. Rajat edelleen >=100vihreä,90–99keltainen,80–89oranssi,<80punainen; puuttuva prosentti neutraali. Ei laskentamuutosta.
+- **Testattu:** kohdennettu olemassa olevan React/HTTP-näkymätarkistuksen kertalaajennus: jokainen kaikkien kolmen näkymän taulukkosolu keskitetty, F-Secure koko solu vihreä, Runrate kaikkien kolmen ryhmän neljä solua vastaavat oman prosenttisolun tausta/tekstiväriä. Drive-fingerprintit ja yhteinen lataus/focus ennallaan läpäisevät. Testikirjoitukset vain previewn omaan Redis-palveluun, ei tuotantokirjoituksia. Lokit arxcian-work/table-{centering,colors}-ui-check.log ja build-lokit.
+- **Julkaistu:** vain omaan previewyn onnistuneen lopullisen buildin jälkeen, ei tuotantoon. Tuotantojulkaisulupa voimassa; aiemmat palvelukäyttöönoton esteet säilyvät.
+- **Avoin/seuraava:** käyttäjä päivittää previewn ja tarkistaa keskityksen sekä mittarikohtaiset taustavärit. Leo4.9. todellinen tapahtumamyynti tai vuoromerkinnän korjaus odottaa käyttäjätietoa. Hermes/root-auth, oikea Oracle–Drive, Telegram ja täysi palvelupalautus edelleen avoinna. Työ /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Muiden töiden tiedot säilyvät alla.
+
+---
+
 # Tapahtumapäivät ja puuttuneet ennusteet korjattu — 15.9.2026
 
 - **Vahvistettu käyttäjältä:** Iisalmi Alec/Hamza 3.–5.9.2026, liittymät 82/127; Ylöjärvi Joona 4.9.2026, liittymät20. Kuvien toteumat sisältyvät kuukausimyyntiin. Tämä korvaa aiemman Iisalmi4.–6.9.-päiväyksen ja ratkaisee alla mainitun puuttuvan erittelyn; tavalliseen ennusteeseen vaihtamista ei tarvita.
