@@ -88,10 +88,10 @@ export function tyopaivaTilanne(now: Date = new Date()): TyopaivaTilanne {
  * Ennusteen työpäiväikkuna: montako työpäivää on **päättynyt** ja montako
  * kuukaudessa on kaikkiaan.
  *
- * **Kuluvaa päivää ei lasketa päättyneeksi.** Se on kesken, ja Winpos-tuonti
- * ajetaan vasta klo 8/12/16/20 — jos tämä päivä laskettaisiin täytenä
- * työpäivänä, ennuste sukeltaisi joka aamu ja nousisi iltaa kohti. Elokuussa
- * 2026 päättyneitä on 28. päivänä 23, ei 24.
+ * **Kuluvaa päivää ei lasketa päättyneeksi.** Se on kesken, ja ajastettu
+ * päivitys ajetaan vasta klo 8/12/16/20 — jos tämä päivä laskettaisiin
+ * täytenä työpäivänä, ennuste sukeltaisi joka aamu ja nousisi iltaa kohti.
+ * Elokuussa 2026 päättyneitä on 28. päivänä 23, ei 24.
  *
  * `tyopaivaTilanne`n `tyopaiviaKulunut` on eri luku tarkoituksella: se on
  * "kuukaudesta kulunut" -infoa varten ja laskee kuluvan päivän mukaan.

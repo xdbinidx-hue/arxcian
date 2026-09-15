@@ -254,10 +254,9 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
       // sarakkeeseen C ("Nimi") — `findCol` vertaa osajonolla, ja
       // "Nimikorjaus" sisältää sanan "nimi" ja tulee ensin.
       //
-      // Se EI ole bugi, vaan puolet tarkoituksellisesta työnjaosta:
+      // Se EI ole bugi:
       //
-      //   Winpos-tuonti  kirjoittaa sarakkeeseen C myyjän RAAKANIMEN
-      //                  ("Steven"), koska taulukon oma kaava hakee sillä
+      //   sarake C       myyjän RAAKANIMI ("Steven")
       //   sarake A       =XLOOKUP(C2; J:J; K:K; C2) kääntää sen koko
       //                  nimeksi ("Steven Sainio") hakutaulusta J:K
       //   tämä lukukohta lukee sarakkeen A eli valmiiksi korjatun nimen,
@@ -266,9 +265,10 @@ export async function loadTargets(fileId: string): Promise<TargetsData> {
       //
       // Jos tämän "korjaa" osumaan sarakkeeseen C, nimimatch hajoaa:
       // lyhytnimet ("Joni V", "Kasperi K.") eivät vastaa myyjälistaa ja
-      // kassaluvut katoavat kaikilta. Toinen pää on
-      // [suunnitelma.ts](src/lib/winpos/suunnitelma.ts):n SARAKKEET —
-      // muuta molemmat tai kumpaakaan.
+      // kassaluvut katoavat kaikilta. (Sarake C:n kirjoitti ennen automaattinen
+      // Winpos-tuonti, poistettu 15.9.2026 — ks. CLAUDE.md, "Winpos-tuonti on
+      // poistettu". Kaava sarakkeessa A säilyy, jos joku täyttää sarakkeen C
+      // käsin.)
       const idxNimi = findCol(headers, 'virallinen nimi', 'myyjä', 'myyjat', 'nimi')
       const idxMyynti = findCol(headers, 'myynti')
       const idxPalautus = findCol(headers, 'palautus', 'palautukset')
