@@ -1,3 +1,31 @@
+# Current operator inputs
+
+Location report read: default and Oracle API keys exist in the known .env paths;
+no separate staging/acceptance directory or Drive credential found in that bounded
+search. The user confirmed Vercel access; the actual Google key is not yet imported.
+
+Vercel `rjmob-portal` → Settings → Environment Variables → `GOOGLE_SERVICE_ACCOUNT_KEY`.
+If readable, copy ONLY this value privately. Sensitive values cannot be read back;
+do not replace/delete production values to work around that. Official references:
+https://vercel.com/docs/environment-variables/managing-environment-variables
+https://vercel.com/docs/environment-variables/sensitive-environment-variables
+
+Root console: `python3 -B /home/arxcian-codex/arxcian-release/ops/acceptance/import-drive-key.py`.
+Paste the JSON while echo is disabled, press Enter and type `LOPPU` on its own line.
+Multiline input is supported. Only a new private pending `drive-candidate.json` is
+written; the app does not load this file. Mode 0600, Codex ownership, overwrite
+refused; no network requests. Do not send credentials into chat. The import's
+fixture and actual PTY secret-exclusion/multiline/echo-restoration tests passed.
+
+Actual GET-only transport auth check (not another metadata/backup test):
+`bash /home/arxcian-codex/arxcian-release/ops/acceptance/check-api-auth.sh`.
+Uses existing keys only inside the container, reports statuses for models metadata
+with anonymous/invalid/own/other keys. No model runs, sessions or tasks are created.
+Output acceptance-api-auth-read.json; syntax checked, real execution pending.
+This does not by itself prove end-user ownership or dashboard access boundaries.
+
+---
+
 # Locating test access on behalf of the user
 
 The user does not know whether the required test environment exists. Prepared a
