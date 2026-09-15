@@ -1,7 +1,6 @@
 // Työvuorolistan kirjoitussuunnitelma — puhdas päättely ilman Sheets-rajapintaa.
 //
-// Sama kuri kuin Winpos-putken [suunnitelma.ts](src/lib/winpos/suunnitelma.ts):ssä:
-// mitä soluihin kirjoitetaan ja mitä värjätään päätetään täällä, jotta se
+// Mitä soluihin kirjoitetaan ja mitä värjätään päätetään täällä, jotta se
 // voidaan testata oikeasti eikä vain lukemalla koodia. Kaikki taulukon tila
 // tulee sisään argumenttina.
 import type { DayInfo, StoreName } from '../shiftSchedule'

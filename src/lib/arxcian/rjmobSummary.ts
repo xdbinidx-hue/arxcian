@@ -417,7 +417,7 @@ function dashLoader(): (id: string) => Promise<DashData> {
  */
 function workdayProgress(): { elapsed: number; total: number } {
   const [year, month, day] = todayISOHelsinki().split('-').map(Number)
-  // Kuluva päivä ei ole päättynyt: Winpos-tuonti ajetaan klo 8/12/16/20,
+  // Kuluva päivä ei ole päättynyt: ajastettu päivitys ajetaan klo 8/12/16/20,
   // joten täytenä työpäivänä laskettu tämä päivä sukauttaisi ennusteen joka
   // aamu ja nostaisi sitä iltaa kohti. Sama ikkuna kuin sivuilla
   // (`tyopaivaIkkuna`), tässä vain Helsingin päivästä johdettuna — palvelin

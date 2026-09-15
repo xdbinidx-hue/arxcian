@@ -6,10 +6,10 @@ import { soloOnlyEstetyt, uiRefreshJobIds, UI_REFRESH_JOBS } from './cronAccess.
 /**
  * Turvaraja: hubin virkistysnappi ei saa koskaan ajaa `soloOnly`-työtä.
  *
- * `winpos-import` kirjoittaa elävään Google Sheets -taulukkoon ja tyhjentää
- * Kassamyynti-alueen ennen kirjoitusta. Nappi kutsuu cron-reittiä kirjautuneen
- * käyttäjän oikeuksilla, joten pelkkä "napissa ei ole sitä id:tä" ei riitä —
- * osoiterivi ei kysy komponentilta lupaa.
+ * Tällainen työ kirjoittaisi elävään Google Sheets -taulukkoon (esim.
+ * tyhjentäisi alueen ennen kirjoitusta). Nappi kutsuu cron-reittiä
+ * kirjautuneen käyttäjän oikeuksilla, joten pelkkä "napissa ei ole sitä
+ * id:tä" ei riitä — osoiterivi ei kysy komponentilta lupaa.
  *
  * `cron.ts`:ää ei voi importata tänne (se tuo Googlen, Redisin ja istunnon
  * `@/`-aliaksen takaa), joten rekisteri luetaan lähdetekstistä. Jäsennys
@@ -43,16 +43,12 @@ function lueTyot(): Tyo[] {
   })
 }
 
-test('cron.ts:n rekisteri saadaan luettua ja winpos-import on yhä soloOnly', () => {
+test('cron.ts:n rekisteri saadaan luettua', () => {
   const tyot = lueTyot()
 
   // Jos jäsennys hajoaa, kaikki muut väitteet menisivät läpi tyhjällä
   // listalla. Siksi tämä ensin.
   assert.ok(tyot.length >= 10, `Rekisteristä löytyi vain ${tyot.length} työtä — jäsennys hajosi?`)
-
-  const winpos = tyot.find(t => t.kuvio.test('winpos-import'))
-  assert.ok(winpos, 'winpos-import puuttuu rekisteristä')
-  assert.equal(winpos.soloOnly, true, 'winpos-import ei ole enää soloOnly')
 })
 
 test('jokainen virkistysnapin työ on olemassa eikä yksikään ole soloOnly', () => {
@@ -81,14 +77,14 @@ test('UI_REFRESH_JOBS kattaa hubin cron-vetoiset paneelit', () => {
 })
 
 test('istunnolla ei aja soloOnly-työtä, CRON_SECRETilla ajaa', () => {
-  const winpos = [{ id: 'winpos-import', soloOnly: true }]
+  const solo = [{ id: 'esimerkki-solo-tyo', soloOnly: true }]
 
   assert.deepEqual(
-    soloOnlyEstetyt(winpos, 'user').map(j => j.id),
-    ['winpos-import'],
+    soloOnlyEstetyt(solo, 'user').map(j => j.id),
+    ['esimerkki-solo-tyo'],
     'kirjautunut käyttäjä pääsi ajamaan soloOnly-työn',
   )
-  assert.deepEqual(soloOnlyEstetyt(winpos, 'cron'), [], 'CRON_SECRET ei pääse enää läpi')
+  assert.deepEqual(soloOnlyEstetyt(solo, 'cron'), [], 'CRON_SECRET ei pääse enää läpi')
 })
 
 test('tavallinen työ ja joukkoajo eivät esty kummallakaan tavalla', () => {
@@ -99,11 +95,11 @@ test('tavallinen työ ja joukkoajo eivät esty kummallakaan tavalla', () => {
 })
 
 test('sekalaisesta valinnasta estyy vain soloOnly-työ', () => {
-  const sekainen = [{ id: 'hub-weather' }, { id: 'winpos-import', soloOnly: true }]
+  const sekainen = [{ id: 'hub-weather' }, { id: 'esimerkki-solo-tyo', soloOnly: true }]
 
   assert.deepEqual(
     soloOnlyEstetyt(sekainen, 'user').map(j => j.id),
-    ['winpos-import'],
+    ['esimerkki-solo-tyo'],
   )
 })
 

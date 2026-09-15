@@ -13,7 +13,6 @@ import { getChannelVideos, CHANNELS_CACHE_KEY } from './channels'
 import { readFetchStatus, writeAttempt } from './fetchStatus'
 import { refreshRjMobSummaries, RJMOB_SUMMARY_KEY } from './rjmobSummary'
 import { refreshRjMobInsights, RJMOB_INSIGHTS_KEY } from './rjmobInsights'
-import { importWinposReports } from '@/lib/winpos/kassamyynti'
 import { runWatch, statusKeyFor } from './watch/watch'
 
 /**
@@ -75,9 +74,9 @@ export type CronJob = {
    *
    * Cron-reitti ajaa työt `Promise.all`illa eli rinnakkain. Elävään
    * taulukkoon kirjoittava työ ei saa olla käynnissä samaan aikaan kuin
-   * samaa taulukkoa lukevat työt: Winpos-tuonti tekee `values.clear`in ja
-   * `values.update`n kahtena kutsuna, joten alue on hetken tyhjä ja
-   * rinnakkainen lukija välimuistittaisi nollat.
+   * samaa taulukkoa lukevat työt: jos työ tekee esim. `values.clear`in ja
+   * `values.update`n kahtena kutsuna, alue on hetken tyhjä ja rinnakkainen
+   * lukija välimuistittaisi nollat. Ei nykyisiä käyttäjiä.
    */
   soloOnly?: boolean
   run: () => Promise<JobResult>
@@ -332,20 +331,6 @@ const rjmobJobs: CronJob[] = [
     run: async () => {
       const result = await refreshRjMobInsights()
       return { key: RJMOB_INSIGHTS_KEY, items: result.data.huomiot.length }
-    },
-  },
-  {
-    id: 'winpos-import',
-    description: 'RJ-Mob: Winpos-raporttien tuonti Kassamyynti-välilehdelle',
-    // Yksin ajettava, ks. soloOnly. Workflow kutsuu tätä omana vaiheenaan
-    // ennen joukkoajoa, jotta saman ajon rjmob-summary ja rjmob-insights
-    // lukevat jo tuodut kassaluvut eivätkä edellisen kierroksen lukuja.
-    soloOnly: true,
-    run: async () => {
-      const tulos = await importWinposReports()
-      // items = montako raporttia tuotiin. Jo käsitellyt ohitetaan, joten
-      // tavallinen ajo palauttaa nollan eikä kirjoita taulukkoon lainkaan.
-      return { key: 'winpos:tuonti', items: tulos.tuodut.length }
     },
   },
 ]

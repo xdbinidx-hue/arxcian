@@ -37,14 +37,14 @@ export async function GET(req: NextRequest) {
   // riittää cron-reitille.
   //
   // Hubin paneeleissa on virkistysnappi, joka kutsuu tätä reittiä kirjautuneen
-  // käyttäjän oikeuksilla. `winpos-import` kirjoittaa elävään Google
-  // Sheets -taulukkoon ja tyhjentää Kassamyynti-alueen ennen kirjoitusta, eikä
-  // sitä saa voida käynnistää tämän reitin kautta — ei napista eikä käsin
-  // kirjoitetusta osoitteesta. Esto on tässä eikä käyttöliittymässä, koska
-  // osoiterivi ei kysy komponentilta lupaa.
+  // käyttäjän oikeuksilla. Työ joka kirjoittaa elävään Google Sheets
+  // -taulukkoon niin että alue on hetken tyhjä (esim. tyhjentää alueen ennen
+  // kirjoitusta) ei saa voida käynnistyä tämän reitin kautta — ei napista
+  // eikä käsin kirjoitetusta osoitteesta. Esto on tässä eikä
+  // käyttöliittymässä, koska osoiterivi ei kysy komponentilta lupaa. Ei
+  // nykyisiä soloOnly-töitä (ks. CLAUDE.md, "Winpos-tuonti on poistettu").
   //
-  // CRON_SECRET pääsee edelleen läpi: GitHub-workflow ajaa tuonnin omana
-  // vaiheenaan ennen joukkoajoa, ks. .github/workflows/arxcian-cron.yml.
+  // CRON_SECRET pääsee edelleen läpi.
   const soloEstetty = soloOnlyEstetyt(selected, auth.via)
   if (soloEstetty.length > 0) {
     return NextResponse.json(

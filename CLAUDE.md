@@ -178,9 +178,12 @@ koodista löydy syytä, lue ohje uudelleen ennen kuin korjaat koodia.
 
 `rj-mob_myyjät` on myyjälista, jossa on tunnus, koko nimi, tuntipalkka ja
 työskenteleekö myyjä yhä. Se on **dokumentaatiota, ei koodin lukema lähde** —
-samat tiedot ovat `TUNTIPALKAT` ja `RJ_MOB_SELLERS` ([rjmob.ts](src/lib/rjmob.ts))
-sekä `MYYJAT` ([winpos-myyjat.ts](src/lib/winpos/winpos-myyjat.ts)). Kun lista
-muuttuu, molemmat päät on päivitettävä. Jos siitä joskus halutaan elävä lähde,
+samat tiedot ovat `TUNTIPALKAT` ja `RJ_MOB_SELLERS`
+([rjmob.ts](src/lib/rjmob.ts)). (Kolmas kopio, `MYYJAT`
+[winpos-myyjat.ts](src/lib/winpos/winpos-myyjat.ts):ssä, poistui Winpos-tuonnin
+mukana 15.9.2026 — se oli Winposin lyhytnimien omaa nimikarttaa eikä
+`rj-mob_myyjät`-listaa, joten poisto ei vaadi mitään päivitystä tähän.) Kun
+lista muuttuu, päivitä `rjmob.ts`. Jos siitä joskus halutaan elävä lähde,
 se pitää siirtää Docsista Sheetsiin: Docsin sarkainsisennetystä tekstistä
 parien tunnistus nojaa rivijärjestykseen eikä kestä käsin tehtyä muotoilua.
 
@@ -728,52 +731,49 @@ aiemmin lainkaan; `cron.ts`:n `kirjaaYritys` hoitaa sen nyt niiden osalta.
 lähdekohtaisen tilansa kirjastoissaan eivätkä kulje sen läpi.
 
 **`soloOnly`-työt on rajattu ulos käyttöliittymästä.** Nappi kutsuu cron-reittiä
-kirjautuneen käyttäjän oikeuksilla, ja `winpos-import` kirjoittaa elävään
-Google Sheets -taulukkoon tyhjentäen Kassamyynti-alueen ennen kirjoitusta.
-Cron-reitti vastaa siksi **403:lla jokaiseen `soloOnly`-työhön kun
-`authorizeCron` tunnisti kutsujan istunnosta**
+kirjautuneen käyttäjän oikeuksilla, ja `soloOnly`-merkintä on tarkoitettu
+työlle joka kirjoittaa elävään Google Sheets -taulukkoon niin että alue on
+hetken tyhjä (esim. `values.clear` ennen kirjoitusta) — sellaista ei saa voida
+käynnistää napista eikä käsin kirjoitetusta osoitteesta. Ei nykyisiä
+käyttäjiä (ks. "Winpos-tuonti on poistettu"), mekanismi säilyy seuraavaa
+kirjoittavaa työtä varten. Cron-reitti vastaa siksi **403:lla jokaiseen
+`soloOnly`-työhön kun `authorizeCron` tunnisti kutsujan istunnosta**
 ([cronAccess.ts](src/lib/arxcian/cronAccess.ts):n `soloOnlyEstetyt`). Esto on
 palvelimella eikä komponentissa, koska osoiterivi ei kysy komponentilta lupaa.
-`CRON_SECRET` pääsee edelleen läpi — GitHub-workflow ajaa tuonnin omana
-vaiheenaan. `cronAccess.test.mts` vartioi ettei yksikään napin työ-id ole
-`soloOnly` eikä osoita olemattomaan työhön.
+`CRON_SECRET` pääsee edelleen läpi. `cronAccess.test.mts` vartioi ettei
+yksikään napin työ-id ole `soloOnly` eikä osoita olemattomaan työhön.
 
-Rajaus koskee **cron-reittiä**, ei kaikkea tuontia: `/api/winpos/import` on oma
-reittinsä, se ei tunne `soloOnly`ta ja on yhä ajettavissa istunnolla. Se on
-Winpos-sivun oma toiminto eikä muuttunut tässä — mutta älä lue yllä olevasta
-että tuonti olisi kokonaan pois selaimen ulottuvilta.
+Rajaus koskee **cron-reittiä**, ei mitään muuta reittiä: `soloOnly` estää
+vain `?job=<id>`-kutsun tähän yhteen reittiin istunnolla, ei muita API-
+reittejä.
 
 Nappi on jäähyllä 20 s ajon jälkeen ja estetty ajon aikana: työt hakevat
 ulkoisista rajapinnoista eikä niitä ole tarkoitettu ajettavaksi kymmentä kertaa
 minuutissa. Epäonnistunut ajo näytetään paneelissa omana viestinään, ja
 `source: 'stale'` erotellaan kovasta virheestä — eri vika, eri korjaus.
 
-### Kassamyynti-välilehden kaksi nimisaraketta
+### Winpos-tuonti on poistettu (15.9.2026), Kassamyynti-välilehti jää lukupuolelle
 
-Winpos-tuonti kirjoittaa ja tuottoseuranta lukee **eri sarakkeesta**, ja se
-näyttää virheeltä kummasta päästä tahansa katsottuna. Se on tahallista:
+Automaattinen Winpos-raporttien tuonti (`src/lib/winpos/`, `/api/winpos/import`,
+cron-työ `winpos-import`) poistettiin kokonaan 15.9.2026. Se oli ollut rikki
+koko syyskuun: 1.9.2026 workbook-muutoksen jälkeen kuukausitiedostossa ei
+enää ole lainkaan Kassamyynti-välilehteä (vain "Myyjät Myymälöittäin" ja
+"data"), joten joka ajo kaatui virheeseen "Kassamyynti-välilehteä ei
+löytynyt". Samalla liittymät, F-Secure ja kassakate olivat jo siirtyneet
+lukemaan "Myyjät Myymälöittäin" -välilehdeltä (ks. "Myyntiseurannan
+lukulähde vaihtui 1.9.2026"), joten tuonti ei enää syöttänyt mitään mikä
+päätyisi näkyviin.
 
-| | |
-|---|---|
-| sarake C `Nimi` | Winposin **raakanimi** ("Steven"). Tänne [suunnitelma.ts](src/lib/winpos/suunnitelma.ts) kirjoittaa. |
-| sarake A `Nimikorjaus` | `=XLOOKUP(C2; J:J; K:K; C2)` kääntää sen koko nimeksi hakutaulusta J:K. |
-| lukupää | [rjmobTargets.ts](src/lib/rjmobTargets.ts) lukee sarakkeen A, koska vain korjattu nimi matchaa `RJ_MOB_SELLERS`-listaan. |
-
-Lukupäässä osuma sarakkeeseen A syntyy siitä että `findCol` vertaa
-osajonolla ja "Nimikorjaus" sisältää sanan "nimi" ja tulee ensin — **älä
-"korjaa" sitä osumaan sarakkeeseen C**, koska lyhytnimet ("Joni V",
-"Kasperi K.") eivät vastaa myyjälistaa ja kassaluvut katoaisivat kaikilta.
-
-Toiseen suuntaan sama: jos tuonti alkaisi kirjoittaa koko nimen, XLOOKUP ei
-löytäisi sitä hakutaulusta ja palauttaisi varana saman nimen — pinnalta
-kaikki näyttäisi toimivan, mutta nimikartan ylläpito siirtyisi hiljaa
-taulukosta koodiin, ja uusi myyjä alkaisi vaatia koodimuutoksen sen sijaan
-että Albin lisäisi rivin hakutauluun. **Muuta molemmat päät tai kumpaakaan.**
-
-Huom. myös että tuonnin oma otsikkohaku ([suunnitelma.ts](src/lib/winpos/suunnitelma.ts))
-tarkistaa **täsmällisen osuman ennen osittaista** juuri tämän takia: pelkkä
-osajonovertailu osuisi siellä sarakkeeseen A ja keskeyttäisi jokaisen
-tuonnin turvarajaan. Lukupää käyttää tarkoituksella vanhaa `findCol`ia.
+[rjmobTargets.ts](src/lib/rjmobTargets.ts) yrittää yhä lukea Kassamyynti- tai
+kassakate-nimistä välilehteä (`kassaMyynti`, `kassaPalautus`, `kassaAlennus`,
+`kassaKuitit`, `kassaPerPaiva` -kentät) — tätä lukupuolta ei muutettu, koska
+se hajoaa jo valmiiksi kauniisti: puuttuva välilehti tuottaa `varoitukset`-
+listaan merkinnän "Kassamyynnin erittely puuttuu valitulta kuukaudelta" ja
+kentät jäävät `null`iksi, ei nollaksi. **Tämä on nyt pysyvä tila, ei
+väliaikainen puute** — nuo kentät eivät palaa ellei joku täytä Kassamyynti-
+välilehteä käsin. Jos välilehti joskus palaa (käsin ylläpidettynä), lukupuoli
+toimii sellaisenaan ennallaan: se odottaa sarakkeesta A ("Nimikorjaus" tai
+vastaava, `findCol`in osajonovertailulla) koko nimeä, ei raakaa Winpos-nimeä.
 
 ### Teho lasketaan komponenteista, ei lueta taulukon Teho €/h -sarakkeesta
 
@@ -860,11 +860,11 @@ komponentti Myyntiseurannassa ja Tavoitteet ja Run Rate -sivulla.
 `rjmobRunRate.test.mts` vartioi toimeksiannon tarkistuslaskelmaa (elokuu 2026,
 myymälätaso) rivi riviltä.
 
-**Kuluvaa päivää ei lasketa päättyneeksi.** Se on kesken, ja Winpos-tuonti
-ajetaan klo 8/12/16/20 — täytenä työpäivänä laskettuna ennuste sukeltaisi joka
-aamu ja nousisi iltaa kohti. Elokuussa 2026 päättyneitä on 28. päivänä **23,
-ei 24**. `tyopaivaTilanne`n `tyopaiviaKulunut` on eri luku ja jää infopalkkiin
-("kulunut % kuukaudesta"); **ennuste ei saa käyttää sitä.**
+**Kuluvaa päivää ei lasketa päättyneeksi.** Se on kesken, ja ajastettu
+päivitys ajetaan klo 8/12/16/20 — täytenä työpäivänä laskettuna ennuste
+sukeltaisi joka aamu ja nousisi iltaa kohti. Elokuussa 2026 päättyneitä on
+28. päivänä **23, ei 24**. `tyopaivaTilanne`n `tyopaiviaKulunut` on eri luku
+ja jää infopalkkiin ("kulunut % kuukaudesta"); **ennuste ei saa käyttää sitä.**
 
 **Nolla päättynyttä työpäivää on `–`, ei nolla.** Kuun 1. päivänä — tai kun
 myyjä ei ole tehnyt yhtään vuoroa — ennustetta ei ole olemassa, ja nolla
@@ -925,8 +925,9 @@ Kuukausitiedostoja on kaksi ja ne ovat eri muotoa — todettu, ei oletettu:
 
 **.xlsx-blobia ei voi lukea `sheets.spreadsheets.values.get`illä lainkaan** —
 se ladataan `files.get({ alt: 'media' })`illä ja jäsennetään SheetJS:llä,
-kuten Winpos-raportit. Natiivi taulukko luetaan Sheets-API:lla. Lukija tukee
-molempia eikä valitse toista.
+samaan tapaan kuin Maksukuitti-raportit ([receipts/route.ts](src/app/api/receipts/route.ts)).
+Natiivi taulukko luetaan Sheets-API:lla. Lukija tukee molempia eikä valitse
+toista.
 
 **Kuukausi tunnistetaan tiedostonimestä, ei `monthOrder`illa.** Se lukee
 myyntiseurannan `N. Kuukausi VVVV` -etuliitteen, jota myymälätiedostossa ei
@@ -1029,11 +1030,12 @@ eikä nolla.** Nolla näyttää mitatulta tulokselta. `Kassakate` haetaan
 täsmäävällä nimellä, koska samalla välilehdellä on myös `Kassaprovisio`, joka
 on eri suure.
 
-**Winpos-tuontia ei purettu.** `/api/winpos/import` kirjoittaa yhä
-`Kassamyynti`-välilehdelle ja `/api/targets` lukee sen. Tarkistettu 1.9.2026:
+**Winpos-tuonti poistettiin kokonaan 15.9.2026** (ks. "Winpos-tuonti on
+poistettu"), koska se oli ollut rikki koko syyskuun eikä olisi syöttänyt
+mitään myyntiseurannan lukupäähän joka tapauksessa: tarkistettu 1.9.2026,
 `Myyjät Myymälöittäin` **ei ole kaavayhteydessä** `Kassamyynti`iin — koko alue
-on liitettyjä arvoja — joten tuonnin ketju ei katkennut, mutta se ei myöskään
-enää syötä myyntiseurannan lukupäätä.
+on liitettyjä arvoja — joten Winpos-tuonnin loppuminen ei riko mitään mikä
+tällä hetkellä näkyy myyntiseurannassa.
 
 **Run raten työpäivänimittäjä ei muuttunut.** `data`-välilehden
 `Toteutuneet työpäivät(pv)` kertoo vain kuluneet päivät, ei kuukauden kaikkia,

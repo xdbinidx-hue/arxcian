@@ -725,11 +725,13 @@ async function parseMyymaloittainFormat(
  * Erotus — ständimyynti ja muut kustannuspaikat, joihin tapahtumat
  * (Ylöjärvi, Jyväskylä) kuuluvat — palautuu `ulkopuoliset`issa eikä katoa.
  *
- * **"Kassamyynti"-välilehteä ei enää lueta täällä.** Winpos-tuonti kirjoittaa
- * sinne edelleen omaa reittiään (`/api/winpos/import`), ja `/api/targets`
- * lukee sen yhä — muutos koskee vain tätä lukupäätä. Välilehti ei syötä
- * "Myyjät Myymälöittäin" -välilehteä kaavoilla (todettu 1.9.2026: koko alue
- * on liitettyjä arvoja), joten ketju ei katkea.
+ * **"Kassamyynti"-välilehteä ei enää lueta täällä.** `/api/targets`
+ * ([rjmobTargets.ts](rjmobTargets.ts)) lukee sitä yhä omista kentistään —
+ * muutos koskee vain tätä lukupäätä. Automaattinen Winpos-tuonti joka
+ * ennen kirjoitti sinne poistettiin 15.9.2026 (ks. CLAUDE.md, "Winpos-tuonti
+ * on poistettu"). Välilehti ei syötä "Myyjät Myymälöittäin" -välilehteä
+ * kaavoilla (todettu 1.9.2026: koko alue on liitettyjä arvoja), joten tämän
+ * ketju ei katkea sen poistosta.
  */
 async function parseYhdestaLahteesta(
   sheets: ReturnType<typeof google.sheets>,
