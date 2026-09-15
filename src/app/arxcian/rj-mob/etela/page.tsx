@@ -310,9 +310,10 @@ function EtelanHaratSivu() {
   const tdLStyle = {...tdStyle, textAlign: 'center' as const, fontWeight:500}
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign: 'center' as const}
+  const myyntiTehoTaso = (teho: number) => teho >= 9 ? 'hyva' : teho >= 8 ? 'rajalla' : teho >= 7 ? 'varoitus' : 'heikko'
   const liittymaVari = (teho: number | undefined, tunnit: number, nimi?: string) => {
     if (tunnit <= 0 || !Number.isFinite(teho) || (nimi && eiTehoa(nimi))) return {}
-    const v = RJMOB_VARIT[tehoTaso(teho!)]
+    const v = RJMOB_VARIT[myyntiTehoTaso(teho!)]
     return {background:v.bg, color:v.fg}
   }
   const fsecureVari = (kpl: number, myymala = false) => {
@@ -320,19 +321,12 @@ function EtelanHaratSivu() {
     return {background:v.bg, color:v.fg}
   }
 
-  // Kynnys tulee jaettuna rjmob.ts:stä, jotta se on sama kuin tuottoseurannassa,
-  // run ratessa ja yhteenvedossa. `liittyma`-lippu valitsee liittymätehon oman
-  // matalamman vihreän rajan (8,5 €/h): liittymäteho on kolmesta aina pienin,
-  // joten yhteisellä 9:llä se olisi punainen myös kunnossa olevalla myynnillä.
+  // Myyntiseurannan käyttäjän vahvistamat rajat: 7/8/9 €/h.
   const tehoColor = (teho: number, liittyma = false) => {
-    const taso = tehoTaso(teho, liittyma)
-    return taso === 'hyva' ? '#3B6D11' : taso === 'rajalla' ? '#854F0B' : '#A32D2D'
+    return RJMOB_VARIT[myyntiTehoTaso(teho)].fg
   }
-  const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, background:RJMOB_VARIT[tehoTaso(teho, liittyma)].bg, color: tehoColor(teho, liittyma), fontWeight:500})
-  const tehoTot = (teho: number, liittyma = false) => ({...totStyle, background:RJMOB_VARIT[tehoTaso(teho, liittyma)].bg, color: tehoColor(teho, liittyma)})
-  // Tehosarakkeen solu. Asteikko annetaan eksplisiittisesti eikä
-  // päätellä indeksistä: sarakejärjestyksen vaihtaminen siirtäisi muuten
-  // liittymän 8,5-rajan hiljaa väärään sarakkeeseen ilman että mikään kaatuu.
+  const tehoSolu = (teho: number, liittyma = false) => ({...tdStyle, background:RJMOB_VARIT[myyntiTehoTaso(teho)].bg, color: tehoColor(teho, liittyma), fontWeight:500})
+  const tehoTot = (teho: number, liittyma = false) => ({...totStyle, background:RJMOB_VARIT[myyntiTehoTaso(teho)].bg, color: tehoColor(teho, liittyma)})
   const tehoTd = (n: number | undefined, key: number, liittyma = false) => Number.isFinite(n)
     ? <td key={key} style={tehoSolu(n as number, liittyma)}>{fmt(n as number)} €/h</td>
     : <td key={key} style={{...tdStyle, color:'#bbb'}}>—</td>

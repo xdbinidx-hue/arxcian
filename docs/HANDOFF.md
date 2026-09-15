@@ -1,3 +1,12 @@
+# Myyntiseurannan tehovärit neljään portaaseen — 15.9.2026
+
+- **Käyttäjäpäätös/toteutettu:** myyntiseurannan teho <7punainen,7–<8oranssi,8–<9keltainen,>=9vihreä. Koskee myyjä/myymälä/tehojen yhteensä-solujen taustaa ja tekstiä sekä liittymä€/kpl väritystä. Rivitaustat neutraalit, F-Secure- ja Runrate-rajat säilyvät. Käytetään olemassa olevaa yhteistä palettia. Ei teholukujen laskentamuutosta; muiden sivujen vanhaa tehoTaso-helperiä ei muutettu tässä myyntiseurannan hyväksymistyössä.
+- **Testattu:** kuusi rajatarkistusta6,99/7/7,99/8/8,99/9 ilman verkkopyyntöjä/kirjoituksia; nykyiseen Drive-captureen perustuva React/HTTP-tarkistus läpäisi neljän portaan tehosolut ja kolme näkymäfingerprintiä. Testikirjoitukset vain omaan Redis-palveluun, ei tuotantoa. Lokit arxcian-work/efficiency-four-bands-{build,ui}.log. Lopullinen build läpäisi exit0 sisältäen tyyppitarkistuksen; oma preview päivitetty ja readonly-watcher palautettu.
+- **Julkaistu:** ei tuotantoon; oma preview päivitetty onnistuneella buildilla, readonly-watcher palautettu. Voimassa oleva julkaisulupa ja aiemmat käyttöönoton esteet säilyvät.
+- **Avoin/seuraava:** käyttäjän neljän tehovärin selaintarkistus; Leon4.9. tapahtumaerittely sekä Hermes/Oracle/Telegram/palautusesteet edelleen avoinna. Työ /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Muut keskeneräiset työt säilyvät alla.
+
+---
+
 # Tehosolut myös taustavärillisiksi — 15.9.2026
 
 - **Toteutettu:** myyntiseurannan tehosoluissa koko solun taustaväri yhteisestä paletista, ei pelkkä tekstiväri. Yhdistetty teho <7punainen,7–<9keltainen,>=9vihreä; myyjät/myymälät ja tehojen yhteensä-solut. Puuttuva/arvioimaton teho neutraali; F-Secure-yhteensä edelleen neutraali. Rivitaustoja ei palautettu.
