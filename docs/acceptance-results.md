@@ -1,3 +1,13 @@
+# Myyjien ja myymälöiden tehorivit sekä yhteiset sävyt — 15.9.2026
+
+- **Toteutettu:** myyjän rivitausta yhdistetyn Liitt+Kassa-tehon mukaan: <7 punainen,7–<9 keltainen,>=9 vihreä. Myymälän rivitausta samoin näkyvän yhdistetyn tehon (liittEur+kassaRjmob)/tunnit mukaan. Puuttuva teho/tunnit tai arvioimaton Albin säilyvät neutraalina. F-Secure kpl/€ solujen omat rajat <5/5–9/>=10 säilyvät rivitaustan päällä.
+- **Identtiset sävyt:** uusi src/lib/rjmobVarit.ts yhteinen paletti myyjä/myymäläriveille, F-Secure-soluille, Runratelle ja tavoiteprosenttisoluille. Vihreä #dcfce7, keltainen #fef9c3, oranssi #ffedd5, punainen #fee2e2; tekstivärit samasta paletista. Eri mittarien värirajat säilyvät.
+- **Testattu:** nykyisen Drive-aineiston React/HTTP-tarkistus läpäisi myyjien tehoväririvit ja F-Secure kpl/€ yhtenäiset sävyt; kaikki kolme näkymäfingerprintiä ja yhteinen lataus/focus säilyivät. Testikirjoitukset vain omaan Redis-palveluun, ei tuotantokirjoituksia. Lopullinen build läpäisi exit0 (sisältää tyyppitarkistuksen); oma preview päivitetty ja readonly-watcher palautettu. Lokit arxcian-work/shared-row-colors-{ui,build}.log.
+- **Julkaistu:** ei tuotantoon. Voimassa oleva lupa ja aiemmat Hermes/Oracle/Telegram/palautusesteet säilyvät. Preview päivitetty onnistuneella lopullisella buildilla; oma readonly-watcher käynnissä.
+- **Avoin/seuraava:** selaintarkistus myyjä/myymäläriveille ja identtisille sävyille; Leon4.9. tapahtumaerittely odottaa vahvistusta. Työ /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Muiden töiden tiedot säilyvät alla.
+
+---
+
 # F-Securen kappaleet ja eurot samoilla värirajoilla — 15.9.2026
 
 - **Toteutettu:** myyntiseurannan F-Secure alle5 punainen,5–9 keltainen,>=10 vihreä koko solu. F-Secure € käyttää saman rivin kpl-värirajaa; myyjät, myymälät ja yhteensä-rivit. Runraten ennusteprosentin värirajat säilyvät, ei myyntilaskennan muutosta.

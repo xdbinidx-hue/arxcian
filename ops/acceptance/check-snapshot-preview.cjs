@@ -78,11 +78,11 @@ async function main(){
     for(const seller of snapshot.dash.sellers){
       const row=[...table.querySelectorAll('tbody tr')].find(r=>r.children[1]?.textContent===seller.nimi)
       if(!row)continue
-      const expected=seller.fsecKpl>=10?'rgb(234, 243, 222)':seller.fsecKpl>=5?'rgb(254, 249, 195)':'rgb(254, 226, 226)'
+      const expected=seller.fsecKpl>=10?'rgb(220, 252, 231)':seller.fsecKpl>=5?'rgb(254, 249, 195)':'rgb(254, 226, 226)'
       assert.equal(row.children[5].style.background,expected,'Count cell must use quantity band')
       assert.equal(row.children[4].style.background,expected,'Euro cell must use same quantity band')
       assert.equal(row.children[4].style.color,row.children[5].style.color)
-      if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho) && seller.myyntiTeho<7) assert.equal(row.style.background,'rgb(253, 236, 236)','Measured efficiency below seven must mark the row red')
+      if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho)) assert.equal(row.style.background,seller.myyntiTeho>=9?'rgb(220, 252, 231)':seller.myyntiTeho>=7?'rgb(254, 249, 195)':'rgb(254, 226, 226)','Seller row must follow combined efficiency band')
     }
   }
   if(name==='kassamyynti' && snapshot.targets.kassaRaportti) assert(document.body.textContent.includes(snapshot.targets.kassaRaportti.tilannePvm),'Actual cash page must show archive cutoff')

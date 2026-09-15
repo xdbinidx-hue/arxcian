@@ -1,4 +1,5 @@
 'use client'
+import { RJMOB_VARIT } from '@/lib/rjmobVarit'
 import { rjMobComparisons, rjMobViewData, viewFingerprint, setRjMobSelection } from '@/lib/arxcian/rjmobView'
 import { kuukausiTiedostonimesta } from '@/lib/rjmobTavoiteTaulukko'
 import { Suspense, useEffect, useState } from 'react'
@@ -309,10 +310,11 @@ function EtelanHaratSivu() {
   const tdLStyle = {...tdStyle, textAlign: 'center' as const, fontWeight:500}
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign: 'center' as const}
-  const fsecureVari = (kpl: number) => kpl >= 10
-    ? {background:'#EAF3DE', color:'#15803d'}
-    : kpl >= 5 ? {background:'#fef9c3', color:'#854F0B'}
-    : {background:'#fee2e2', color:'#A32D2D'}
+  const tehoTausta = (teho: number) => RJMOB_VARIT[tehoTaso(teho)].bg
+  const fsecureVari = (kpl: number) => {
+    const v = RJMOB_VARIT[kpl >= 10 ? 'hyva' : kpl >= 5 ? 'rajalla' : 'heikko']
+    return {background:v.bg, color:v.fg}
+  }
 
   // Kynnys tulee jaettuna rjmob.ts:stä, jotta se on sama kuin tuottoseurannassa,
   // run ratessa ja yhteenvedossa. `liittyma`-lippu valitsee liittymätehon oman
@@ -508,7 +510,7 @@ Generoi viesti:`
                     {sellers.map((s, i) => {
                       const provisio = s.liittEur + s.fsecEur + s.kassa
                       return (
-                        <tr key={s.nimi} style={{background: !eiTehoa(s.nimi) && s.tunnit > 0 && Number.isFinite(s.myyntiTeho) && s.myyntiTeho! < 7 ? '#FDECEC' : i % 2 === 0 ? 'white' : '#fafafa'}}>
+                        <tr key={s.nimi} style={{background: !eiTehoa(s.nimi) && s.tunnit > 0 && Number.isFinite(s.myyntiTeho) ? tehoTausta(s.myyntiTeho!) : i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
                           <td style={tdLStyle}>{s.nimi}</td>
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>
@@ -571,7 +573,7 @@ Generoi viesti:`
                     {Object.entries(stores).sort((a,b) => b[1].liittEur - a[1].liittEur).map(([nimi, s], i) => {
                       const t = myymalanTehot(s)
                       return (
-                        <tr key={nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
+                        <tr key={nimi} style={{background: s.tunnit > 0 && Number.isFinite(t.kassa) ? tehoTausta(t.kassa) : i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
                           <td style={tdLStyle}>{nimi}</td>
                           <td style={tdStyle}>{fmt(s.liittEur)} €</td>

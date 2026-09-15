@@ -1,4 +1,5 @@
 'use client'
+import { RJMOB_VARIT as RUNRATE_VARIT } from '@/lib/rjmobVarit'
 
 import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
 
@@ -33,13 +34,7 @@ function summa(rivit: TargetRow[], kentta: keyof TargetRow): number | null {
  * % tavoitteesta -solu. Portaikko tulee jaettuna `runRateTaso`sta, jotta se
  * on sama luku samalla värillä myös run rate -taulukoissa ja hubissa.
  */
-const RUNRATE_VARIT = {
-  hyva: { bg: '#dcfce7', fg: '#3B6D11' },
-  rajalla: { bg: '#fef9c3', fg: '#854F0B' },
-  varoitus: { bg: '#ffedd5', fg: '#9a3412' },
-  heikko: { bg: '#fee2e2', fg: '#A32D2D' },
-  tuntematon: { bg: 'transparent', fg: '#bbb' },
-}
+
 
 function PctCell({ pct }: { pct: number | null }) {
   const v = RUNRATE_VARIT[runRateTaso(pct)]

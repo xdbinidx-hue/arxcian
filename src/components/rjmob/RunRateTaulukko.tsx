@@ -1,4 +1,5 @@
 'use client'
+import { RJMOB_VARIT as VARIT } from '@/lib/rjmobVarit'
 
 import { Fragment } from 'react'
 import { runRateTaso, type RunRateMittari } from '@/lib/rjmob'
@@ -48,13 +49,7 @@ const MITTARIT: { avain: 'liittymat' | 'fsecure' | 'kassakate'; otsikko: string;
  * juuri se tila johon suurin osa riveistä osuu. Sama valinta kuin
  * teholuvuissa.
  */
-const VARIT = {
-  hyva: { bg: '#dcfce7', fg: '#3B6D11' },
-  rajalla: { bg: '#fef9c3', fg: '#854F0B' },
-  varoitus: { bg: '#ffedd5', fg: '#9a3412' },
-  heikko: { bg: '#fee2e2', fg: '#A32D2D' },
-  tuntematon: { bg: 'transparent', fg: '#bbb' },
-}
+
 
 function fmt(n: number, dec = 0) {
   return n.toLocaleString('fi-FI', { minimumFractionDigits: dec, maximumFractionDigits: dec })
