@@ -36,3 +36,11 @@ test('näkymän rajaus ja muuttuneet luvut', () => {
   assert.equal(viewFingerprint([{ nimi: 'A', value: 0 }, { nimi: 'B', value: null }]), viewFingerprint([{ value: null, nimi: 'B' }, { value: 0, nimi: 'A' }]))
   assert.notEqual(viewFingerprint({ value: 0 }), viewFingerprint({ value: null }))
 })
+
+test('myyjien näyttöjärjestys ei muuta desimaalisumman Oracle-tarkistetta', () => {
+  const sellers = [0.1, 0.2, 0.3].map((kassa, i) => ({ nimi: String(i), tyyppi: 'normal', liittKpl: 1, fsecKpl: 1, kassa: kassa / 10 }))
+  const runrate = { tyopaivat: { paattyneet: 5, kaikki: 20 }, tavoitteet: { myymalat: [], myyjat: sellers.map(s => ({ nimi: s.nimi, liittymat: 10, fsecure: 10, kassakate: 10 })), yhteensa: { liittymat: 30, fsecure: 30, kassakate: 30 } }, myyjaVuorot: {} } as unknown as RunRateData
+  const calculate = (rows: typeof sellers) => rjMobViewData('tavoitteet', rjMobComparisons({ sellers: rows, stores: {} }, runrate, []), [])
+  assert.equal(viewFingerprint(calculate(sellers)), viewFingerprint(calculate([...sellers].reverse())))
+  assert.deepEqual(calculate(sellers).sellerTotal, calculate([...sellers].reverse()).sellerTotal)
+})

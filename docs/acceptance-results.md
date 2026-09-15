@@ -1,3 +1,9 @@
+## Uusi näyttö 15.9.2026: Drive ja snapshot-testiversio
+
+Toteutettu erillinen readonly Drive-capture ja loopback snapshot-preview. Oikean syyskuun kaikki kolme lukijaa onnistuivat, lähteen modifiedTime säilyi; myöhempää kuukautta ei löytynyt listasta. Korjattu myyjäkokonaissumman järjestyksestä riippuva desimaaliero. Kohdennetut 13 testiä, typecheck/build ja kolme oikean React-sivun fingerprint-vertailua läpäisivät. Uuden testin loki: `/home/arxcian-codex/arxcian-work/acceptance-snapshot-check.log`.
+
+Oracle-vastausta **ei** verrattu eikä Hermes-runtime-oikeuksia vielä varmennettu. Palvelu on SSH-tunnelin kautta käytettävä osittainen testiversio, ei julkinen HTTPS-preview tai tuotantojulkaisu. Täysi palvelupalautus edelleen avoin; aiempi otetun backupin sandbox-drill säilyy voimassa. Ajantasainen yhteinen jatko: docs/HANDOFF.md.
+
 # Hyväksymistulokset — 15.9.2026
 
 Tulokset koskevat julkaisutyötä /home/arxcian-codex/arxcian-release, release/acceptance-20260915. Sovellustoteutus 8d9c719, uusin valmistelu lähtöversiossa c889748. Ei tuotantojulkaisua.

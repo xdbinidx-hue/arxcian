@@ -35,7 +35,10 @@ export function rjMobComparisons(dash: { sellers: { nimi: string; tyyppi: string
     ? { tavoite: cashTotalTarget, toteuma: null, ennuste: null, pct: null }
     : runRateMittari(targets.reduce((sum, r) => sum + r.kassaKate!, 0), cashTotalTarget, days.paattyneet, days.kaikki)
   const storeTotal = runrate ? tapahtumaYhteensa(yhteensaRivi(Object.entries(dash.stores).map(([nimi, s]) => ({ nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa })), runrate.tavoitteet.yhteensa, days), stores) : null
-  const sellerTotal = runrate ? tapahtumaYhteensa(yhteensaRivi(sellers.map(s => ({ nimi: s.nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa * 10 })), tavoiteSumma(Object.values(sellerTargets)), days), sellerRows) : null
+  // UI sorts sellers by efficiency. Sum in a stable order so floating point
+  // accumulation cannot invalidate the same data's Oracle fingerprint.
+  const totalSellers = [...sellers].sort((a, b) => a.nimi.localeCompare(b.nimi))
+  const sellerTotal = runrate ? tapahtumaYhteensa(yhteensaRivi(totalSellers.map(s => ({ nimi: s.nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa * 10 })), tavoiteSumma(Object.values(sellerTargets)), days), sellerRows) : null
   const completeTotal = (total: typeof storeTotal, rows: typeof sellerRows) => {
     if (total === null) return null
     const metric = (key: 'liittymat' | 'fsecure' | 'kassakate') => !rows.length || rows.some(r => r[key].toteuma === null)

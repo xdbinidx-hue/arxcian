@@ -197,3 +197,10 @@ Do not write to the Drive source or call a model with production-writing tools.
 - Login as test Arbnor: Albin's task and Oracle message must remain inaccessible.
 
 All-site Oracle tools and web search remain outside this release work.
+
+
+### Oikean Drive-lukukuvan eristetty selaintesti
+
+`capture-drive-view.cjs` käyttää vain Google readonly-scopeja ja tallentaa yksityisen capturen erillisprosessissa. `--recompute-only` ei lue avainta tai verkkoa: se päivittää laskennat aiemmasta aineistosta säilyttäen lukuaikoja. `snapshot-preview.cjs` tarvitsee oman loopback-Nextin 3300 ja capturen; bind vain 127.0.0.1:3302, omat signed testisessiot, API-datan GET/fileId-rajaus, muu kirjoittava API estetty paitsi testikirjautuminen ja oma checklist. Oracle 503, ei live-bridgeä/Telegramia. Ei aktivoi Google-avainta Nextissä.
+
+`check-snapshot-preview.cjs` käyttää omia testitunnuksia ja vertaa oikean React-sivun kaikki kolme näkymätunnistetta captureen. DOM-verkkopyynnöt rajataan neljään lukureittiin. Login-testit kuluttavat oman eristetyn Redisin kiintiötä; älä muuta tuotantokiintiötä. Capture ja tunnukset ovat private-tilassa, eivät Gitissä. Käyttäjän SSH-tunneli: `ssh -N -L 3302:127.0.0.1:3302 arxcian-codex@77.37.49.27`; osoite `http://localhost:3302/acceptance`. Todellinen käyttäjäselaintesti ja julkinen HTTPS-pääsy vielä avoinna.
