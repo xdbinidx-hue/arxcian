@@ -1,3 +1,14 @@
+# Testipääsyjen sijaintien selvitys — 15.9.2026
+
+Käyttäjä ei tiedä, onko eristetty Oracle/Drive/HTTPS-testipalvelu olemassa. Sijaintien selvitys tehdään käyttäjän puolesta; uusia palveluja tai tuotantotunnusten käyttöä ei oleteta tämän vastauksen perusteella.
+
+- **Toteutettu:** ops/acceptance/find-test-access.sh + .py valmisteltu. Rajatut tunnetut /opt/data/workspace/arxcian-, private/arxcian/oracle-{production,preview,staging}-, profiles/oracle-asetussijainnit ja supervisorin staattiset lähdepolut. Raporttiin vain tarvittavien avainnimien olemassaolo, tiedostopolut ja credential-free origin/p/oracle-URL:t; ei avainarvoja, keskusteluja tai kantasisältöä. Hostin Codex-työkopiosta ei löytynyt Vercel-preview-linkitystä eikä luettavaa nginx/caddy-testiproxyä. Tämä ei todista etteikö kontissa olisi testipalvelua.
+- **Testattu:** uuden lukuskriptin fixture-tarkistus läpäisi: salaiset arvot ja tunnuksia sisältävä URL jäävät pois, tunnuksen olemassaolo ja turvallinen origin löytyvät. Vain uusi tmp-fixture; acceptance-access-finder-check.json. AST/shell-syntaksi tarkistettu. Aiemmat sovellus/auth-/backup-testit eivät uusittu.
+- **Julkaistu:** ei mitään; ei tuotantoasetusten/palvelujen muutosta.
+- **Avoinna/seuraava:** käyttäjältä rajattu root-ajo bash /home/arxcian-codex/arxcian-release/ops/acceptance/find-test-access.sh . Raportti acceptance-test-access.json työtilaan. Root tarvitaan edelleen Docker-lukurajan vuoksi. Lue sijainnit ja selvitä turvallinen testikytkentä näiden perusteella; älä pyydä käyttäjää arvaamaan avainten sijainteja. HTTPS-pääsyn ja eristetyn Oracle-ajon perustaminen konkretisoidaan löydösten perusteella. Jos uutta maksullista palvelua tai olennainen käyttäjäpäätös tarvitaan, kysy se vasta konkreettisesta ehdotuksesta. Muut hyväksymistulokset/rajaukset alla säilyvät.
+
+---
+
 # Korjattu profiiliraportti luettu — 15.9.2026 klo 08:15 UTC
 
 - **Toteutettu:** julkaisutyö /home/arxcian-codex/arxcian-release, haara release/acceptance-20260915, lähtöversio c889748. Kaikki tähän asti pyydetyt root-raporttikomennot ajettu käyttäjän toimesta ja tulokset luettu tiedostoista. Yhteinen tulostaulukko docs/acceptance-results.md. Sovelluskoodiin ei uutta muutosta.

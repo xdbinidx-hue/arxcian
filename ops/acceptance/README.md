@@ -1,3 +1,16 @@
+# Locating test access on behalf of the user
+
+The user does not know whether the required test environment exists. Prepared a
+bounded location/presence finder, not another profile/backup drill:
+`bash /home/arxcian-codex/arxcian-release/ops/acceptance/find-test-access.sh` (VPS root).
+It exports only credential names present, known config/source paths and safe service
+origins to arxcian-work/acceptance-test-access.json. No secret values, conversations,
+DB data, service changes or provisioning. Fixture secret-exclusion check passed;
+actual container execution pending. Use its results to propose/prepare concrete
+isolated connections rather than asking the user to guess configuration locations.
+
+---
+
 # All requested metadata commands completed
 
 The corrected acceptance-profile-gates.json was received and read (15 September
