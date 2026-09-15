@@ -1,3 +1,13 @@
+# Preview ei avaudu käyttäjälle — tarkistus 15.9.2026
+
+- **Toteutettu:** ei uutta sovelluskoodimuutosta eikä palvelurestarttia. Nykyiset testipalvelut edelleen käynnissä. Tuotantojulkaisulupa säilyy voimassa; tuotantoon ei tässä vuorossa julkaistu.
+- **Testattu nyt:** VPS:n loopback-proxy /acceptance ja /login 200 myös Host localhost:61568:llä; kirjautumissivun kaikki 7 viitattua Next-tiedostoa 200. Vain GET, ei kirjautumista, testikirjoituksia tai tuotantodataa muuttavia pyyntöjä. Aiemmat sovellustestit eivät uusittu.
+- **Avoin käyttäjäpääsy:** käyttäjä ei saa previewtä auki. Palvelimen HTTP200 ei todista Macin porttivälityksen toimivuutta. Aiemman vastauksen vaihtuva preview-porttilinkki ei ole varmennettu käyttäjäosoite. Codexin browser-open jäi queued-tilaan, ei todistetta selaimessa renderöinnistä. Tässä tehtävässä ei ole Macin terminaalia liitettynä tai työkalua paikallisen SSH-tunnelin tarkistamiseen.
+- **Käyttäjältä kysytty:** tarkka virheilmoitus ja onko SSH-tunneli ajettu Macin Terminalissa sekä jätetty käyntiin. Kun tunneli käyttää paikallista 3302-porttia, osoite on http://localhost:3302/acceptance; VPS-webconsoleen ajettu tunneli ei tee Macin yhteyttä. Älä anna uusia vaihtuvia portteja toimivina ilman käyttäjäpään vahvistusta.
+- **Seuraava:** ratkaise käyttäjän selainyhteys virheen/SSH-tuloksen perusteella. Julkaisutyön root-auth-raportti ja Hermes/Oracle-käyttöönoton puuttuva root-pääsy säilyvät erillisinä avoimina asioina alla. Ei uutta julkaisulupakysymystä.
+
+---
+
 # Tuotantojulkaisulupa ja valmistelu — 15.9.2026
 
 - **Lupa:** käyttäjä sanoi ”julkase kaikki tuotantoon”. Voimassa oleva lupa koskee nykyistä RJ-Mob/Oracle/Hermes-julkaisukokonaisuutta, myös tarvittavaa käyttöönottoa. Uutta julkaisulupaa ei pyydetä. Koko sivuston Oracle-toiminnot/verkkohaku ovat edelleen seuraava toteutuskokonaisuus; niitä ei toteutettu.
