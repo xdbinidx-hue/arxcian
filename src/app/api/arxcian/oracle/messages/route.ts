@@ -1,3 +1,4 @@
+import { resolveRjMobOracleContext } from '@/lib/arxcian/rjmobOracleContext'
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@/lib/session'
 import { checkRateLimit } from '@/lib/arxcian/rateLimit'
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
   const result = await submitOracleRequest(
     {
       currentUser,
+      resolveViewContext: resolveRjMobOracleContext,
       allowRequest: user => checkRateLimit('oracle-messages', user, 60, 60 * 60, true),
       backend: createRedisOracleBackend(kv()),
       now: () => Date.now(),

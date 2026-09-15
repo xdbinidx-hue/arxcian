@@ -1,4 +1,5 @@
 'use client'
+import { rjMobComparisons, rjMobViewData, viewFingerprint, setRjMobSelection } from '@/lib/arxcian/rjmobView'
 import { kuukausiTiedostonimesta } from '@/lib/rjmobTavoiteTaulukko'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -6,7 +7,6 @@ import { RjMobNav } from '@/components/rjmob/RjMobNav'
 import { RunRateTaulukko } from '@/components/rjmob/RunRateTaulukko'
 import { UusmyyntiTaulukko, KassamyyntiTaulukko, type TargetRow } from '@/components/rjmob/TavoiteTaulukot'
 import { tehoaEiArvioida as eiTehoa, myymalanTehot, tehoTaso, runRateMittari } from '@/lib/rjmob'
-import { myymalaRivit, myyjaTavoiteRivit, yhteensaRivi, tapahtumaYhteensa, tavoiteSumma, type RunRateToteuma } from '@/lib/rjmobRunRateRivit'
 import type { RunRateData } from '@/lib/rjmobRunRate'
 import { tyopaivaTilanne } from '@/lib/rjmobWorkdays'
 
@@ -46,15 +46,6 @@ interface DriveFile {
   mimeType: string
   modifiedTime?: string
 }
-
-/**
- * Myyjän `kassa` on kassaprovisio, myymälän `kassa` valmiiksi kassakate.
- * Run rate vertaa molempia samaan tavoitteeseen (kassakate, alv 0), joten
- * myyjärivi kerrotaan takaisin. Sama luku kuin `KASSAKATE_JAKAJA`
- * [rjmobSheets.ts](src/lib/rjmobSheets.ts):ssä, toiseen suuntaan — kertoimet
- * menevät tarkoituksella eri suuntiin, ks. CLAUDE.md.
- */
-const KASSAKATE_KERROIN = 10
 
 /**
  * Sivun kolme näkymää. Siirtyivät tänne 1.9.2026 kun Tavoitteet ja Run Rate
@@ -122,6 +113,7 @@ function EtelanHaratSivu() {
   const [puutteet, setPuutteet] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [runrate, setRunrate] = useState<RunRateData | null>(null)
+  const [runrateLoading, setRunrateLoading] = useState(true)
   const [runrateVirhe, setRunrateVirhe] = useState('')
   // Uusmyynti- ja Kassamyynti-näkymien rivit. Oma reittinsä (`/api/targets`)
   // eikä /api/sheets, koska ne ovat myyntiseurantataulukon myyjäkohtaisia
@@ -218,12 +210,13 @@ function EtelanHaratSivu() {
   useEffect(() => {
     if (!selectedFile) return
     let active = true
+    setRunrateLoading(true)
     setRunrate(null)
     setRunrateVirhe('')
     fetch(`/api/runrate?fileId=${selectedFile}`)
       .then(r => r.json())
-      .then(d => { if (active) { setRunrate(d.error ? null : d); setRunrateVirhe(d.error ?? '') } })
-      .catch(() => { if (active) { setRunrate(null); setRunrateVirhe('Tavoitteiden haku epäonnistui. Vaihda kuukautta tai lataa sivu uudelleen.') } })
+      .then(d => { if (active) { setRunrate(d.error ? null : d); setRunrateVirhe(d.error ?? ''); setRunrateLoading(false) } })
+      .catch(() => { if (active) { setRunrate(null); setRunrateLoading(false); setRunrateVirhe('Tavoitteiden haku epäonnistui. Vaihda kuukautta tai lataa sivu uudelleen.') } })
     return () => { active = false }
   }, [selectedFile, paivitys])
 
@@ -295,38 +288,16 @@ function EtelanHaratSivu() {
     total: yhteisTeho(Object.values(stores), s => myymalanTehot(s).total, s => s.tunnit),
   }
 
-  // --- Run rate: tavoite, toteuma, ennuste ja % tavoitteesta ---
-  //
-  // Toteumat ovat samat luvut kuin teho-taulukoissa yllä, vain eri
-  // yksikössä: myymälän `kassa` on jo kassakate, myyjän kassaprovisio.
-  const rrMyymalaTavoitteet = Object.fromEntries((runrate?.tavoitteet.myymalat ?? []).map(m => [m.storeKey, m]))
-  const rrMyyjaTavoitteet = Object.fromEntries((runrate?.tavoitteet.myyjat ?? []).map(m => [m.nimi, m]))
-  const rrMyymalaToteumat: RunRateToteuma[] = Object.entries(stores).map(([nimi, s]) => ({
-    nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa,
-  }))
-  const rrMyyjaToteumat: RunRateToteuma[] = sellers.map(s => ({
-    nimi: s.nimi, liittymat: s.liittKpl, fsecure: s.fsecKpl, kassakate: s.kassa * KASSAKATE_KERROIN,
-  }))
-
-  const myymalaEnnusteRivit = myymalaRivit(rrMyymalaToteumat, rrMyymalaTavoitteet, runrate?.tyopaivat ?? { paattyneet: 0, kaikki: 0 }, runrate?.tapahtumat?.myymalat)
-  const myyjaEnnusteRivit = myyjaTavoiteRivit(rrMyyjaToteumat, rrMyyjaTavoitteet, runrate?.myyjaVuorot ?? {}, runrate?.tapahtumat?.myyjat)
-
-  // Kassamyynti-näkymän tavoite ja ennuste kulkevat samaa laskentaa kuin run
-  // rate -taulukot: yksi "% tavoitteesta" sivulla, ei kahta eri kaavaa saman
-  // otsikon alla. Toteuma tulee tässä `/api/targets`in `kassaKate`sta, joka on
-  // jo kassakate (alv 0) — sitä ei siis kerrota `KASSAKATE_KERROIN`illa kuten
-  // myyjärivin kassaprovisiota yllä.
-  const myyjaIkkuna = (nimi: string) => runrate?.myyjaVuorot[nimi] ?? { paattyneet: 0, kaikki: 0 }
-  const kassaRr = (r: TargetRow) => {
-    const { paattyneet, kaikki } = myyjaIkkuna(r.nimi)
-    return r.kassaKate === null ? { tavoite: rrMyyjaTavoitteet[r.nimi]?.kassakate ?? null, toteuma: null, ennuste: null, pct: null } : runRateMittari(r.kassaKate, rrMyyjaTavoitteet[r.nimi]?.kassakate ?? null, paattyneet, kaikki)
-  }
-  const kassaRrYhteensa = targets.some(r => r.kassaKate === null) ? { tavoite: tavoiteSumma(Object.values(rrMyyjaTavoitteet)).kassakate, toteuma: null, ennuste: null, pct: null } : runRateMittari(
-    targets.reduce((sum, r) => sum + (r.kassaKate ?? 0), 0),
-    tavoiteSumma(Object.values(rrMyyjaTavoitteet)).kassakate,
-    runrate?.tyopaivat.paattyneet ?? 0,
-    runrate?.tyopaivat.kaikki ?? 0,
-  )
+  const comparisons = rjMobComparisons({ sellers, stores }, runrate, targets)
+  const myymalaEnnusteRivit = comparisons.stores
+  const myyjaEnnusteRivit = comparisons.sellers
+  const kassaRr = comparisons.cash
+  const kassaRrYhteensa = comparisons.cashTotal
+  const fingerprint = viewFingerprint(rjMobViewData(nakyma, comparisons, targetsVirhe ? null : targets))
+  useEffect(() => {
+    setRjMobSelection(selectedFile && !loading && !targetsLoading && !runrateLoading ? { route: '/arxcian/rj-mob/etela', fileId: selectedFile, view: nakyma, fingerprint } : undefined)
+    return () => setRjMobSelection(undefined)
+  }, [selectedFile, nakyma, fingerprint, loading, targetsLoading, runrateLoading])
 
   /** Otsikoihin ilman "Myyntiseuranta"-etuliitettä, kuten run rate -taulukoissa. */
   const kuukausiLyhyt = kuukausi.replace('Myyntiseuranta ', '')
@@ -459,7 +430,7 @@ Generoi viesti:`
               sarakeOtsikko="Myymälä"
               ikkuna={runrate.tyopaivat}
               rivit={myymalaEnnusteRivit}
-              yhteensa={tapahtumaYhteensa(yhteensaRivi(rrMyymalaToteumat, runrate.tavoitteet.yhteensa, runrate.tyopaivat), myymalaEnnusteRivit)}
+              yhteensa={comparisons.storeTotal!}
             />
 
             <RunRateTaulukko
@@ -468,11 +439,7 @@ Generoi viesti:`
               ikkuna={runrate.tyopaivat}
               naytaIkkunaSarake
               rivit={myyjaEnnusteRivit}
-              yhteensa={tapahtumaYhteensa(yhteensaRivi(
-                rrMyyjaToteumat,
-                tavoiteSumma(Object.values(rrMyyjaTavoitteet)),
-                runrate.tyopaivat,
-              ), myyjaEnnusteRivit)}
+              yhteensa={comparisons.sellerTotal!}
             />
           </>
         )}

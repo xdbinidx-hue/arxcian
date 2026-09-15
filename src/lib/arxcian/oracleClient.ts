@@ -70,6 +70,7 @@ export function oracleUiEffect(message: OracleMessageView, handledMessageId: str
 
 type RunOraclePromptOptions = {
   prompt: string
+  viewContext?: unknown
   idempotencyKey?: string
   fetchImpl?: typeof fetch
   id?: () => string
@@ -180,6 +181,7 @@ export async function watchOraclePrompt(
 
 export async function runOraclePrompt({
   prompt,
+  viewContext,
   idempotencyKey,
   fetchImpl = fetch,
   id = () => crypto.randomUUID(),
@@ -197,7 +199,7 @@ export async function runOraclePrompt({
   const submitted = await readJson(await fetchWithTimeout(fetchImpl, '/api/arxcian/oracle/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, idempotencyKey: requestKey }),
+    body: JSON.stringify({ prompt, idempotencyKey: requestKey, viewContext }),
   }, fetchTimeoutMs, signal))
   const message = submitted.message as OracleMessageView
   onSubmitted(message)

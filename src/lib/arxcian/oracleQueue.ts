@@ -52,6 +52,7 @@ export type OracleMessage = {
   owner: SessionUser
   prompt: string
   idempotencyKey: string
+  viewContext?: unknown
   status: OracleMessageStatus
   sessionId: string | null
   runId: string | null
@@ -111,6 +112,7 @@ export type EnqueueOracleInput = {
   owner: SessionUser
   prompt: string
   idempotencyKey: string
+  viewContext?: unknown
   sessionId?: string | null
 }
 
@@ -182,6 +184,7 @@ export async function enqueueOracleMessage(
     owner: input.owner,
     prompt,
     idempotencyKey,
+    ...(normalized.viewContext === undefined ? {} : { viewContext: normalized.viewContext }),
     status: 'queued',
     sessionId,
     runId: null,
@@ -201,7 +204,7 @@ export async function enqueueOracleMessage(
     createdAt: now,
     updatedAt: now,
   })
-  if (!result.created && result.message.prompt !== prompt) {
+  if (!result.created && (result.message.prompt !== prompt || JSON.stringify((result.message.viewContext as { selection?: unknown } | undefined)?.selection) !== JSON.stringify((normalized.viewContext as { selection?: unknown } | undefined)?.selection))) {
     throw new OracleQueueConflictError('Idempotency-avain on jo käytetty eri viestille.')
   }
   return result

@@ -1,3 +1,4 @@
+import { parseRjMobSelection } from './rjmobView.ts'
 import type { SessionUser } from '../session.ts'
 import {
   cancelOracleMessage,
@@ -13,6 +14,7 @@ import {
 } from './oracleQueue.ts'
 
 export type OracleSubmitBody = {
+  viewContext?: unknown
   prompt?: unknown
   idempotencyKey?: unknown
 }
@@ -23,6 +25,7 @@ export type OracleApiResult = {
 }
 
 export type OracleSubmitDeps = OracleQueueDeps & {
+  resolveViewContext?(selection: unknown, user: SessionUser): Promise<unknown>
   currentUser(): Promise<SessionUser | null>
   allowRequest(user: SessionUser): Promise<boolean>
   backend: OracleQueueBackend
@@ -99,10 +102,15 @@ export async function submitOracleRequest(
       prompt: _body.prompt,
       idempotencyKey: _body.idempotencyKey,
     })
+    let selection
+    if (_body.viewContext !== undefined) {
+      try { selection = parseRjMobSelection(_body.viewContext) }
+      catch { return { status: 400, body: { error: 'RJ-Mobin näkymävalinta on virheellinen.' } } }
+    }
     const idempotencyKey = normalized.idempotencyKey
     const existing = await deps.backend.getByOwnerAndIdempotencyKey(user, idempotencyKey)
     if (existing) {
-      if (existing.prompt !== normalized.prompt) {
+      if (existing.prompt !== normalized.prompt || JSON.stringify((existing.viewContext as { selection?: unknown } | undefined)?.selection) !== JSON.stringify(selection)) {
         return { status: 409, body: { error: 'Idempotency-avain on jo käytetty eri viestille.' } }
       }
       return { status: 200, body: { created: false, message: oracleMessageView(existing) } }
@@ -110,10 +118,17 @@ export async function submitOracleRequest(
     if (!(await deps.allowRequest(user))) {
       return { status: 429, body: { error: 'Liikaa pyyntöjä, yritä myöhemmin uudelleen' } }
     }
+    if (selection && !deps.resolveViewContext) return { status: 503, body: { error: 'RJ-Mobin näkymätietoja ei voida lukea.' } }
+    let viewContext
+    if (selection) {
+      try { viewContext = await deps.resolveViewContext!(selection, user) }
+      catch { return { status: 422, body: { error: 'Valitun RJ-Mob-näkymän tiedot muuttuivat tai niitä ei saatu. Päivitä näkymä ja yritä uudelleen.' } } }
+    }
     const result = await enqueueOracleMessage(
       deps.backend,
       {
         ...normalized,
+        ...(viewContext === undefined ? {} : { viewContext }),
       },
       deps,
     )

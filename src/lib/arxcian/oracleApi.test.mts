@@ -233,3 +233,24 @@ test('vain omistaja voi hyväksyä tai hylätä tarkan Hermes-pyynnön', async (
   assert.equal(retry.status, 200)
   assert.equal(conflictingRetry.status, 409)
 })
+
+test('Oracle sitoo palvelimen lukutilanteen kuukauteen ja omistajaan; uusinta ei lue eri lukuja', async () => {
+  const backend = createMemoryOracleBackend()
+  let reads = 0
+  const selection = { route: '/arxcian/rj-mob/etela', fileId: 'september_2026', view: 'kassamyynti' }
+  const deps = { currentUser: async () => 'arbnor' as const, allowRequest: async () => true, backend, now: () => 1000, id: () => 'snapshot-1', resolveViewContext: async (selected: unknown, owner: string) => { reads++; assert.equal(owner, 'arbnor'); return { selection: selected, data: { value: null } } } }
+  const body = { prompt: 'Vertaa myyntiä tavoitteisiin', idempotencyKey: 'snapshot-request', viewContext: selection }
+  assert.equal((await submitOracleRequest(deps, body)).status, 202)
+  assert.equal((await submitOracleRequest(deps, body)).status, 200)
+  assert.equal(reads, 1)
+  assert.deepEqual((await backend.get('snapshot-1'))?.viewContext, { selection, data: { value: null } })
+  assert.equal((await submitOracleRequest(deps, { ...body, viewContext: { ...selection, fileId: 'october_2026' } })).status, 409)
+  assert.equal((await readOracleRequest({ backend, currentUser: async () => 'albin' }, 'snapshot-1')).status, 404)
+})
+test('RJ-Mobin lukuvirhe ei jonota työtä ilman lukuja', async () => {
+  const backend = createMemoryOracleBackend()
+  const result = await submitOracleRequest({ currentUser: async () => 'albin', allowRequest: async () => true, backend, now: () => 1, id: () => 'not-created', resolveViewContext: async () => { throw new Error('private-source-error') } }, { prompt: 'Vertaa', idempotencyKey: 'failed-request', viewContext: { route: '/arxcian/rj-mob/etela', fileId: 'september', view: 'tavoitteet' } })
+  assert.equal(result.status, 422)
+  assert.equal(await backend.get('not-created'), null)
+  assert.ok(!JSON.stringify(result).includes('private-source-error'))
+})

@@ -275,7 +275,7 @@ test('tuotantobridge avaa Hermes-event-streamin ajon rinnalle', async () => {
   const fetchImpl = async (url, options = {}) => {
     const target = String(url)
     calls.push({ url: target, options })
-    if (target.endsWith('/bridge/claim')) return response(200, { message: { id: 'message-stream', prompt: 'Tee työ', sessionId: null, claimToken: 'claim-stream' } })
+    if (target.endsWith('/bridge/claim')) return response(200, { message: { id: 'message-stream', prompt: 'Tee työ', viewContext: { selection: { fileId: 'month_202609' }, data: { missing: null, zero: 0 } }, sessionId: null, claimToken: 'claim-stream' } })
     if (target === 'http://127.0.0.1:8642/p/oracle/v1/runs') return response(202, { run_id: 'run-stream' })
     if (target.endsWith('/bridge/running')) return response(200, { message: { status: 'running' } })
     if (target.endsWith('/events')) return { ok: true, status: 200, body: emptyStream }
@@ -292,6 +292,10 @@ test('tuotantobridge avaa Hermes-event-streamin ajon rinnalle', async () => {
   })
 
   assert.equal(calls.filter(call => call.url.endsWith('/events')).length, 1)
+  const input = JSON.parse(calls.find(call => call.url.endsWith('/v1/runs')).options.body).input
+  assert.match(input, /month_202609/)
+  assert.match(input, /\"missing\":null/)
+  assert.match(input, /\"zero\":0/)
 })
 
 test('bridge palaa rauhallisesti kun jonossa ei ole työtä', async () => {

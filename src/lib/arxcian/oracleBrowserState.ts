@@ -1,4 +1,5 @@
 export type OracleSubmissionDraft = {
+  viewContext?: unknown
   prompt: string
   idempotencyKey: string
 }
@@ -29,7 +30,7 @@ export function parseOracleSubmissionDraft(raw: string | null): OracleSubmission
     const value = JSON.parse(raw) as Partial<OracleSubmissionDraft>
     if (typeof value.prompt !== 'string' || !value.prompt.trim() || value.prompt.length > 12_000) return null
     if (typeof value.idempotencyKey !== 'string' || !IDEMPOTENCY_PATTERN.test(value.idempotencyKey)) return null
-    return { prompt: value.prompt, idempotencyKey: value.idempotencyKey }
+    return { prompt: value.prompt, idempotencyKey: value.idempotencyKey, ...(value.viewContext === undefined ? {} : { viewContext: value.viewContext }) }
   } catch {
     return null
   }

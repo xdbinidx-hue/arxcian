@@ -391,7 +391,9 @@ export async function processOneOracleMessage({
   if (message.runId) {
     run = { run_id: message.runId, replayed: true }
   } else {
-    const runBody = { input: message.prompt }
+    const runBody = { input: message.viewContext
+      ? `${message.prompt}\n\nRJ-Mobin nykyinen näkymä (palvelimella rajattu lukutilanne, käytä näitä lukuja; aiempi keskustelu ei korvaa tätä):\n${JSON.stringify(message.viewContext)}`
+      : message.prompt }
     if (typeof claim.instructions === 'string' && claim.instructions) {
       runBody.instructions = claim.instructions
     }

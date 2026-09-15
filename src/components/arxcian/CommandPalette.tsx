@@ -1,5 +1,7 @@
 'use client'
 
+import { getRjMobSelection } from '@/lib/arxcian/rjmobView'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { UserId } from '@/lib/session'
@@ -908,7 +910,7 @@ export function CommandPalette({ user }: { user: UserId }) {
   )
 
   const askAssistant = useCallback(
-    async (prompt: string, idempotencyKey?: string) => {
+    async (prompt: string, idempotencyKey?: string, restoredContext?: unknown) => {
       if (!ORACLE_QUEUE_ENABLED) {
         await askLegacyAssistant(prompt)
         return
@@ -932,13 +934,16 @@ export function CommandPalette({ user }: { user: UserId }) {
       const pendingKey = oraclePendingStorageKey(String(user))
       const submissionKey = oracleSubmissionStorageKey(String(user))
 
+      const viewContext = restoredContext ?? getRjMobSelection()
       try {
+        if (window.location.pathname === '/arxcian/rj-mob/etela' && !viewContext) throw new Error('Odota näkymän tietojen latautumista ja yritä uudelleen.')
         const message = await runOraclePrompt({
           prompt,
+          viewContext,
           idempotencyKey,
           signal: controller.signal,
           onPrepared: requestKey => {
-            sessionStorage.setItem(submissionKey, JSON.stringify({ prompt, idempotencyKey: requestKey }))
+            sessionStorage.setItem(submissionKey, JSON.stringify({ prompt, idempotencyKey: requestKey, viewContext }))
           },
           onSubmitted: submitted => {
             sessionStorage.removeItem(submissionKey)
@@ -1027,7 +1032,7 @@ export function CommandPalette({ user }: { user: UserId }) {
     if (!open) return
     if (!pendingId) {
       const draft = parseOracleSubmissionDraft(sessionStorage.getItem(submissionKey))
-      if (draft) void askAssistant(draft.prompt, draft.idempotencyKey)
+      if (draft) void askAssistant(draft.prompt, draft.idempotencyKey, draft.viewContext)
       return
     }
     if (!shouldRestoreOracleWatch(open, pendingId, requestRef.current?.signal ?? null)) return

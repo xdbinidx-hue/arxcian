@@ -199,3 +199,11 @@ test('Oraclen osittainen vastaus on tyhjä ilman liveAnsweria', () => {
   const message = messageWithLiveAnswer(null)
   assert.equal(oracleLiveAnswer(message), '')
 })
+
+test('Oracle-asiakas välittää valitun kuukauden ja näkymän samassa pyynnössä', async () => {
+  const context = { route: '/arxcian/rj-mob/etela', fileId: 'month_202609', view: 'uusmyynti' }
+  await runOraclePrompt({ prompt: 'Vertaa', idempotencyKey: 'view-request', viewContext: context, fetchImpl: async (_url, options) => {
+    assert.deepEqual(JSON.parse(options?.body as string).viewContext, context)
+    return response(200, { message: { id: 'view-1', status: 'completed', answer: 'Valmis' } }) as Response
+  } })
+})

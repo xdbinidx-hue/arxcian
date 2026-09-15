@@ -111,7 +111,7 @@ export function RunRateTaulukko({
   sarakeOtsikko: string
   rivit: RunRateNayttoRivi[]
   /** Yhteensä-rivi. Jätetään pois kun summa ei ole mielekäs. */
-  yhteensa?: Omit<RunRateRivi, 'nimi' | 'ikkuna'> | null
+  yhteensa?: Omit<RunRateNayttoRivi, 'nimi' | 'ikkuna'> | null
   /** Taulukon tason työpäiväikkuna otsikkoriville. */
   ikkuna: { paattyneet: number; kaikki: number }
   /** Näytä rivikohtainen työpäiväsarake (myyjätaulukko). */
