@@ -1,3 +1,14 @@
+# Käyttäjä määräsi koko tuotantojulkaisun nyt — 15.9.2026
+
+- **Lupa:** käyttäjä vahvisti jälleen "julkaise kaikki nyt tuotantoon". Voimassa koko nykyiselle julkaisukokonaisuudelle, ei uutta lupakysymystä. Oracle koko sivuston toiminnot/verkkohaku edelleen seuraava kokonaisuus.
+- **Nykytila varmennettu:** julkaistava sovelluslähde f8ef88d, puhdas release/acceptance-20260915; viimeisin build/tyypit, rajakohdat ja React/HTTP/Drive-fingerprintit läpäisseet. Remote main edelleen44fdf009dff2f9812927ffcaa4a80bf3c388c5c7. Ei läpäisseiden testien uusintaa.
+- **Valmisteltu:** production-release-f8ef88d.bundle täydellä historialla, bundle verify läpäisi; /home/arxcian-codex/arxcian-work/production-release-f8ef88d.bundle SHA256 c4b0625c30dcaa5afc357c021c2ab61e238fe56bff8cf67ded6d3e7520adf659. Aiempi datapalautuspiste ja eristetty backup-drill säilyvät, ei uusintaa.
+- **Julkaistu tuotantoon:** ei vielä mitään. sudo -n vaatii salasanan; Codex uid1000 ei voi asentaa Hermes/gateway/bridge-palveluita Docker-konttiin. acceptance-api-auth-read.json puuttuu edelleen. Frontendin yksittäinen main-push laukaisee Vercelin mutta jättäisi uuden viewContext-protokollan ja vanhan live-Oraclen yhteensopimattomiksi; sitä ei tehdä koko julkaisuna.
+- **Tarvittava pääsy/seuraava:** käyttäjä ajaa root-webconsolessa bash /home/arxcian-codex/arxcian-release/ops/acceptance/check-api-auth.sh (GET-only, ei malliajoja/tehtäviä). Lue raportti, ratkaise todelliset käyttöoikeudet ja valmistele yhteensopiva root-palveluasennus. Oikea Oracle–Drive-vastaus, Telegram-jatkuvuus ja täysi palvelupalautus edelleen avoinna; Leo4.9. erittely puuttuu. Käyttäjän julkaisulupa ei korvaa puuttuvaa root-pääsyä/testinäyttöä.
+- **Työn sijainti:** /home/arxcian-codex/arxcian-release/docs/HANDOFF.md yhteinen jatkomuistio; muut keskeneräiset työt säilyvät alla. Preview ja readonly-watcher edelleen toimivat viimeisimmällä f8ef88d-lähteellä.
+
+---
+
 # Myyntiseurannan tehovärit neljään portaaseen — 15.9.2026
 
 - **Käyttäjäpäätös/toteutettu:** myyntiseurannan teho <7punainen,7–<8oranssi,8–<9keltainen,>=9vihreä. Koskee myyjä/myymälä/tehojen yhteensä-solujen taustaa ja tekstiä sekä liittymä€/kpl väritystä. Rivitaustat neutraalit, F-Secure- ja Runrate-rajat säilyvät. Käytetään olemassa olevaa yhteistä palettia. Ei teholukujen laskentamuutosta; muiden sivujen vanhaa tehoTaso-helperiä ei muutettu tässä myyntiseurannan hyväksymistyössä.
