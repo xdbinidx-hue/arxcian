@@ -1,3 +1,12 @@
+# Nykyisen supervisorin ensimmäinen käynnistysraportti vastaanotettu — 15.9.2026
+
+- **Tarkistettu:** acceptance-service-launch.json supervisorSHA54185f029942771792d3e4aec8fc3fb3fab048ba38caf8f66f988c3ad9d6b860 sama kuin palautuspisteessä. Popen käyttää command/env ja run_child käynnistää bridge-muuttujan. Ei avainten vientiä, restarttia tai tuotantokirjoituksia.
+- **Raportin puute:** ensimmäinen rajattu AST-raportti ei näyttänyt bridge-polun muodostusta ja peitti tulkin. Ei riitä asennuksen työpolun/tulkin/asetuslatauksen varmistamiseen; ei väitetä palveluasennusta valmistuneeksi.
+- **Toteutettu/testattu:** tarkistin täydentää sanitized_source-kentän (AST:stä kaikki ei-sallitut tekstivakiot peitetään, tunnetut polut/tulkki/bridge-tiedostonimet säilyvät). Fixture varmisti ettei salainen vakio vuoda ja launch-polut säilyvät; Python/bash-syntaksi läpäisi. Käyttäjältä pyydetty saman inspect-service-launch.sh-komennon uusinta vain tämän raporttipuutteen vuoksi.
+- **Julkaistu:** ei tuotantoon. Sovellusf8ef88d ja gateway-päivityskopio valmisteltu, julkaisulupa voimassa. API-profiilien avainerottelu läpäisi aiemmin; owner/dashboard/oikea Oracle/Telegram/täysi palvelupalautus edelleen avoinna. Seuraava: täydellisen puhdistetun käynnistyslogiikan perusteella tarkka yhteensopiva asennus. Yhteinen muistio /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, muut työt säilyvät alla.
+
+---
+
 # Palvelukäynnistyksen lukutarkistuksen virhe korjattu — 15.9.2026
 
 - **Löydös:** käyttäjän root-ajo keskeytyi AST Attribute -käsittelyyn: Call palautti dictin, jota yhdistettiin merkkijonoon. Ei palvelumuutoksia, raportti ei valmistunut.

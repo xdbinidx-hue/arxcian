@@ -1,3 +1,12 @@
+# Nykyisen supervisorin ensimmäinen käynnistysraportti vastaanotettu — 15.9.2026
+
+- **Tarkistettu:** acceptance-service-launch.json supervisorSHA54185f029942771792d3e4aec8fc3fb3fab048ba38caf8f66f988c3ad9d6b860 sama kuin palautuspisteessä. Popen käyttää command/env ja run_child käynnistää bridge-muuttujan. Ei avainten vientiä, restarttia tai tuotantokirjoituksia.
+- **Raportin puute:** ensimmäinen rajattu AST-raportti ei näyttänyt bridge-polun muodostusta ja peitti tulkin. Ei riitä asennuksen työpolun/tulkin/asetuslatauksen varmistamiseen; ei väitetä palveluasennusta valmistuneeksi.
+- **Toteutettu/testattu:** tarkistin täydentää sanitized_source-kentän (AST:stä kaikki ei-sallitut tekstivakiot peitetään, tunnetut polut/tulkki/bridge-tiedostonimet säilyvät). Fixture varmisti ettei salainen vakio vuoda ja launch-polut säilyvät; Python/bash-syntaksi läpäisi. Käyttäjältä pyydetty saman inspect-service-launch.sh-komennon uusinta vain tämän raporttipuutteen vuoksi.
+- **Julkaistu:** ei tuotantoon. Sovellusf8ef88d ja gateway-päivityskopio valmisteltu, julkaisulupa voimassa. API-profiilien avainerottelu läpäisi aiemmin; owner/dashboard/oikea Oracle/Telegram/täysi palvelupalautus edelleen avoinna. Seuraava: täydellisen puhdistetun käynnistyslogiikan perusteella tarkka yhteensopiva asennus. Yhteinen muistio /home/arxcian-codex/arxcian-release/docs/HANDOFF.md, muut työt säilyvät alla.
+
+---
+
 # API-profiilien ajonaikainen avainerottelu läpäisi — 15.9.2026
 
 - **Testattu oikeassa ajossa:** käyttäjän root-komento check-api-auth.sh tuotti acceptance-api-auth-read.json. default /v1/models ja oracle /p/oracle/v1/models: anonymous401,invalid401,own200,other_profile401. Molemmat rejects_unauthorized_and_accepts_own_key=true. Ei malliajoja/tehtäviä, credential_values_exported=false. Tämä sulkee profiilien API-avainerottelun esteen; owner_isolation_verified=false ja dashboard_access_verified=false edelleen, ei laajempaa oikeusväitettä.
