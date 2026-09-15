@@ -310,9 +310,13 @@ function EtelanHaratSivu() {
   const tdLStyle = {...tdStyle, textAlign: 'center' as const, fontWeight:500}
   const totStyle = {...tdStyle, fontWeight:600, background:'#f8f8f6', borderTop:'1px solid #ddd'}
   const totLStyle = {...totStyle, textAlign: 'center' as const}
-  const tehoTausta = (teho: number) => RJMOB_VARIT[tehoTaso(teho)].bg
-  const fsecureVari = (kpl: number) => {
-    const v = RJMOB_VARIT[kpl >= 10 ? 'hyva' : kpl >= 5 ? 'rajalla' : 'heikko']
+  const liittymaVari = (teho: number | undefined, tunnit: number, nimi?: string) => {
+    if (tunnit <= 0 || !Number.isFinite(teho) || (nimi && eiTehoa(nimi))) return {}
+    const v = RJMOB_VARIT[tehoTaso(teho!)]
+    return {background:v.bg, color:v.fg}
+  }
+  const fsecureVari = (kpl: number, myymala = false) => {
+    const v = RJMOB_VARIT[myymala ? kpl >= 30 ? 'hyva' : 'heikko' : kpl >= 10 ? 'hyva' : kpl >= 5 ? 'rajalla' : 'heikko']
     return {background:v.bg, color:v.fg}
   }
 
@@ -510,11 +514,11 @@ Generoi viesti:`
                     {sellers.map((s, i) => {
                       const provisio = s.liittEur + s.fsecEur + s.kassa
                       return (
-                        <tr key={s.nimi} style={{background: !eiTehoa(s.nimi) && s.tunnit > 0 && Number.isFinite(s.myyntiTeho) ? tehoTausta(s.myyntiTeho!) : i % 2 === 0 ? 'white' : '#fafafa'}}>
+                        <tr key={s.nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
                           <td style={tdLStyle}>{s.nimi}</td>
-                          <td style={tdStyle}>{fmt(s.liittEur)} €</td>
-                          <td style={tdStyle}>{s.liittKpl}</td>
+                          <td style={{...tdStyle, ...liittymaVari(s.myyntiTeho, s.tunnit, s.nimi)}}>{fmt(s.liittEur)} €</td>
+                          <td style={{...tdStyle, ...liittymaVari(s.myyntiTeho, s.tunnit, s.nimi)}}>{s.liittKpl}</td>
                           <td style={{...tdStyle, ...fsecureVari(s.fsecKpl)}}>{fmt(s.fsecEur)} €</td>
                           <td style={{...tdStyle, fontWeight:500, ...fsecureVari(s.fsecKpl)}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
@@ -536,8 +540,8 @@ Generoi viesti:`
                       <td style={totLStyle} colSpan={2}>Yhteensä</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur)} €</td>
                       <td style={totStyle}>{sellerTotals.liittKpl}</td>
-                      <td style={{...totStyle, ...fsecureVari(sellerTotals.fsecKpl)}}>{fmt(sellerTotals.fsecEur)} €</td>
-                      <td style={{...totStyle, ...fsecureVari(sellerTotals.fsecKpl)}}>{sellerTotals.fsecKpl}</td>
+                      <td style={totStyle}>{fmt(sellerTotals.fsecEur)} €</td>
+                      <td style={totStyle}>{sellerTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(sellerTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(sellerTotals.tunnit)}</td>
                       <td style={totStyle}>{fmt(sellerTotals.liittEur + sellerTotals.fsecEur + sellerTotals.kassa)} €</td>
@@ -573,13 +577,13 @@ Generoi viesti:`
                     {Object.entries(stores).sort((a,b) => b[1].liittEur - a[1].liittEur).map(([nimi, s], i) => {
                       const t = myymalanTehot(s)
                       return (
-                        <tr key={nimi} style={{background: s.tunnit > 0 && Number.isFinite(t.kassa) ? tehoTausta(t.kassa) : i % 2 === 0 ? 'white' : '#fafafa'}}>
+                        <tr key={nimi} style={{background: i % 2 === 0 ? 'white' : '#fafafa'}}>
                           <td style={tdLStyle}>{i+1}</td>
                           <td style={tdLStyle}>{nimi}</td>
-                          <td style={tdStyle}>{fmt(s.liittEur)} €</td>
-                          <td style={tdStyle}>{s.liittKpl}</td>
-                          <td style={{...tdStyle, ...fsecureVari(s.fsecKpl)}}>{fmt(s.fsecEur ?? 0)} €</td>
-                          <td style={{...tdStyle, fontWeight:500, ...fsecureVari(s.fsecKpl)}}>{s.fsecKpl}</td>
+                          <td style={{...tdStyle, ...liittymaVari(t.kassa, s.tunnit)}}>{fmt(s.liittEur)} €</td>
+                          <td style={{...tdStyle, ...liittymaVari(t.kassa, s.tunnit)}}>{s.liittKpl}</td>
+                          <td style={{...tdStyle, ...fsecureVari(s.fsecKpl, true)}}>{fmt(s.fsecEur ?? 0)} €</td>
+                          <td style={{...tdStyle, fontWeight:500, ...fsecureVari(s.fsecKpl, true)}}>{s.fsecKpl}</td>
                           <td style={tdStyle}>{fmt(s.kassa)} €</td>
                           <td style={tdStyle}>{fmt(s.tunnit)}</td>
                           <td style={tehoSolu(t.kassa)}>{fmt(t.kassa)} €/h</td>
@@ -590,8 +594,8 @@ Generoi viesti:`
                       <td style={totLStyle} colSpan={2}>Yhteensä</td>
                       <td style={totStyle}>{fmt(storeTotals.liittEur)} €</td>
                       <td style={totStyle}>{storeTotals.liittKpl}</td>
-                      <td style={{...totStyle, ...fsecureVari(storeTotals.fsecKpl)}}>{fmt(storeTotals.fsecEur)} €</td>
-                      <td style={{...totStyle, ...fsecureVari(storeTotals.fsecKpl)}}>{storeTotals.fsecKpl}</td>
+                      <td style={totStyle}>{fmt(storeTotals.fsecEur)} €</td>
+                      <td style={totStyle}>{storeTotals.fsecKpl}</td>
                       <td style={totStyle}>{fmt(storeTotals.kassa)} €</td>
                       <td style={totStyle}>{fmt(storeTotals.tunnit)}</td>
                       <td style={tehoTot(storeTeho.kassa)}>{fmt(storeTeho.kassa)} €/h</td>

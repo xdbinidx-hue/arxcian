@@ -75,6 +75,14 @@ async function main(){
     assert(!text.includes('Basri Salihi'),'Former seller must be absent for September')
     const table=[...document.querySelectorAll('table')].find(t=>t.textContent.includes('Liitt+Kassa teho') && t.textContent.includes('Provisio yht.'))
     assert(table,'Sales tracking table must remain visible')
+    const storesTable=[...document.querySelectorAll('table')].find(t=>t.querySelector('th')?.textContent==='#' && t.textContent.includes('Myymälä') && t.textContent.includes('Liitt+Kassa teho'))
+    assert(storesTable)
+    for(const row of storesTable.querySelectorAll('tbody tr')) {
+      const cells=[...row.children];if(cells[0].textContent==='Yhteensä')continue
+      const expected=Number(cells[5].textContent)>=30?'rgb(220, 252, 231)':'rgb(254, 226, 226)'
+      assert.equal(cells[4].style.background,expected);assert.equal(cells[5].style.background,expected)
+    }
+    for(const t of [table,storesTable]) {const total=[...t.querySelectorAll('tbody tr')].find(r=>r.textContent.startsWith('Yhteensä'));assert.equal(total.children[3].style.background,'rgb(248, 248, 246)');assert.equal(total.children[4].style.background,'rgb(248, 248, 246)')}
     for(const seller of snapshot.dash.sellers){
       const row=[...table.querySelectorAll('tbody tr')].find(r=>r.children[1]?.textContent===seller.nimi)
       if(!row)continue
@@ -82,7 +90,7 @@ async function main(){
       assert.equal(row.children[5].style.background,expected,'Count cell must use quantity band')
       assert.equal(row.children[4].style.background,expected,'Euro cell must use same quantity band')
       assert.equal(row.children[4].style.color,row.children[5].style.color)
-      if(seller.tyyppi!=='owner' && seller.tunnit>0 && Number.isFinite(seller.myyntiTeho)) assert.equal(row.style.background,seller.myyntiTeho>=9?'rgb(220, 252, 231)':seller.myyntiTeho>=7?'rgb(254, 249, 195)':'rgb(254, 226, 226)','Seller row must follow combined efficiency band')
+      assert.equal(row.style.background,[...row.parentElement.children].indexOf(row)%2===0?'white':'rgb(250, 250, 250)','Seller row must use neutral striping')
     }
   }
   if(name==='kassamyynti' && snapshot.targets.kassaRaportti) assert(document.body.textContent.includes(snapshot.targets.kassaRaportti.tilannePvm),'Actual cash page must show archive cutoff')

@@ -1,3 +1,12 @@
+# Väritystä vähennetty käyttäjän hyväksyntäpalautteesta — 15.9.2026
+
+- **Toteutettu:** Runrate vain ennuste ja ennuste% värilliset; tavoite/toteuma neutraalit. Myyntiseurannan myyjä/myymälärivien tehoväriset taustat poistettu, neutraali vuororaitaisuus. F-Secure kpl/€ myyjillä <5punainen/5–9keltainen/>=10vihreä, myymälöillä käyttäjän viimeisestä päätöksestä <30punainen/>=30vihreä; käyttäjän lisätarkennuksesta yhteensä-rivien F-Secure-solut neutraalit. Liittymä€ ja kpl värit näkyvän yhdistetyn tehon mukaan (<7/7–<9/>=9); teholukujen omat tekstivärit säilyvät. Albin/puuttuva teho neutraali. Yhteinen paletti ja aiemmat prosentti/F-Secure-rajat säilyvät, ei laskentamuutosta.
+- **Testattu:** React/HTTP-tarkistus läpäisi neutraalit myyjärivit, F-Secure-värit ja kaikki kolme Drive-näkymäfingerprintiä, yhteinen lataus/focus säilyivät. Vain oma testi-Redis, ei tuotantokirjoituksia. Myymälöiden viimeinen F-Secure30-raja ja neutraalit yhteensä-kpl/€-solut läpäisivät lisäksi React/HTTP-tarkistuksen (store-fsecure-ui.log). Lopullinen myymälärajan build läpäisi exit0; oma preview päivitetty ja readonly-watcher palautettu. Lokit arxcian-work/reduced-colors-{build,final-build,ui}.log. Ensimmäinen vähennetyn värityksen build läpäisi; yhteensä-rivien tarkennuksen build läpäisi myös; myymälöiden30-rajan lopullinen build läpäisi (reduced-colors-store-build.log).
+- **Julkaistu:** ei tuotantoon; lupa ja aiemmat palveluesteet säilyvät. Oma preview päivitetty onnistuneella buildilla ja readonly-watcher palautettu.
+- **Avoin/seuraava:** käyttäjän vähennetyn värityksen selaintarkistus; Leon4.9. erittely ja Hermes/Oracle/Telegram/palautusesteet edelleen avoinna. Työ release/acceptance-20260915, /home/arxcian-codex/arxcian-release. Muiden töiden tiedot säilytetty alla.
+
+---
+
 # Myyjien ja myymälöiden tehorivit sekä yhteiset sävyt — 15.9.2026
 
 - **Toteutettu:** myyjän rivitausta yhdistetyn Liitt+Kassa-tehon mukaan: <7 punainen,7–<9 keltainen,>=9 vihreä. Myymälän rivitausta samoin näkyvän yhdistetyn tehon (liittEur+kassaRjmob)/tunnit mukaan. Puuttuva teho/tunnit tai arvioimaton Albin säilyvät neutraalina. F-Secure kpl/€ solujen omat rajat <5/5–9/>=10 säilyvät rivitaustan päällä.

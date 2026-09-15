@@ -93,8 +93,8 @@ function MittariSolut({ m, yksikko, pohja }: { m: NayttoMittari; yksikko: 'kpl' 
   const solu = { ...pohja, background: v.bg, color: v.fg }
   return (
     <>
-      <td style={{ ...solu, borderLeft: '1px solid #e5e5e5' }}>{m.tavoite === null ? 'Ei tavoitetta' : arvo(m.tavoite, yksikko)}</td>
-      <td style={solu}>{arvo(m.toteuma, yksikko)}</td>
+      <td style={{ ...pohja, color: '#888', borderLeft: '1px solid #e5e5e5' }}>{m.tavoite === null ? 'Ei tavoitetta' : arvo(m.tavoite, yksikko)}</td>
+      <td style={pohja}>{arvo(m.toteuma, yksikko)}</td>
       <td style={{ ...solu, fontWeight: 500 }}>{arvo(m.ennuste, yksikko)}</td>
       <PctSolu pct={m.pct} pohja={pohja} />
     </>
